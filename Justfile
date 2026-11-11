@@ -118,11 +118,16 @@ toml-check:
 # local build never breaks mid-edit; this is where warnings become failures.
 # allow_attributes sees only outer attributes, so an inner
 # #![allow(..., reason = "...")] would pass it and silence the policy for a whole
-# module; the search first rejects that form. POSIX ERE, so BSD and GNU grep agree.
+# module; the search first rejects that form, on any line of the file and inside
+# a cfg_attr, which rustfmt spreads over several lines: each file is joined into
+# one line first. `[^]]*` stops at the attribute's first `]`, before any reason
+# text. POSIX tools only, so BSD and GNU agree.
 clippy:
     #!/bin/sh
     set -eu
-    if grep -rnE --include='*.rs' '^[[:space:]]*#!\[(cfg_attr\(.*,[[:space:]]*)?allow[[:space:](]' crates; then
+    hits=$(find crates -name '*.rs' -exec sh -c 'for f; do tr "\n" " " < "$f" | grep -qE "#!\[[^]]*allow[[:space:](]" && printf "%s\n" "$f"; done; exit 0' sh {} +)
+    if [ -n "$hits" ]; then
+        printf '%s\n' "$hits" >&2
         printf '%s\n' 'clippy: inner #![allow] attribute found; use #[expect(..., reason = "...")]' >&2
         exit 1
     fi

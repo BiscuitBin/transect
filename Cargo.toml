@@ -63,6 +63,10 @@ unimplemented = "warn"
 # so they are rejected like unwrap; use `get` and handle the miss. clippy.toml lifts
 # it in test code.
 indexing_slicing = "warn"
+# Not in the models' list either: integer `/` and `%` panic on a zero divisor (and
+# on MIN / -1) in every build profile, so they are rejected like unwrap; use
+# `checked_div` and `checked_rem` and handle the None.
+integer_division_remainder_used = "warn"
 dbg_macro = "warn"
 print_stdout = "warn"
 print_stderr = "warn"
