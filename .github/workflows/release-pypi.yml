@@ -17,13 +17,6 @@ on:
     # a publishing run.
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
-  # TEMPORARY, removed in the next commit: the pre-merge dry run, since
-  # workflow_dispatch needs the file on the default branch. A pull_request run
-  # never publishes: the guards job decides publish=false for any event but a
-  # tag push or a dispatch with publish true.
-  pull_request:
-    paths:
-      - .github/workflows/release-pypi.yml
   workflow_dispatch:
     inputs:
       publish:
@@ -331,6 +324,7 @@ jobs:
     timeout-minutes: 10
     outputs:
       publish: ${{ steps.mode.outputs.publish }}
+      commit: ${{ steps.commit.outputs.commit }}
     steps:
       # The full history, so origin/main is present for the commit guard; no
       # credential is kept, and none is needed, since nothing is fetched later.
@@ -359,10 +353,13 @@ jobs:
           fi
           echo "publish $publish"
           echo "publish=$publish" >> "$GITHUB_OUTPUT"
-      - name: Guard the commit
+      # The tag checks key on the ref type, not the event, so a dispatch that
+      # selects a tag is held to it exactly as a tag push is.
+      - id: commit
+        name: Guard the commit
         shell: bash
         env:
-          EVENT: ${{ github.event_name }}
+          REF_TYPE: ${{ github.ref_type }}
           PUBLISH: ${{ steps.mode.outputs.publish }}
         run: |
           level=warning
@@ -372,7 +369,7 @@ jobs:
             echo "::$level::$GITHUB_SHA is not on main"
             ok=false
           fi
-          if [ "$EVENT" = push ]; then
+          if [ "$REF_TYPE" = tag ]; then
             tagged=$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")
             if [ "$(git rev-parse HEAD)" != "$tagged" ]; then
               echo "::error::HEAD is not the commit tag $GITHUB_REF_NAME names"
@@ -381,16 +378,16 @@ jobs:
           fi
           if [ "$ok" = false ] && [ "$PUBLISH" = true ]; then exit 1; fi
           echo "commit guard: $ok"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - id: version
         name: Guard the version
         shell: bash
         env:
-          EVENT: ${{ github.event_name }}
-          PUBLISH: ${{ steps.mode.outputs.publish }}
+          REF_TYPE: ${{ github.ref_type }}
         run: |
           version=$(python3 -I -c 'import sys, tomllib; sys.stdout.write(tomllib.load(open("crates/transectpy/pyproject.toml", "rb"))["project"]["version"])')
           echo "[project] version $version"
-          if [ "$EVENT" = push ] && [ "$version" != "${GITHUB_REF_NAME#v}" ]; then
+          if [ "$REF_TYPE" = tag ] && [ "$version" != "${GITHUB_REF_NAME#v}" ]; then
             echo "::error::tag $GITHUB_REF_NAME disagrees with [project] version $version"
             exit 1
           fi
@@ -469,7 +466,29 @@ jobs:
       id-token: write
       # actions/attest.
       attestations: write
+      # The tag re-check reads the tag through the API.
+      contents: read
     steps:
+      # After the approval, which may come long after the guards ran: a tag that
+      # was moved or deleted in between stops the publish, so a waiting run
+      # never uploads what an older commit built.
+      - name: Re-check the tag
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFIED: ${{ needs.guards.outputs.commit }}
+        run: |
+          ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" --jq '.object.type + " " + .object.sha')
+          read -r kind sha <<< "$ref"
+          if [ "$kind" = tag ]; then
+            sha=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" --jq .object.sha)
+          fi
+          if [ "$sha" != "$VERIFIED" ]; then
+            echo "::error::tag $GITHUB_REF_NAME names $sha, the guards verified $VERIFIED"
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME still names $VERIFIED"
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: wheels-*

@@ -31,14 +31,16 @@ It runs on a `v<major>.<minor>.<patch>` tag push and on demand. A dispatch has o
   in a pinned `python:3.11` container (aarch64 under QEMU) where the runner cannot run
   it. The sdist's contents are asserted, and every job runs `twine check --strict` on
   what it built.
-- **`guards`.** Downloads the seven files and checks that the commit is on `main` and is
-  the one the tag names, that the tag equals `[project] version`, that `CHANGELOG.md`
+- **`guards`.** Downloads the seven files and checks that the commit is on `main`, that a
+  run started from a tag (pushed or dispatched) builds the commit the tag names and that
+  the tag equals `[project] version`, that `CHANGELOG.md`
   has a non-empty `## [<version>] - <date>` section, and that `dist/` holds exactly six
   abi3 wheels and one sdist, each carrying the version. A run that publishes fails on
   any of them; a dry run reports the commit and changelog guards as warnings, since a
   dry run from a branch or before the changelog is dated is expected.
 - **`publish`.** Runs only when the run publishes: a tag push, or a dispatch with
-  `publish` true. It waits at the `pypi` environment, attests every file and uploads
+  `publish` true. It waits at the `pypi` environment, then refuses to go on if the tag
+  no longer names the commit the guards verified, attests every file and uploads
   with `uv publish --trusted-publishing always`. A dry run skips it, so it never reaches
   the environment and never holds an OIDC token.
 
@@ -58,6 +60,28 @@ Confirm `createdAt` is after the dispatch and `headSha` is `main`'s head. Every 
 job and `guards` end green and `publish` shows as skipped. Download the artefacts with
 `gh run download <id> -D ai_tmp/release/dry-run` and list them: six `cp311-abi3` wheels
 and one sdist.
+
+## Pre-flight
+
+**read-only network**, before every release. Read the plan, the visibility and the
+`pypi` environment:
+
+```sh
+gh api orgs/BiscuitBin --jq .plan.name
+gh api repos/BiscuitBin/transect --jq '{visibility, permissions}'
+gh api repos/BiscuitBin/transect/environments/pypi \
+  --jq '{protection_rules, deployment_branch_policy}'
+```
+
+A 404 or any other error stops the release; GitHub also answers 404 to a token that may
+not read the resource. A plan name of `null` means the token cannot read the plan: stop
+and ask an organisation owner rather than infer it. The environment must show a
+`required_reviewers` rule and a deployment policy admitting only `v*` tags and `main`.
+
+Required reviewers and artifact attestations exist only for public repositories unless
+the organisation is on GitHub Enterprise. While this repository is private or internal on
+another plan, the approval gate would not hold and the attestation would fail, so the
+release stops; publishing anyway is a decision to record first.
 
 ## Before the first release (maintainer only)
 
@@ -83,16 +107,20 @@ and one sdist.
 3. **local** `just version-check`, then `just check`, which must end with
    `All checks passed and the worktree is unchanged.`
 4. **authorised** Push the branch, open a pull request and merge it once `ci-ok` is green.
-5. **authorised** Run the dry run above on `main` if the workflow or the matrix changed
+5. **read-only network** Run the pre-flight above; it must pass.
+6. **authorised** Run the dry run above on `main` if the workflow or the matrix changed
    since the last green one.
-6. **authorised** On `main` at the merge commit, `git tag -a v<version> -m 'transectpy
+7. **authorised** On `main` at the merge commit, `git tag -a v<version> -m 'transectpy
    <version>'` and `git push origin v<version>`. **CI** builds and smokes again, the
    guards run as errors, and `publish` waits at the `pypi` environment.
-7. **authorised** Approve the `pypi` deployment. This approval is the publish.
+8. **authorised** Approve the `pypi` deployment. This approval is the publish.
 
-If a job is red before the approval, nothing has reached PyPI. Fix the workflow through
-a pull request, then, separately authorised, delete the tag and tag the new merge commit.
-A PyPI version can never be uploaded twice.
+If a job is red before the approval, nothing has reached PyPI. A tag is moved only while
+nothing has been published from it: first reject or cancel every run waiting at an
+environment for that tag, fix the workflow through a pull request, then, separately
+authorised, delete the tag and tag the new merge commit. Once a registry holds the
+version, the tag is never moved or deleted; a retry re-runs the failed `publish` job, and
+any change of content ships as a new version. A PyPI version can never be uploaded twice.
 
 ## Not decided here
 

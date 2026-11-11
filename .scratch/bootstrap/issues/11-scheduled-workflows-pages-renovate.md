@@ -102,3 +102,7 @@ The fixes are small and mechanical, and were verified with `just check`, so no s
   - `gh workflow run mutants.yml --ref main`
   - `gh workflow run pages.yml --ref main`
 - **Pages.** When the repository becomes public, set the Pages source to "GitHub Actions". Until then the deploy job is skipped by design.
+
+### CI after hand-back
+
+Run 43011983751 on `66f6ac6` was green on all 12 jobs, `ci-ok` included.

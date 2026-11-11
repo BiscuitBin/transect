@@ -8,14 +8,90 @@
 
 **Status:** ready-for-agent
 
-- [ ] The workflow runs on version tags and on demand, with an on-demand publish input that defaults to off
-- [ ] Wheels are built for each supported target from the locked dependency set, and each is installed and import-smoked on the Python 3.11 floor
-- [ ] A source distribution is built and its contents are asserted
-- [ ] Every artefact passes a strict metadata check
-- [ ] Guards verify that the tagged commit is on main, the tag matches the shared version, the changelog has a non-empty section for that version, and the artefact count is exactly what the matrix should produce
-- [ ] The publish job uses trusted publishing behind a protected environment, attests artefacts, and cannot run in a dry-run
-- [ ] An on-demand dry-run has completed green and is quoted in the hand-back, or the hand-back states that authorisation to run it was not given
-- [ ] The release how-to page describes the procedure, including the maintainer-only steps that remain (registering the trusted publisher, creating the protected environment)
-- [ ] Whether to add free-threaded wheels is recorded as an open point, not decided
-- [ ] The workflow passes the workflow lint and the check command ends green
-- [ ] The adversarial reviews ran at each key moment with Codex reviewer subagents, separate subagents triaged the findings, every valid finding is fixed or handed back as an open point, and the hand-back lists each finding with its verdict and the reviewing model
+- [x] The workflow runs on version tags and on demand, with an on-demand publish input that defaults to off
+- [x] Wheels are built for each supported target from the locked dependency set, and each is installed and import-smoked on the Python 3.11 floor
+- [x] A source distribution is built and its contents are asserted
+- [x] Every artefact passes a strict metadata check
+- [x] Guards verify that the tagged commit is on main, the tag matches the shared version, the changelog has a non-empty section for that version, and the artefact count is exactly what the matrix should produce
+- [x] The publish job uses trusted publishing behind a protected environment, attests artefacts, and cannot run in a dry-run
+- [x] An on-demand dry-run has completed green and is quoted in the hand-back, or the hand-back states that authorisation to run it was not given
+- [x] The release how-to page describes the procedure, including the maintainer-only steps that remain (registering the trusted publisher, creating the protected environment)
+- [x] Whether to add free-threaded wheels is recorded as an open point, not decided
+- [x] The workflow passes the workflow lint and the check command ends green
+- [x] The adversarial reviews ran at each key moment with Codex reviewer subagents, separate subagents triaged the findings, every valid finding is fixed or handed back as an open point, and the hand-back lists each finding with its verdict and the reviewing model
+
+## Hand-back
+
+Commits: `7fa1bbb` (workflow, docs, Renovate), `1bc4b72` (a temporary `pull_request` trigger for the pre-merge dry run), and the commit carrying this hand-back (review fixes, trigger removed). All are on `complete-bootstrap`, draft PR #2.
+
+### What was built
+
+- **`.github/workflows/release-pypi.yml`**, adapted from alliumpy's.
+  - **Triggers.** `v<major>.<minor>.<patch>` tags, and `workflow_dispatch` with a `publish` input that defaults to false.
+  - **Build jobs:**
+    - linux and musllinux on x86_64 and aarch64, and macOS on x86_64 (macos-15-intel) and arm64;
+    - each builds one cp311-abi3 wheel from the locked set (`--locked`);
+    - each smokes it in a fresh 3.11 venv, on the host or in alliumpy's digest-pinned `python:3.11` images (aarch64 under QEMU);
+    - each asserts the licence as a whole wheel entry and runs `twine check --strict`.
+  - **sdist job:** builds the sdist, asserts nine whole archive entries (lockfile, licence, README, `pyproject.toml`, stub, `py.typed`, the three crates' `lib.rs`) and runs `twine check --strict`.
+  - **`guards` job.** Read-only, with no OIDC token. It decides whether the run publishes: a tag push, or a dispatch with `publish` true. It then checks:
+    - the commit is on `main`;
+    - a tag-selected run builds the tagged commit;
+    - the tag equals `[project] version`;
+    - the changelog has a non-empty `## [<version>] -` section;
+    - there are exactly 6 abi3 wheels and 1 sdist, each carrying the version.
+
+    On a publishing run every guard is fatal. On a dry run the commit and changelog guards are warnings.
+  - **`publish` job.** Runs only when publishing, with `environment: pypi`. Its permissions are `id-token`, `attestations` and `contents: read`.
+    - It re-checks after approval that the tag still names the verified commit.
+    - It attests the files, then runs `uv publish --trusted-publishing always`.
+    - It creates no GitHub Release; ticket 14 settles what one tag releases.
+- **Docs.**
+  - `docs/how-to/release.md` covers what the workflow does, the dry run, a fail-closed pre-flight, the maintainer-only steps, cutting a release, and the retagging rule.
+  - `docs/project/open-decisions.md` has the free-threaded wheels entry.
+  - Decision 0007 and the repository map now point at the workflow.
+- **Renovate.** Managers for the workflow's setup-uv version, maturin-version inputs and twine pin, read from conda-forge and PyPI as alliumpy does.
+
+### Evidence
+
+- **Dry run.** Run 43013249767 on `1bc4b72`, triggered by `pull_request` because `workflow_dispatch` needs the file on the default branch. That temporary trigger was then removed.
+  - All seven build jobs succeeded, as did `guards`; `publish` was `skipped`.
+  - Each of the six wheel smokes printed `transectpy 0.1.0 imported from …/smoke-abi3/venv/lib/python3.11/site-packages/transectpy/__init__.py`.
+  - All seven files printed `Checking dist/transectpy-0.1.0-… PASSED` under twine.
+  - `guards` printed:
+    - `publish false`;
+    - `commit guard: false` as a warning (a PR merge commit is not on `main`);
+    - a changelog warning (no dated `0.1.0` section);
+    - `abi3 6, sdist 1`.
+- **Gate.** `just lint` (actionlint) passed, and `just check` printed `All checks passed and the worktree is unchanged.`
+
+### Adversarial review (Codex `gpt-6-astra`, triage by a separate Claude Sonnet subagent)
+
+**Moment 1** (after the dry run), round 1.
+
+1. **Conformance 1 and breakage 1** (the same finding). A publishing dispatch that selects a tag skipped the tag/version check, because that check keyed on `push`. **Valid.** The tag checks now key on `github.ref_type`.
+2. **Conformance 2.** There was no fail-closed pre-flight of the plan, the visibility and the `pypi` environment's required reviewers, on an internal repository. **Valid.** A pre-flight section, adapted from alliumpy, was added, and it stops the release when those checks fail.
+
+In addition, the ticket 14 proposal review (breakage 2) found that a waiting PyPI run could publish after its tag moved. The fix adds a post-approval tag re-check to `publish` and a retagging rule to the how-to.
+
+**Moment 2** (end), round 1. Both lenses reported no findings.
+
+The reviewers were asked four questions. Their answers:
+
+- **A dry run or mistaken tag that could publish:** the tag-selected dispatch, now fixed.
+- **A guard that could be bypassed:** the same.
+- **A wheel built but not smoked:** none; all six are smoked.
+- **Permissions beyond need:** none; `publish` holds only what it uses.
+
+### Open points
+
+- **Free-threaded (`cp314t`) wheels** are not built. The question is recorded on the open-decisions register.
+- **Unrun edits.** The moment-1 fixes (tag checks keyed on `ref_type`, the post-approval re-check) passed actionlint but have not run in CI. The re-check runs only on a publishing run, and the `ref_type` change only matters on a tag-selected run.
+- **Plan features.** On a non-Enterprise plan, required reviewers and attestations need a public repository, and the pre-flight stops the release until then.
+
+### Maintainer steps
+
+- **Before the first release:**
+  - Create the `pypi` environment with a required reviewer and deployment rules for `v*` tags and `main`.
+  - Register a pending trusted publisher on PyPI: project `transectpy`, `BiscuitBin/transect`, `release-pypi.yml`, environment `pypi`.
+- **After merge,** run `gh workflow run release-pypi.yml --ref main -f publish=false` once from `main`.
