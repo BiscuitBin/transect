@@ -8,6 +8,8 @@ name = "transectpy"
 # Cargo.toml, and `just version-check` holds the two equal.
 version = "0.1.0"
 description = "The Python client of Transect: a scaffold with no implementation yet"
+# The PyPI long description, which describes only what the wheel does.
+readme = "README.md"
 requires-python = ">=3.11"
 license = "Apache-2.0"
 # The text ships in the wheel's .dist-info/licenses/. Globs cannot leave this

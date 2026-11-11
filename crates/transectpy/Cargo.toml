@@ -6,6 +6,7 @@ name = "transectpy"
 description = "The Python binding of Transect's in-application client."
 keywords = ["transect", "client", "python"]
 categories = ["development-tools"]
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true

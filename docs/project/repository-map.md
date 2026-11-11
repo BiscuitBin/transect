@@ -45,7 +45,8 @@ Where everything lives. Paths are relative to the repository root.
 | --- | --- |
 | `docs/` | This handbook; `docs/manifest.yml` registers every page. |
 | `AGENTS.md` | The canonical agent contract. `CLAUDE.md` and `.github/copilot-instructions.md` point to it; `.agents/skills/` holds the canonical skills, bridged by `.claude/skills/` and `.codex/skills/`. |
-| `README.md`, `CHANGELOG.md` | Entry files; placeholders until ticket 12 replaces them. |
+| `README.md`, `CHANGELOG.md`, `SECURITY.md` | The entry files: what the project is, the single changelog, and how to report a vulnerability. |
+| `crates/*/README.md` | Each crate's README; `crates/transectpy/README.md` is the wheel's PyPI long description. |
 | `.scratch/` | Tracked bootstrap tickets; local ticket scratch is otherwise gitignored. |
 
 ## Generated and local, never committed

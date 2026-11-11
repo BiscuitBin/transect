@@ -6,6 +6,7 @@ name = "libtransect"
 description = "The core of Transect's in-application client."
 keywords = ["transect", "client", "tables"]
 categories = ["development-tools"]
+readme = "README.md"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
