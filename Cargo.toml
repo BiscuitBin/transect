@@ -110,6 +110,12 @@ libtransect = { path = "crates/libtransect", version = "0.1.0" }
 # resolves and outside cargo-deny's (exclude-dev). Caret range; Cargo.lock is the
 # pin. Its MSRV, 1.80.0, is below the toolchain pin.
 divan = "0.1.21"
+# Caret range; Cargo.lock is the pin. The stable Python ABI starts at 3.11, the
+# wheel's floor; maturin supplies extension-module build behaviour. Only the
+# binding crate may depend on it.
+pyo3 = { version = "0.30.1", features = ["abi3-py311"] }
+# The Rust client, for the binding crate.
+transect = { path = "crates/transect", version = "0.1.0" }
 
 [profile.test]
 # Light optimisation keeps test runs fast without release-build compile costs.

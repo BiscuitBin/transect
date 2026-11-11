@@ -36,6 +36,18 @@ cargo-shear = "==1.13.4"
 # rust, so rustup's cargo stays first on PATH.
 cargo-mutants = "==27.1.0"
 
+# Wheel builder; the nested manifest belongs to maturin alone.
+maturin = "==1.16.0"
+# Installer for maturin develop, the offline wheel-smoke environments and the
+# Python-floor interpreter.
+uv = "==0.13.7"
+# Binding behaviour tests.
+pytest = "==9.1.1"
+# Python lint and formatting gate.
+ruff = "==0.17.2"
+# Static type checking and runtime stubtest.
+mypy = "==2.4.0"
+
 [tool.pixi.pypi-dependencies]
 biscuit-games-tooling = { git = "https://github.com/steven-cutting/biscuit_games_tooling", tag = "v0.3.0" }
 
@@ -56,6 +68,13 @@ recipes = [
   "doc",
   "deny",
   "deps-unused",
+  "py-lint",
+  "py-typecheck",
+  "py-test",
+  "py-stubtest",
+  "wheel-smoke",
+  "wheel-smoke-floor",
+  "version-check",
   "snapshots-check",
 ]
 predicates = {}

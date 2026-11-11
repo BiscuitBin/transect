@@ -63,3 +63,14 @@ fuzz/coverage/
 # see would abort the gate's worktree check; reviewed .snap files are committed.
 *.snap.new
 *.pending-snap
+
+# Native extensions maturin builds in place beside the package source.
+crates/transectpy/python/transectpy/*.so
+
+# Python bytecode, tool caches and local virtual environments.
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/

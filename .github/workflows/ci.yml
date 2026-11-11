@@ -100,6 +100,73 @@ jobs:
       # pass here and fail locally.
       - run: just check-clean
 
+  # The Python gates on both platforms, in the gate's order. The extension is
+  # built twice: in place for the tests and stubtest, then as the release wheel
+  # for the smokes.
+  python:
+    name: python (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: python
+      - run: just py-lint
+      - run: just py-typecheck
+      - run: just py-test
+      - run: just py-stubtest
+      - run: just wheel-smoke
+      - run: just wheel-smoke-floor
+      - run: just version-check
+      # The wheel wheel-smoke built and smoked, for wheel-smoke-py311. The
+      # recipe empties dist/ first, so exactly one wheel is uploaded.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: wheel-${{ runner.os }}
+          path: dist/*.whl
+          if-no-files-found: error
+          retention-days: 7
+      # For the reason rust's last step gives.
+      - run: just check-clean
+
+  # The floor proved without pixi or the setup action: the abi3-py311 wheel
+  # each platform's python job built, installed on the runner's own CPython
+  # 3.11. Network is allowed here; `--no-index` and `--no-deps` keep the
+  # install to the one downloaded file, and `-I` keeps the checkout's sources
+  # off the import path.
+  wheel-smoke-py311:
+    name: wheel-smoke-py311 (${{ matrix.os }})
+    needs: [python]
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version: '3.11'
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: wheel-${{ runner.os }}
+          path: dist
+      - run: |
+          python -m venv venv
+          venv/bin/python -c 'import sys; assert sys.version_info[:2] == (3, 11), sys.version'
+          venv/bin/pip install --no-index --no-deps dist/*.whl
+          venv/bin/python -I tests/fixtures/smoke/smoke.py
+
   coverage:
     name: coverage
     runs-on: ubuntu-latest

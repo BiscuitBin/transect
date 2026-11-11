@@ -50,8 +50,9 @@ runs:
         save-if: ${{ github.ref == 'refs/heads/main' }}
         cache-bin: false
     # .tools holds what pixi cannot: cargo-hack and cargo-fuzz from tools.txt,
-    # rustqual from tools-source.txt.
-    # Keyed on both pin lists: a bumped line in either is a new key, and
+    # rustqual from tools-source.txt, and the floor CPython the Justfile's
+    # python_floor pins, which is why the Justfile is in the key.
+    # Keyed on every pin's file: a bumped line in any is a new key, and
     # cargo-binstall skips a matching version already present on a hit. A key
     # that missed a list would hit the old cache on a bump, and the new
     # version would be installed on every run and never saved, since a hit
@@ -59,7 +60,7 @@ runs:
     - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: .tools
-        key: ${{ runner.os }}-${{ runner.arch }}-tools-${{ hashFiles('tools.txt', 'tools-source.txt') }}
+        key: ${{ runner.os }}-${{ runner.arch }}-tools-${{ hashFiles('tools.txt', 'tools-source.txt', 'Justfile') }}
     # On the step that installs, never on the job: cargo-binstall (the
     # environment's) reads GITHUB_TOKEN to raise the GitHub API rate limit
     # while it resolves the release archive, and no other step has a use for

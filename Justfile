@@ -9,9 +9,18 @@ set shell := ["sh", "-eu", "-c"]
 # stays first for the compiler (check-toolchain proves it).
 export PATH := justfile_directory() / ".pixi" / "envs" / "default" / "bin" + ":" + justfile_directory() / ".tools" / "bin" + ":" + env("PATH")
 
-# Line-coverage floor over crates/*/src/**. Lower the complexity, not the
+# Every cargo invocation compiles the bindings against pixi's Python.
+export PYO3_PYTHON := justfile_directory() / ".pixi" / "envs" / "default" / "bin" / "python"
+
+# Line-coverage floor over the pure-Rust crates' src/**. Lower the complexity, not the
 # number.
 coverage_floor := "90"
+
+# The wheel's floor interpreter, the oldest Python the abi3-py311 wheel claims:
+# a python-build-standalone CPython that uv installs into .tools/python, so the
+# floor smoke runs locally and offline on a plain 3.11, not pixi's 3.14.
+# Verified with `uv python list` on 2026-11-11.
+python_floor := "3.11.18"
 
 default:
     @just --list
@@ -46,7 +55,8 @@ check-toolchain:
 install-toolchain:
     rustup toolchain install
 
-# Tools conda-forge lacks into .tools/bin (network). cargo-binstall comes from
+# Tools conda-forge lacks into .tools/bin, and the floor interpreter into
+# .tools/python (network). cargo-binstall comes from
 # the pixi environment. tools.txt is binary-only: a release archive or nothing.
 # tools-source.txt holds tools with no release binary, so its pass may compile,
 # and cargo-binstall passes --locked through to `cargo install`. It tries a
@@ -58,6 +68,7 @@ install-toolchain:
 # grep, strips the comments: it exits 0 on a list with no pins but still fails,
 # and so fails the recipe, when the file is missing or unreadable.
 install-tools:
+    UV_PYTHON_INSTALL_DIR=.tools/python uv python install --no-bin {{python_floor}}
     pins=$(sed -e '/^#/d' -e '/^$/d' tools.txt); [ -z "$pins" ] || cargo binstall --root .tools --no-confirm --locked --disable-strategies compile $pins
     pins=$(sed -e '/^#/d' -e '/^$/d' tools-source.txt); [ -z "$pins" ] || env -u GITHUB_TOKEN -u GH_TOKEN cargo binstall --root .tools --no-confirm --locked --disable-strategies crate-meta-data --only-signed --no-discover-github-token $pins
 
@@ -121,14 +132,16 @@ build:
     cargo build --workspace --all-features --locked
 
 # nextest runs the unit and integration tests; it cannot run doctests, so those
-# follow through cargo test. INSTA_UPDATE=no makes a snapshot mismatch fail
+# follow through cargo test. The cdylib's test binary needs libpython, and its
+# behaviour tests are Python's, so the binding crate is excluded, as in every
+# Rust test recipe. INSTA_UPDATE=no makes a snapshot mismatch fail
 # without a pending file, which would trip the gate's worktree check.
 test:
-    INSTA_UPDATE=no cargo nextest run --workspace --all-features --locked
-    cargo test --doc --workspace --all-features --locked
+    INSTA_UPDATE=no cargo nextest run --workspace --exclude transectpy --all-features --locked
+    cargo test --doc --workspace --exclude transectpy --all-features --locked
 
 test-doc:
-    cargo test --doc --workspace --all-features --locked
+    cargo test --doc --workspace --exclude transectpy --all-features --locked
 
 # Snapshots match, and every .snap file is referenced by a test; with no
 # snapshots it passes. The whole suite runs so the orphan check sees every
@@ -137,7 +150,7 @@ test-doc:
 # nextest would reject --locked; the locks are checked first, offline, and the
 # run stays offline. Doctests have their own gate, so its extra run is off.
 snapshots-check: lock-check
-    INSTA_UPDATE=no CARGO_NET_OFFLINE=true cargo insta test --check --unreferenced reject --test-runner nextest --disable-nextest-doctest --workspace --all-features
+    INSTA_UPDATE=no CARGO_NET_OFFLINE=true cargo insta test --check --unreferenced reject --test-runner nextest --disable-nextest-doctest --workspace --exclude transectpy --all-features
 
 # Interactive review for a person at a terminal.
 snapshots-review:
@@ -147,7 +160,7 @@ snapshots-review:
 # the diff before committing. A .snap file no test refers to, left by a renamed
 # or removed test, is deleted, so the deletion shows in the diff.
 snapshots-accept: lock-check
-    INSTA_UPDATE=new CARGO_NET_OFFLINE=true cargo insta test --accept --unreferenced delete --test-runner nextest --disable-nextest-doctest --workspace --all-features
+    INSTA_UPDATE=new CARGO_NET_OFFLINE=true cargo insta test --accept --unreferenced delete --test-runner nextest --disable-nextest-doctest --workspace --exclude transectpy --all-features
 
 # ----------------------------------------------------------------- format ---
 
@@ -205,6 +218,7 @@ metrics:
     fi
     rustqual crates/libtransect --config rustqual.toml --fail-on-warnings --format github
     rustqual crates/transect --config rustqual.toml --fail-on-warnings --format github
+    rustqual crates/transectpy --config rustqual.toml --fail-on-warnings --format github
 
 # Every feature combination compiles and passes clippy, so a panic path behind
 # `cfg(not(feature = ...))` is linted too. Not --no-dev-deps: that rewrites
@@ -213,11 +227,12 @@ features:
     cargo hack check --workspace --feature-powerset --locked
     cargo hack clippy --workspace --all-targets --feature-powerset --locked -- -D warnings
 
+# Measures the pure-Rust crates; pytest exercises the binding outside llvm-cov.
 # Runs every nextest test under instrumentation and enforces the floor. Doctests
 # are not measured (nightly-only in llvm-cov); test-doc runs them uncovered.
 # llvm-cov does not create the lcov file's directory, so the recipe does.
 coverage:
-    cargo llvm-cov nextest --workspace --all-features --locked --no-report
+    cargo llvm-cov nextest --workspace --exclude transectpy --all-features --locked --no-report
     cargo llvm-cov report --fail-under-lines {{coverage_floor}}
     mkdir -p target/llvm-cov
     cargo llvm-cov report --lcov --output-path target/llvm-cov/lcov.info
@@ -258,6 +273,93 @@ deps-unused:
 mutants *args: lock-check
     [ "$(cargo mutants --list --package libtransect --package transect --all-features "$@" | grep -c .)" -gt 0 ] || { printf '%s\n' 'mutants: no mutants found; the filters select nothing' >&2; exit 1; }
     cargo mutants --package libtransect --package transect --all-features --gitignore=true --cargo-arg=--locked "$@"
+
+# ------------------------------------------------------------------ python ---
+
+# Builds the extension into the pixi environment in place (the .so beside
+# __init__.py, gitignored). maturin needs an environment to install into and
+# finds the pixi one through CONDA_PREFIX, set on this line alone; it installs
+# with the pinned uv on PATH. `locked = true` in crates/transectpy/pyproject.toml
+# makes it honour Cargo.lock. Not a gate: py-test and py-stubtest depend on it.
+py-develop:
+    CONDA_PREFIX="{{ justfile_directory() }}/.pixi/envs/default" maturin develop --uv --manifest-path crates/transectpy/Cargo.toml
+
+# Gate: ruff over every Python file ruff.toml names; --show-files must list
+# the package, or an exclude has emptied the gate (ruff exits 0 on no files);
+# then the positive control: the fixture must fail with exit status 1
+# (violations found) and the output must name F401 and E501, the fixture's own
+# violations: under select = ALL the file also trips other rules, so the exit
+# status alone would fire with F and E dropped. Exit 2 is a tool or usage error,
+# not a fired control; a missing fixture is E902 with exit 1, so it is tested
+# first.
+py-lint:
+    ruff check .
+    ruff format --check .
+    ruff check --show-files . | grep -q 'crates/transectpy/python/transectpy/__init__\.py$' || { printf '%s\n' 'py-lint: ruff did not see the package' >&2; exit 1; }
+    test -f tests/fixtures/py-lint-violation/ruff.py || { printf '%s\n' 'py-lint: the positive control fixture is missing' >&2; exit 1; }
+    status=0; out=$(ruff check --quiet --output-format concise tests/fixtures/py-lint-violation/ruff.py) || status=$?; [ "$status" -eq 1 ] && printf '%s\n' "$out" | grep -q ': F401 ' && printf '%s\n' "$out" | grep -q ': E501 ' || { printf '%s\n' "$out" 'py-lint: the positive control did not fire (exit 1 naming F401 and E501)' >&2; exit 1; }
+
+# Gate: mypy over the files mypy.ini names (the stub, the package, the tests,
+# scripts/), then the positive control: the fixture must fail with exit status
+# 1 (type errors). Exit 2 is a usage or I/O error, not a fired control.
+# stubtest, which imports the built module, is py-stubtest.
+py-typecheck:
+    mypy
+    status=0; mypy --no-error-summary tests/fixtures/py-lint-violation/mypy.py || status=$?; [ "$status" -eq 1 ] || { printf '%s\n' 'py-typecheck: the positive control did not fire' >&2; exit 1; }
+
+# Gate: the binding's behaviour tests against the extension py-develop built,
+# and the repository scripts' tests.
+py-test: py-develop
+    python -m pytest crates/transectpy/tests tests/scripts
+
+# Gate: the stub file describes the built module exactly. The allowlist must
+# stay short; an entry hides a discrepancy.
+py-stubtest: py-develop
+    python -m mypy.stubtest transectpy._transectpy --allowlist crates/transectpy/tests/stubtest-allowlist.txt
+
+# The release wheel for this platform into dist/, which is emptied first so a
+# stale wheel can never be smoked. A release build on every `just check` is
+# the price of smoking the artefact a release ships.
+wheel:
+    rm -rf dist
+    maturin build --release --manifest-path crates/transectpy/Cargo.toml --out dist
+
+# Gate: the wheel installs and works in a fresh virtual environment, offline.
+# Exactly one wheel, which must exist and be stable-ABI for the 3.11 floor
+# (an unmatched glob is one literal argument); a venv on the pixi interpreter
+# with no download; install from dist/ alone; then the smoke script. Python
+# runs with -I so nothing in the worktree shadows the package.
+wheel-smoke: wheel
+    #!/bin/sh
+    set -eu
+    set -- dist/*.whl
+    [ "$#" -eq 1 ] && [ -f "$1" ] || { printf 'wheel-smoke: expected one wheel in dist/, found: %s\n' "$*" >&2; exit 1; }
+    case "$1" in *-cp311-abi3-*.whl) ;; *) printf 'wheel-smoke: %s is not a cp311-abi3 wheel\n' "$1" >&2; exit 1;; esac
+    rm -rf target/wheel-smoke/venv
+    uv venv --python .pixi/envs/default/bin/python --no-python-downloads --offline target/wheel-smoke/venv
+    uv pip install --python target/wheel-smoke/venv --offline --no-index --no-deps "$1"
+    target/wheel-smoke/venv/bin/python -I tests/fixtures/smoke/smoke.py
+
+# Gate: the same wheel on the floor interpreter, the plain CPython 3.11 that
+# install-tools put in .tools/python. Offline: uv may use only that managed
+# interpreter and may download nothing, so a missing one fails here.
+wheel-smoke-floor: wheel
+    #!/bin/sh
+    set -eu
+    set -- dist/*.whl
+    [ "$#" -eq 1 ] && [ -f "$1" ] || { printf 'wheel-smoke-floor: expected one wheel in dist/, found: %s\n' "$*" >&2; exit 1; }
+    rm -rf target/wheel-smoke/venv-floor
+    UV_PYTHON_INSTALL_DIR=.tools/python uv venv --python {{python_floor}} --managed-python --no-python-downloads --offline target/wheel-smoke/venv-floor
+    uv pip install --python target/wheel-smoke/venv-floor --offline --no-index --no-deps "$1"
+    target/wheel-smoke/venv-floor/bin/python -I -c 'import sys; assert sys.version_info[:3] == (3, 11, 18), sys.version'
+    target/wheel-smoke/venv-floor/bin/python -I tests/fixtures/smoke/smoke.py
+
+# Gate: one version, in every place it is written: the workspace, every member
+# crate as cargo resolves it, the wheel manifest, and the installed wheel's
+# module and metadata, read from the venv wheel-smoke left; fails if that venv
+# is missing.
+version-check:
+    python -I scripts/version_check.py
 
 # --------------------------------------------------------------- aggregate ---
 
