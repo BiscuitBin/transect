@@ -1,0 +1,31 @@
+[workspace]
+# Edition 2024 feature resolution, with every crate discovered under crates/.
+resolver = "3"
+members = ["crates/*"]
+
+# One version, licence, edition and toolchain floor for every crate; members
+# inherit these fields, so the version is written once here (decision: single
+# shared versioning, docs/decisions/).
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# The toolchain pin's major.minor (rust-toolchain.toml); it follows the pin until a
+# crate is first published.
+rust-version = "1.99"
+license = "Apache-2.0"
+repository = "https://github.com/BiscuitBin/transect"
+homepage = "https://github.com/BiscuitBin/transect"
+authors = ["Steven Cutting"]
+# Nothing goes to crates.io until ticket 14 settles the publishing arrangement.
+publish = false
+
+# Cargo.lock pins the resolved versions; these are the ranges.
+[workspace.dependencies]
+# The client depends on the core, never the reverse. Without the version beside
+# the path, cargo-deny's `wildcards = "deny"` would reject the dependency, and a
+# crates.io package could not name it.
+libtransect = { path = "crates/libtransect", version = "0.1.0" }
+
+[profile.test]
+# Light optimisation keeps test runs fast without release-build compile costs.
+opt-level = 1

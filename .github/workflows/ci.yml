@@ -1,0 +1,51 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    # Quoted because a branch named `true`, `false`, `null`, `on`, or `1.0` is
+    # valid to Git but is not a string to a YAML 1.1 parser.
+    branches: ['main']
+  workflow_dispatch:
+
+# Read-only: nothing here publishes, comments or writes a check of its own.
+# The token each step is minted with can do no more than clone this
+# repository, which is what a gate needs and all it needs.
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Incremental artefacts are large and never reused on a fresh runner.
+  CARGO_INCREMENTAL: '0'
+  CARGO_NET_RETRY: '10'
+  RUST_BACKTRACE: '1'
+
+# Linux and macOS, the two supported platforms. Later tickets add one job per
+# group of gates; ticket 10 puts every job behind one aggregate required check.
+jobs:
+  check:
+    name: check (${{ matrix.os }})
+    strategy:
+      # Both platforms report even when one fails, so a platform difference
+      # names itself instead of being cancelled.
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    # Cache writes are main-only, so every pull-request run builds cold.
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: check
+      # The whole gate: the recipes pyproject.toml lists, the worktree
+      # snapshotted between each, then check-clean.
+      - run: just check

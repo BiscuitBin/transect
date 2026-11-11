@@ -1,0 +1,44 @@
+# macOS Finder metadata and local environment files: machine state, never a
+# deliverable, and an .env may hold a credential.
+.DS_Store
+.cache/
+.env
+.env.*
+!.env.example
+
+# Scratch for agents and maintainers alike: anything that is not a
+# deliverable goes here, never in a commit.
+ai_tmp/
+
+# Local ticket scratch: notes and drafts for tickets live under .scratch/ and
+# stay on the machine that wrote them. The bootstrap tickets were committed
+# before this rule and stay tracked, because an ignore rule never untracks a
+# file; the linters exclude .scratch/ explicitly for that reason.
+.scratch/
+
+# Claude Code writes runtime state into .claude/ mid-session
+# (settings.local.json, scheduled-task locks, checkpoints, nested worktrees).
+# Everything there is ignored except the tracked skills, which ticket 09 adds.
+# Codex writes its local settings on first use.
+.claude/*
+!.claude/skills/
+.codex/settings.local.json
+
+# Everything cargo builds. `just check` snapshots the worktree between recipes,
+# so a build product Git can see would abort the run before any recipe's exit
+# code is read.
+target/
+
+# The pixi environment `just initialize` installs from pixi.lock: every tool
+# binary, Python and the tooling package's scripts. Ignored for the same reason
+# as target/: an environment Git can see aborts the snapshot.
+.pixi/
+
+# The tools tools.txt and tools-source.txt pin because conda-forge lacks them,
+# installed by `just install-tools`. Ignored for the same reason as target/: a
+# binary Git can see aborts the snapshot.
+.tools/
+
+# Wheel and source-distribution output: built artefacts, rebuilt on demand and
+# never committed.
+dist/
