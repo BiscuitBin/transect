@@ -310,9 +310,18 @@ mutants *args: lock-check
 
 # --------------------------------------------------------------- documents ---
 
-# Markdown lint, typos and the offline link check over every file.
+# Markdown lint, typos and the offline link check over every file, then the
+# handbook contract: every page in docs/manifest.yml with matching front matter,
+# every topic owned once, every page reachable from docs/README.md.
 check-docs:
     prek run --all-files markdownlint-cli2 typos lychee
+    bg-validate-docs
+
+# Gate: every `//! UNDECIDED:` marker under crates/ is listed under
+# "Undecided areas" in docs/project/open-decisions.md, and every path listed
+# there carries the marker, so the register and the stubs cannot drift apart.
+check-undecided:
+    python -I scripts/check_undecided.py
 
 # Every link, external ones included (network); outside `just check`.
 check-links-online:

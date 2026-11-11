@@ -64,6 +64,25 @@ repos:
         pass_filenames: false
         files: ^(.*\.pyi?|mypy\.ini)$
 
+      # The handbook contract. Run through pixi as its activator, because a
+      # git hook does not inherit the Justfile's PATH and the recipe that could
+      # provide it (check-docs) runs prek inside prek. `--frozen` because a bare
+      # `pixi run` may rewrite pixi.lock from inside a commit.
+      - id: validate-docs
+        name: Documentation contract
+        entry: pixi run --frozen bg-validate-docs
+        language: system
+        pass_filenames: false
+        files: ^(README\.md|docs/|pyproject\.toml$)
+
+      # The UNDECIDED markers and the open-decisions register agree.
+      - id: check-undecided
+        name: UNDECIDED markers match the register
+        entry: just check-undecided
+        language: system
+        pass_filenames: false
+        files: ^(crates/.*\.rs|docs/project/open-decisions\.md|scripts/check_undecided\.py)$
+
   - repo: builtin
     hooks:
       - id: check-added-large-files

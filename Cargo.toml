@@ -7,8 +7,7 @@ members = ["crates/*"]
 exclude = ["fuzz"]
 
 # One version, licence, edition and toolchain floor for every crate; members
-# inherit these fields, so the version is written once here (decision: single
-# shared versioning, docs/decisions/).
+# inherit these fields, so the version is written once here (decision 0006).
 [workspace.package]
 version = "0.1.0"
 edition = "2024"

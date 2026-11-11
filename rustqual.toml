@@ -1,4 +1,4 @@
-# The `metrics` gate's configuration (the lint-policy decision in docs/decisions/ records why).
+# The `metrics` gate's configuration, part of the lint policy (decision 0004).
 # Globs resolve against the target directory, so `just metrics` runs rustqual from the
 # repository root once per crate, as `rustqual crates/libtransect --config rustqual.toml`
 # and `rustqual crates/transect --config rustqual.toml`. IOSP has no `enabled` key and

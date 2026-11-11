@@ -78,6 +78,8 @@ recipes = [
   "wheel-smoke",
   "wheel-smoke-floor",
   "version-check",
+  "check-docs",
+  "check-undecided",
   "snapshots-check",
 ]
 predicates = {}
