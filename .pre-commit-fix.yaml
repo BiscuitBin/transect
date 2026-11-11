@@ -50,6 +50,13 @@ repos:
         language: system
         pass_filenames: false
 
+      # The fuzz crate is outside the workspace, so the root run skips it.
+      - id: cargo-shear-fix-fuzz
+        name: Remove unused dependencies (fuzz)
+        entry: cargo shear --fix fuzz
+        language: system
+        pass_filenames: false
+
   - repo: builtin
     hooks:
       - id: end-of-file-fixer
@@ -61,3 +68,17 @@ repos:
       - id: markdownlint-cli2
         name: markdownlint fix
         args: [--fix]
+        # The config's globs are appended to the files prek passes, so each
+        # parallel batch would fix every Markdown file at once and the racing
+        # writes corrupt or empty them. One process, given the globs alone,
+        # fixes each file once.
+        pass_filenames: false
+
+  # The gate's typos hook reports only; this one writes the unambiguous
+  # corrections, which is all typos ever rewrites.
+  - repo: https://github.com/crate-ci/typos
+    rev: 7f9d0819ca1c008ade73f4b41fa9d258d48f605b # v1.51.1
+    hooks:
+      - id: typos
+        name: typos --write-changes
+        args: [--force-exclude, --write-changes]
