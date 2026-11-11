@@ -49,7 +49,8 @@ runs:
         shared-key: ${{ inputs.cache-key }}
         save-if: ${{ github.ref == 'refs/heads/main' }}
         cache-bin: false
-    # .tools holds what pixi cannot: the tools.txt and tools-source.txt pins.
+    # .tools holds what pixi cannot: cargo-hack and cargo-fuzz from tools.txt,
+    # rustqual from tools-source.txt.
     # Keyed on both pin lists: a bumped line in either is a new key, and
     # cargo-binstall skips a matching version already present on a hit. A key
     # that missed a list would hit the old cache on a bump, and the new
@@ -69,8 +70,8 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
-    # Exactly what the lockfiles say: Cargo.lock fetched, pixi.lock
-    # installed, neither rewritten. After this step no step reaches the
+    # Exactly what the lockfiles say: both Cargo.locks fetched, pixi.lock
+    # installed, none rewritten. After this step no step reaches the
     # network.
     - run: just sync
       shell: bash

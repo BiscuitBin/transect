@@ -19,6 +19,13 @@ publish.workspace = true
 [lints]
 workspace = true
 
+[dev-dependencies]
+divan = { workspace = true }
+
+[[bench]]
+name = "version"
+harness = false
+
 # The same `--cfg docsrs` and features `just doc` builds with, so a docs.rs build
 # would match the gate.
 [package.metadata.docs.rs]

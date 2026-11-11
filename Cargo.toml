@@ -2,6 +2,9 @@
 # Edition 2024 feature resolution, with every crate discovered under crates/.
 resolver = "3"
 members = ["crates/*"]
+# The fuzz crate is its own root with its own lockfile: outside the workspace,
+# cargo hack, cargo shear, coverage and Cargo.lock.
+exclude = ["fuzz"]
 
 # One version, licence, edition and toolchain floor for every crate; members
 # inherit these fields, so the version is written once here (decision: single
@@ -103,6 +106,10 @@ multiple_crate_versions = "allow"
 # the path, cargo-deny's `wildcards = "deny"` would reject the dependency, and a
 # crates.io package could not name it.
 libtransect = { path = "crates/libtransect", version = "0.1.0" }
+# Development only, for `just bench`, never a gate: outside the graph a consumer
+# resolves and outside cargo-deny's (exclude-dev). Caret range; Cargo.lock is the
+# pin. Its MSRV, 1.80.0, is below the toolchain pin.
+divan = "0.1.21"
 
 [profile.test]
 # Light optimisation keeps test runs fast without release-build compile costs.

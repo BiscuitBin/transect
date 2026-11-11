@@ -6,3 +6,7 @@
 # listed: one owner per pin.
 # For `just features`; verified with `cargo info` on 2026-11-11.
 cargo-hack@0.6.45
+# For `just fuzz` and `just fuzz-build`; verified with `cargo info` on 2026-11-11:
+# conda-forge does not carry it. Its macOS release binary is x86_64 only, so on
+# Apple silicon it runs under Rosetta 2.
+cargo-fuzz@0.13.2

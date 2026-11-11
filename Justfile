@@ -61,13 +61,15 @@ install-tools:
     pins=$(sed -e '/^#/d' -e '/^$/d' tools.txt); [ -z "$pins" ] || cargo binstall --root .tools --no-confirm --locked --disable-strategies compile $pins
     pins=$(sed -e '/^#/d' -e '/^$/d' tools-source.txt); [ -z "$pins" ] || env -u GITHUB_TOKEN -u GH_TOKEN cargo binstall --root .tools --no-confirm --locked --disable-strategies crate-meta-data --only-signed --no-discover-github-token $pins
 
-# Both lockfiles, exactly as committed. Never rewrites either.
+# All three lockfiles, exactly as committed. Never rewrites any.
 sync:
     cargo fetch --locked
+    cargo fetch --locked --manifest-path fuzz/Cargo.toml
     pixi install --frozen
 
 lock:
     cargo update --workspace
+    cargo update --workspace --manifest-path fuzz/Cargo.toml
     pixi lock
 
 # Within the manifest's constraints only; every direct pixi pin is exact, so
@@ -75,6 +77,7 @@ lock:
 # not this recipe.
 lock-upgrade:
     cargo update
+    cargo update --manifest-path fuzz/Cargo.toml
     pixi update
 
 # Offline, like every gate recipe: a cold Cargo cache fails rather than
@@ -83,32 +86,82 @@ lock-upgrade:
 # would otherwise rewrite a stale lock from that restricted solve.
 lock-check:
     cargo update --workspace --locked --offline
+    cargo update --workspace --locked --offline --manifest-path fuzz/Cargo.toml
     pixi lock --check --offline --dry-run
 
 # ---------------------------------------------------------------- develop ---
+
+# Benchmarks, by hand: timings measure the machine and its load as much as the
+# code, so never a gate and never in CI. Bench targets only: without --bench '*'
+# cargo also runs every unit test in bench mode, as ignored. just clippy already
+# compiles the benches, so a bench that stops building fails the gate.
+bench *args:
+    cargo bench --workspace --all-features --locked --bench '*' "$@"
+
+# Fuzzing, by hand: nondeterministic, so never a gate. On the pinned stable
+# toolchain without a sanitizer: AddressSanitizer needs nightly, and every crate
+# forbids unsafe code. cargo-fuzz takes no --locked and would rewrite a stale
+# fuzz/Cargo.lock, so the first line refuses one offline; `cargo fetch` would be
+# a network command, and this is not a network recipe (`just sync` fills the
+# cache). CARGO_NET_OFFLINE keeps cargo-fuzz's own build offline too. --target
+# because cargo-fuzz defaults to the triple it was built for, and its macOS
+# binary is x86_64. seconds bounds the fuzzing, not the build.
+fuzz target="smoke" seconds="300":
+    cargo update --workspace --locked --offline --manifest-path fuzz/Cargo.toml
+    CARGO_NET_OFFLINE=true cargo fuzz run --sanitizer none --target "$(rustc -vV | sed -n 's/^host: //p')" "$1" -- -max_total_time="$2"
+
+# The fuzz crate compiles on the pinned stable the way cargo-fuzz builds it,
+# without running it, so a fuzz target that stops building fails the gate rather
+# than the weekly job. The same offline lock guard and CARGO_NET_OFFLINE as fuzz.
+fuzz-build:
+    cargo update --workspace --locked --offline --manifest-path fuzz/Cargo.toml
+    CARGO_NET_OFFLINE=true cargo fuzz build --sanitizer none --target "$(rustc -vV | sed -n 's/^host: //p')"
 
 build:
     cargo build --workspace --all-features --locked
 
 # nextest runs the unit and integration tests; it cannot run doctests, so those
-# follow through cargo test.
+# follow through cargo test. INSTA_UPDATE=no makes a snapshot mismatch fail
+# without a pending file, which would trip the gate's worktree check.
 test:
-    cargo nextest run --workspace --all-features --locked
+    INSTA_UPDATE=no cargo nextest run --workspace --all-features --locked
     cargo test --doc --workspace --all-features --locked
 
 test-doc:
     cargo test --doc --workspace --all-features --locked
 
+# Snapshots match, and every .snap file is referenced by a test; with no
+# snapshots it passes. The whole suite runs so the orphan check sees every
+# reference. --check and INSTA_UPDATE=no fail mismatches without writing
+# pending files. cargo-insta forwards trailing options as test arguments, so
+# nextest would reject --locked; the locks are checked first, offline, and the
+# run stays offline. Doctests have their own gate, so its extra run is off.
+snapshots-check: lock-check
+    INSTA_UPDATE=no CARGO_NET_OFFLINE=true cargo insta test --check --unreferenced reject --test-runner nextest --disable-nextest-doctest --workspace --all-features
+
+# Interactive review for a person at a terminal.
+snapshots-review:
+    cargo insta review --workspace
+
+# The snapshot recipe that writes: rerun and accept without a terminal. Read
+# the diff before committing. A .snap file no test refers to, left by a renamed
+# or removed test, is deleted, so the deletion shows in the diff.
+snapshots-accept: lock-check
+    INSTA_UPDATE=new CARGO_NET_OFFLINE=true cargo insta test --accept --unreferenced delete --test-runner nextest --disable-nextest-doctest --workspace --all-features
+
 # ----------------------------------------------------------------- format ---
 
+# cargo fmt --all skips the fuzz crate, which is outside the workspace.
 format:
     cargo fmt --all
+    cargo fmt --manifest-path fuzz/Cargo.toml
     taplo fmt
 
 # ------------------------------------------------------------------ check ---
 
 fmt-check:
     cargo fmt --all --check
+    cargo fmt --manifest-path fuzz/Cargo.toml --check
 
 toml-check:
     taplo fmt --check
@@ -116,6 +169,9 @@ toml-check:
 
 # Every lint the manifests declare, as errors. The manifests say `warn` so a
 # local build never breaks mid-edit; this is where warnings become failures.
+# The fuzz crate is outside the workspace, so --workspace skips it, and its own
+# lint tables hold only if something compiles it; libfuzzer-sys's build script
+# compiles libFuzzer's C++, so a C++ compiler is a prerequisite of the gate.
 # allow_attributes sees only outer attributes, so an inner
 # #![allow(..., reason = "...")] would pass it and silence the policy for a whole
 # module; the search first rejects that form, on any line of the file and inside
@@ -125,13 +181,14 @@ toml-check:
 clippy:
     #!/bin/sh
     set -eu
-    hits=$(find crates -name '*.rs' -exec sh -c 'for f; do tr "\n" " " < "$f" | grep -qE "#!\[[^]]*allow[[:space:](]" && printf "%s\n" "$f"; done; exit 0' sh {} +)
+    hits=$(find crates fuzz/fuzz_targets -name '*.rs' -exec sh -c 'for f; do tr "\n" " " < "$f" | grep -qE "#!\[[^]]*allow[[:space:](]" && printf "%s\n" "$f"; done; exit 0' sh {} +)
     if [ -n "$hits" ]; then
         printf '%s\n' "$hits" >&2
         printf '%s\n' 'clippy: inner #![allow] attribute found; use #[expect(..., reason = "...")]' >&2
         exit 1
     fi
     cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+    cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked -- -D warnings
 
 # Complexity, cohesion and coupling, through rustqual against rustqual.toml,
 # once per crate. The version check comes first: rustqual's version decides
@@ -168,6 +225,35 @@ coverage:
 # The API reference, with every rustdoc warning an error and the docs.rs cfg.
 doc:
     RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo doc --workspace --no-deps --all-features --locked
+
+# Licences, bans and sources are answerable offline once `just sync` has run.
+deny:
+    cargo deny --locked check licenses bans sources
+
+# Advisories need the RustSec database over the network, so this sits outside
+# `just check`.
+audit:
+    cargo deny --locked check advisories
+
+# Unused dependencies in the workspace's manifests.
+deps-unused:
+    cargo shear
+
+# Mutation testing, a report and never a gate: it grows with the code towards
+# hours, and a mutant that survives asks for a judgement. It mutates a copy of
+# the tree, so the worktree gains only mutants.out/, which Git ignores; the copy
+# leaves out what Git ignores, or it would carry .pixi/ and .tools/ into every
+# build. `cargo test`, not nextest, because nextest skips doctests and a mutant
+# only a doc example catches would be reported missed. The pure-Rust crates
+# only. The first line is the positive control over the same selection the run
+# uses, the caller's filters included: a filter that matched nothing would
+# otherwise print a green summary over zero mutants. Exit 2 means a mutant
+# survived, 3 a timeout, 4 a failing baseline. lock-check runs first: the
+# listing pass's `cargo metadata` takes no --locked and would rewrite a stale
+# Cargo.lock.
+mutants *args: lock-check
+    [ "$(cargo mutants --list --package libtransect --package transect --all-features "$@" | grep -c .)" -gt 0 ] || { printf '%s\n' 'mutants: no mutants found; the filters select nothing' >&2; exit 1; }
+    cargo mutants --package libtransect --package transect --all-features --gitignore=true --cargo-arg=--locked "$@"
 
 # --------------------------------------------------------------- aggregate ---
 

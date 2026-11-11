@@ -79,13 +79,21 @@ jobs:
         run: just toml-check
       - if: runner.os == 'Linux'
         run: just clippy
+      # The fuzz crate still builds under cargo-fuzz; clippy above lints it, and
+      # this compiles it the way fuzz.yml will.
+      - if: runner.os == 'Linux'
+        run: just fuzz-build
       - if: runner.os == 'Linux'
         run: just metrics
       - if: runner.os == 'Linux'
         run: just features
       - run: just test
       - if: runner.os == 'Linux'
+        run: just snapshots-check
+      - if: runner.os == 'Linux'
         run: just doc
+      - if: runner.os == 'Linux'
+        run: just deps-unused
       # Last in every job that runs recipes: `just check` snapshots the
       # worktree between recipes, and these split jobs do not, so without it a
       # recipe that rewrote a tracked file, or left an untracked one, would
@@ -116,4 +124,22 @@ jobs:
           retention-days: 7
       # For the reason rust's last step gives; after the upload, so a failure
       # here still leaves the lcov file to read.
+      - run: just check-clean
+
+  deny:
+    name: deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: deny
+      # Licences, bans and sources are answerable from the registry index
+      # `just sync` fetched. Advisories need the RustSec database over the
+      # network, so they are `just audit`'s, outside the gate.
+      - run: just deny
+      # For the reason rust's last step gives.
       - run: just check-clean

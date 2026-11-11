@@ -28,6 +28,13 @@ cargo-binstall = "==1.26.1"
 cargo-nextest = "==0.9.150"
 cargo-llvm-cov = "==0.9.1"
 taplo = "==0.10.0"
+cargo-deny = "==0.20.2"
+cargo-insta = "==1.49.0"
+# The pin follows conda-forge, not crates.io.
+cargo-shear = "==1.13.4"
+# A weekly report, never a gate (mutants.yml). conda-forge's build depends on no
+# rust, so rustup's cargo stays first on PATH.
+cargo-mutants = "==27.1.0"
 
 [tool.pixi.pypi-dependencies]
 biscuit-games-tooling = { git = "https://github.com/steven-cutting/biscuit_games_tooling", tag = "v0.3.0" }
@@ -41,10 +48,14 @@ recipes = [
   "fmt-check",
   "toml-check",
   "clippy",
+  "fuzz-build",
   "metrics",
   "features",
   "test-doc",
   "coverage",
   "doc",
+  "deny",
+  "deps-unused",
+  "snapshots-check",
 ]
 predicates = {}

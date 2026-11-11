@@ -42,3 +42,24 @@ target/
 # Wheel and source-distribution output: built artefacts, rebuilt on demand and
 # never committed.
 dist/
+
+# Raw profiles cargo-llvm-cov leaves behind when a run is interrupted before
+# it merges them, and an lcov report written anywhere but target/llvm-cov/.
+*.profraw
+lcov.info
+
+# What `just mutants` writes: each run renames the previous report to
+# mutants.out.old, so both are ignored and a run never trips the snapshot.
+mutants.out*/
+
+# What `just fuzz` writes beside the fuzz/.gitignore cargo-fuzz generates, so
+# this file is complete on its own; the root target/ rule already covers
+# fuzz/target/.
+fuzz/corpus/
+fuzz/artifacts/
+fuzz/coverage/
+
+# A test run outside the recipes may leave pending snapshots. A file Git can
+# see would abort the gate's worktree check; reviewed .snap files are committed.
+*.snap.new
+*.pending-snap

@@ -1,0 +1,67 @@
+[graph]
+# Every feature is on, so a dependency behind a feature is checked too.
+all-features = true
+# Dev-dependencies are outside the graph: they serve the tests only, and the
+# licences and bans below are about what ships, not the test harness. Every check
+# reads this one graph, so dev-dependencies also skip [sources] and `just audit`; a
+# dev-dependency from an unlisted source passes, so review it when it is added.
+exclude-dev = true
+# The triples this project ships for: glibc and musl Linux on both architectures,
+# and both macOS architectures. Windows is not supported, so a dependency that
+# appears only there is out of scope.
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+  "aarch64-unknown-linux-musl",
+  "x86_64-apple-darwin",
+  "aarch64-apple-darwin",
+]
+
+# Network: the RustSec database is fetched, so this section runs from `just audit`,
+# never `just check`.
+[advisories]
+# Stricter than cargo-deny's default of `warn`: a yanked release is one its publisher
+# withdrew, so a lock that pins it is a defect to fix, not a warning to read past.
+yanked = "deny"
+unmaintained = "workspace"
+# No advisory exceptions are accepted in advance.
+ignore = []
+
+[licenses]
+# The models' permissive allow-list, unchanged. A dependency under any other
+# licence fails `just deny` until the list is changed deliberately.
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "MIT",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "0BSD",
+  "Unicode-3.0",
+  "Unlicense",
+  "CC0-1.0",
+]
+# Require a strong license-text match instead of accepting the list command's 0.8 default.
+confidence-threshold = 0.9
+# Skip licence checks for this workspace's unpublished crates; until ticket 14
+# settles publishing, they carry their licence in package metadata.
+private = { ignore = true }
+
+[bans]
+# Surface duplicate versions without banning otherwise compatible transitive trees.
+multiple-versions = "warn"
+# Dependency requirements must constrain a release series.
+wildcards = "deny"
+# Show every route to a duplicate version so the parent to update is visible.
+highlight = "all"
+deny = [{ crate = "openssl-sys", reason = "no native TLS anywhere in this workspace" }]
+
+[sources]
+# Only crates.io sources are accepted; no alternate registries or git exceptions.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
