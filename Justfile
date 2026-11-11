@@ -26,13 +26,15 @@ initialize:
 # behaviour, not a path: only a rustup proxy accepts `+toolchain`, and the
 # runners lay rustup out differently (Ubuntu's ~/.cargo/bin, macOS's Homebrew
 # keg), so neither the path nor file identity with `rustup` would hold on both.
-# Pointing CARGO_HOME elsewhere cannot make a foreign cargo pass. The proxy
+# Pointing CARGO_HOME elsewhere cannot make a foreign cargo pass. RUSTC outranks
+# the proxy's toolchain inside cargo itself, so it is refused outright. The proxy
 # still obeys RUSTUP_TOOLCHAIN or a `rustup override`, both of which outrank
 # the file, so the active toolchain must then be the pinned channel, selected
 # by rust-toolchain.toml itself. RUSTUP_AUTO_INSTALL=0 makes an uninstalled
 # toolchain a refusal instead of a download.
 check-toolchain:
     command -v rustup >/dev/null || { printf '%s\n' 'rustup is not installed; see https://rustup.rs' >&2; exit 2; }
+    [ -z "${RUSTC:-}" ] || { printf '%s\n' "RUSTC is set ($RUSTC); it overrides the pinned toolchain, so unset it" >&2; exit 2; }
     pin=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml); [ -n "$pin" ] || { printf '%s\n' 'rust-toolchain.toml names no channel' >&2; exit 2; }; RUSTUP_AUTO_INSTALL=0 cargo "+$pin" --version >/dev/null 2>&1 || { printf '%s\n' "cargo resolves to $(command -v cargo), not rustup's proxy for $pin" >&2; exit 2; }
     pin=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml); [ -n "$pin" ] || { printf '%s\n' 'rust-toolchain.toml names no channel' >&2; exit 2; }; active=$(RUSTUP_AUTO_INSTALL=0 rustup show active-toolchain); case "$active" in "$pin"-*" (overridden by '"*"/rust-toolchain.toml')") printf '%s\n' "$active" ;; *) printf '%s\n' "the active toolchain is $active; it must be $pin, selected by rust-toolchain.toml" >&2; exit 2;; esac
 
