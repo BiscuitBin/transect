@@ -11,6 +11,13 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
+  # TEMPORARY, removed in the next commit: the pre-merge dry run, since
+  # workflow_dispatch needs the file on the default branch. A pull_request run
+  # never publishes: verify decides publish=false for any event but a tag push
+  # or a dispatch with publish true.
+  pull_request:
+    paths:
+      - .github/workflows/release-crates.yml
   workflow_dispatch:
     inputs:
       publish:
