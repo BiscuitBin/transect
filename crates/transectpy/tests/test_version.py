@@ -4,6 +4,7 @@
 import importlib.metadata
 import tomllib
 from pathlib import Path
+from typing import assert_type
 
 import transectpy
 import transectpy._transectpy as native
@@ -26,6 +27,12 @@ def test_the_package_reports_the_workspace_version() -> None:
 def test_the_version_comes_from_the_native_module() -> None:
     """The package re-exports the Rust client's version, not a Python literal."""
     assert transectpy.__version__ is native.__version__
+
+
+def test_the_stub_declares_the_runtime_type_of_the_version() -> None:
+    """The stub types `__version__` as str, which stubtest skips; the module agrees."""
+    assert_type(native.__version__, str)
+    assert isinstance(native.__version__, str)
 
 
 def test_the_distribution_metadata_agrees() -> None:

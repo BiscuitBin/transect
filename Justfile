@@ -313,7 +313,8 @@ py-test: py-develop
     python -m pytest crates/transectpy/tests tests/scripts
 
 # Gate: the stub file describes the built module exactly. The allowlist must
-# stay short; an entry hides a discrepancy.
+# stay short; an entry hides a discrepancy. stubtest ignores `__version__`, so
+# test_version.py pins its declared type with assert_type, under py-typecheck.
 py-stubtest: py-develop
     python -m mypy.stubtest transectpy._transectpy --allowlist crates/transectpy/tests/stubtest-allowlist.txt
 
