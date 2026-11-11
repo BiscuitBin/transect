@@ -28,6 +28,7 @@ has no behaviour yet beyond reporting its version.
 
 - [Develop locally](how-to/develop-locally.md)
 - [Maintain dependencies](how-to/maintain-dependencies.md)
+- [Release to PyPI](how-to/release.md)
 
 ## Understand
 

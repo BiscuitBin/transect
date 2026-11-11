@@ -72,7 +72,18 @@
       "enabled": false
     },
     {
-      "description": "uv: the pin in pyproject.toml, read from conda-forge. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
+      "description": "The github-actions manager would read setup-uv's version and maturin-action's maturin-version from GitHub releases and PyPI, which can run ahead of conda-forge and split each from its pixi pin; the regex managers read them from conda-forge instead.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchPackageNames": [
+        "astral-sh/uv",
+        "maturin"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "uv: the pin in pyproject.toml and the publish job's setup-uv version, both read from conda-forge, one pull request. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
       "matchDatasources": [
         "conda"
       ],
@@ -83,7 +94,7 @@
       "dependencyDashboardApproval": true
     },
     {
-      "description": "maturin: the pin in pyproject.toml, read from conda-forge. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
+      "description": "maturin: the pin in pyproject.toml and every maturin-version input in the release workflow, both read from conda-forge, one pull request. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
       "matchDatasources": [
         "conda"
       ],
@@ -179,6 +190,13 @@
         "lycheeverse/lychee"
       ],
       "groupName": "lychee",
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "twine in the release workflow's check of every job's dist/: first exercised by the release dry run, because the workflow does not run on pull requests. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
+      "matchDepNames": [
+        "twine"
+      ],
       "dependencyDashboardApproval": true
     }
   ],
@@ -300,6 +318,44 @@
       "depNameTemplate": "lycheeverse/lychee",
       "datasourceTemplate": "github-tags",
       "extractVersionTemplate": "^lychee-v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "description": "The release job's setup-uv version, which must equal the uv pin in pyproject.toml, read from the same conda-forge package. The pattern is bound to the setup-uv step, so another action's version input is not read; version must stay the step's first input, or this stops matching.",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/release-pypi\\.yml$/"
+      ],
+      "matchStrings": [
+        "uses: astral-sh/setup-uv@[^\\n]*\\n\\s+with:\\n(?:\\s+#[^\\n]*\\n)*\\s+version: '(?<currentValue>\\d+\\.\\d+\\.\\d+)'"
+      ],
+      "depNameTemplate": "uv",
+      "packageNameTemplate": "conda-forge/uv",
+      "datasourceTemplate": "conda"
+    },
+    {
+      "customType": "regex",
+      "description": "maturin-action's maturin-version inputs, which must equal the maturin pin in pyproject.toml, read from the same conda-forge package.",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/release-pypi\\.yml$/"
+      ],
+      "matchStrings": [
+        "maturin-version: v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "maturin",
+      "packageNameTemplate": "conda-forge/maturin",
+      "datasourceTemplate": "conda"
+    },
+    {
+      "customType": "regex",
+      "description": "twine in the release workflow's TWINE_CHECK script.",
+      "managerFilePatterns": [
+        "/^\\.github/workflows/release-pypi\\.yml$/"
+      ],
+      "matchStrings": [
+        "install twine==(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "twine",
+      "datasourceTemplate": "pypi"
     }
   ]
 }

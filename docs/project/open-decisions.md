@@ -61,6 +61,9 @@ Questions that are not modules of their own.
 - **Arithmetic overflow.** Whether overflow in `+`, `-`, `*`, shifts and negation, which
   panics in debug builds and is not linted, gets a lint or a checked-arithmetic rule once
   the client has real arithmetic. Blocks: nothing yet.
+- **Free-threaded wheels.** Whether the release workflow also builds `cp314t` wheels for
+  free-threaded Python, which the stable ABI does not cover. Blocks: nothing; the abi3
+  wheels serve every supported CPython.
 
 ## What is already settled
 

@@ -37,6 +37,7 @@ Where everything lives. Paths are relative to the repository root.
 | `.markdownlint-cli2.jsonc`, `_typos.toml`, `lychee.toml`, `.editorconfig` | The document and text checks. |
 | `.github/actions/setup/`, `.github/workflows/ci.yml` | The CI setup action and workflow. |
 | `.github/workflows/{audit,fuzz,mutants,pages}.yml` | The scheduled and deploy workflows. |
+| `.github/workflows/release-pypi.yml` | The PyPI release workflow; see [Release to PyPI](../how-to/release.md). |
 | `renovate.json` | The dependency bot's configuration. |
 
 ## Documents

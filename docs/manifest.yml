@@ -329,6 +329,19 @@
         "decision_hooks"
       ],
       "requires": []
+    },
+    {
+      "path": "how-to/release.md",
+      "title": "Release to PyPI",
+      "kind": "how-to",
+      "audience": [
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "release_procedure"
+      ],
+      "requires": []
     }
   ]
 }

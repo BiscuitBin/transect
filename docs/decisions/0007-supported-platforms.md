@@ -24,7 +24,8 @@ Linux and macOS are supported; Windows is not. Two sets are distinct:
 - **Intended to ship:** glibc and musl Linux on x86_64 and aarch64, and macOS on x86_64
   and arm64, the six targets `deny.toml` resolves dependencies for. Wheels for them are
   stable-ABI (`abi3`) with a Python 3.11 floor. Only the two gated platforms are tested
-  today; the others are built and smoke-tested by the release pipeline once it exists.
+  today; the others are built and smoke-tested by the release workflow,
+  `release-pypi.yml`.
 
 ## Consequences
 
