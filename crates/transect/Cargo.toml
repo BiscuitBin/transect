@@ -15,6 +15,17 @@ homepage.workspace = true
 authors.workspace = true
 publish.workspace = true
 
+# The workspace lint policy: the never-raise rule's enforcement.
+[lints]
+workspace = true
+
 [dependencies]
 # The client depends on the core, never the reverse.
 libtransect = { workspace = true }
+
+# The same `--cfg docsrs` and features `just doc` builds with, so a docs.rs build
+# would match the gate.
+[package.metadata.docs.rs]
+all-features = true
+rustdoc-args = ["--cfg", "docsrs"]
+targets = ["x86_64-unknown-linux-gnu"]

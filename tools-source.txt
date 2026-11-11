@@ -3,4 +3,7 @@
 # .tools/bin, one name@version per line. That pass takes a signed cargo-quickinstall
 # build if one exists and otherwise compiles the crates.io source with --locked; it
 # never takes an unsigned upstream release asset. tools.txt is binary-only and stays
-# so; a pin here can cost a source build at bootstrap. Empty until a gate needs one.
+# so; a pin here can cost a source build at bootstrap, accepted for the one tool
+# below and no other by default. For `just metrics`; verified with `cargo info` on
+# 2026-11-11.
+rustqual@1.8.3

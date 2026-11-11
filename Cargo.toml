@@ -19,6 +19,79 @@ authors = ["Steven Cutting"]
 # Nothing goes to crates.io until ticket 14 settles the publishing arrangement.
 publish = false
 
+# Every level here is `warn` so a local build never breaks mid-edit; `just clippy`
+# passes `-D warnings`, which is where a warning becomes a failure.
+[workspace.lints.rust]
+# Forbid unsafe code even in the bindings; pyo3 emits its own trusted macro internals.
+unsafe_code = "forbid"
+# Keep identifiers portable and avoid visually confusable names.
+non_ascii_idents = "forbid"
+# Public Rust API needs docs and Debug; idiom checks keep edition transitions clean.
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+# Expose only reachable, nameable API and remove redundant qualification and casts.
+unreachable_pub = "warn"
+unnameable_types = "warn"
+unused_qualifications = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+
+[workspace.lints.rustdoc]
+# Treat broken or private API links as errors, and keep crate prose well formed.
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"
+missing_crate_level_docs = "warn"
+unescaped_backticks = "warn"
+
+[workspace.lints.clippy]
+# Apply the full pedantic and Cargo policy, allowing individual levels to override groups.
+pedantic = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+# Keep const-capable functions and self references idiomatic.
+missing_const_for_fn = "warn"
+use_self = "warn"
+# Production code propagates errors and avoids panic paths, placeholders and debug I/O.
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+unreachable = "warn"
+todo = "warn"
+unimplemented = "warn"
+# Not in the models' list: unchecked `v[i]` and `&s[a..b]` panic when out of range,
+# so they are rejected like unwrap; use `get` and handle the miss. clippy.toml lifts
+# it in test code.
+indexing_slicing = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+# Leave public data types extensible as the client's API grows.
+exhaustive_enums = "warn"
+exhaustive_structs = "warn"
+# Suppressions must be reasoned expect attributes, so stale exceptions are detected.
+# The gate rejects an outer #[allow] and any allow without a reason; an inner
+# #![allow(..., reason = "...")] passes both lints, so review enforces the rule for
+# that form.
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+# Colocate unit tests in test modules and use the flat Rust module file layout.
+tests_outside_test_module = "warn"
+mod_module_files = "warn"
+# Keep output order deterministic and avoid implicit string allocation or lossy floats.
+iter_over_hash_type = "warn"
+str_to_string = "warn"
+lossy_float_literal = "warn"
+float_cmp_const = "warn"
+# Inherent and trait methods should not silently compete under one name.
+same_name_method = "warn"
+# A restriction lint, so the pedantic group does not enable it; clippy.toml sets its threshold.
+cognitive_complexity = "warn"
+# A type named after its module reads better in a signature than its stem alone;
+# the lint would rename it.
+module_name_repetitions = "allow"
+# cargo-deny's bans.multiple-versions owns this check.
+multiple_crate_versions = "allow"
+
 # Cargo.lock pins the resolved versions; these are the ranges.
 [workspace.dependencies]
 # The client depends on the core, never the reverse. Without the version beside

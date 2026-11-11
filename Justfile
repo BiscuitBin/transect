@@ -9,6 +9,10 @@ set shell := ["sh", "-eu", "-c"]
 # stays first for the compiler (check-toolchain proves it).
 export PATH := justfile_directory() / ".pixi" / "envs" / "default" / "bin" + ":" + justfile_directory() / ".tools" / "bin" + ":" + env("PATH")
 
+# Line-coverage floor over crates/*/src/**. Lower the complexity, not the
+# number.
+coverage_floor := "90"
+
 default:
     @just --list
 
@@ -91,6 +95,63 @@ build:
 test:
     cargo nextest run --workspace --all-features --locked
     cargo test --doc --workspace --all-features --locked
+
+test-doc:
+    cargo test --doc --workspace --all-features --locked
+
+# ----------------------------------------------------------------- format ---
+
+format:
+    cargo fmt --all
+    taplo fmt
+
+# ------------------------------------------------------------------ check ---
+
+# Every lint the manifests declare, as errors. The manifests say `warn` so a
+# local build never breaks mid-edit; this is where warnings become failures.
+fmt-check:
+    cargo fmt --all --check
+
+toml-check:
+    taplo fmt --check
+    taplo lint
+
+clippy:
+    cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+# Complexity, cohesion and coupling, through rustqual against rustqual.toml,
+# once per crate. The version check comes first: rustqual's version decides
+# what the gate reports, so a missing .tools/bin/rustqual must not fall
+# through to another one on PATH.
+metrics:
+    #!/bin/sh
+    set -eu
+    pin=$(sed -n 's/^rustqual@//p' tools-source.txt)
+    have=$(rustqual --version 2>/dev/null | sed -n 's/^rustqual //p')
+    if [ "$have" != "$pin" ]; then
+        printf 'metrics: rustqual %s on PATH, tools-source.txt pins %s; run just install-tools\n' "${have:-missing}" "$pin" >&2
+        exit 1
+    fi
+    rustqual crates/libtransect --config rustqual.toml --fail-on-warnings --format github
+    rustqual crates/transect --config rustqual.toml --fail-on-warnings --format github
+
+# Every feature combination compiles. Not --no-dev-deps: that rewrites Cargo.toml
+# while it runs and would trip the worktree snapshot on a crash.
+features:
+    cargo hack check --workspace --feature-powerset --locked
+
+# Runs every nextest test under instrumentation and enforces the floor. Doctests
+# are not measured (nightly-only in llvm-cov); test-doc runs them uncovered.
+# llvm-cov does not create the lcov file's directory, so the recipe does.
+coverage:
+    cargo llvm-cov nextest --workspace --all-features --locked --no-report
+    cargo llvm-cov report --fail-under-lines {{coverage_floor}}
+    mkdir -p target/llvm-cov
+    cargo llvm-cov report --lcov --output-path target/llvm-cov/lcov.info
+
+# The API reference, with every rustdoc warning an error and the docs.rs cfg.
+doc:
+    RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo doc --workspace --no-deps --all-features --locked
 
 # --------------------------------------------------------------- aggregate ---
 

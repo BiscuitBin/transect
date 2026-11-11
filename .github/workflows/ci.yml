@@ -49,3 +49,71 @@ jobs:
       # The whole gate: the recipes pyproject.toml lists, the worktree
       # snapshotted between each, then check-clean.
       - run: just check
+
+  # The Rust gates, one recipe per step in the gate's order so a failure names
+  # itself in the step list. Tests run on both platforms; the other gates
+  # inspect source and manifests, which are platform-independent, so they run
+  # on Linux only.
+  rust:
+    name: rust (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: rust
+      # First: it proves the runner's cargo is rustup's proxy on the pinned
+      # release before anything builds.
+      - run: just check-toolchain
+      - run: just lock-check
+      - if: runner.os == 'Linux'
+        run: just fmt-check
+      - if: runner.os == 'Linux'
+        run: just toml-check
+      - if: runner.os == 'Linux'
+        run: just clippy
+      - if: runner.os == 'Linux'
+        run: just metrics
+      - if: runner.os == 'Linux'
+        run: just features
+      - run: just test
+      - if: runner.os == 'Linux'
+        run: just doc
+      # Last in every job that runs recipes: `just check` snapshots the
+      # worktree between recipes, and these split jobs do not, so without it a
+      # recipe that rewrote a tracked file, or left an untracked one, would
+      # pass here and fail locally.
+      - run: just check-clean
+
+  coverage:
+    name: coverage
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: coverage
+      - run: just coverage
+      # Only after the floor passed: the recipe writes lcov.info in its last
+      # line, so an upload on failure would fail a second time for the
+      # missing file. Seven days is long enough to read a number into a
+      # review; nothing downstream consumes it yet.
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: lcov
+          path: target/llvm-cov/lcov.info
+          if-no-files-found: error
+          retention-days: 7
+      # For the reason rust's last step gives; after the upload, so a failure
+      # here still leaves the lcov file to read.
+      - run: just check-clean
