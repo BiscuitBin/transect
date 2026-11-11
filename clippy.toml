@@ -2,10 +2,8 @@
 # print_stderr and indexing_slicing in `#[test]` functions and `#[cfg(test)]` code: a
 # failing test should panic loudly, and a test may index and print freely. Outside
 # test code every one of them stays in force: this is the never-raise rule's
-# enforcement for explicit panics, unwrap, expect and indexing. assert!, assert_eq!
-# and assert_ne! are covered by no clippy lint that can be lifted in tests, so review
-# rejects them in non-test code (use debug_assert! or return an error). Clippy has no
-# such key for unreachable, todo or unimplemented, so those stay in force in tests too.
+# enforcement for explicit panics, unwrap, expect and indexing. Clippy has no such
+# key for unreachable, todo or unimplemented, so those stay in force in tests too.
 allow-unwrap-in-tests = true
 allow-expect-in-tests = true
 allow-panic-in-tests = true
@@ -25,3 +23,16 @@ cognitive-complexity-threshold = 15
 excessive-nesting-threshold = 4
 too-many-lines-threshold = 60
 too-many-arguments-threshold = 5
+# assert!, assert_eq!, assert_ne! and their debug_ forms panic too (debug_assert! in
+# every debug build of a host application), and clippy has no `allow-...-in-tests`
+# key for them, so they are banned here and each test module lifts the ban with a
+# reasoned #[expect(clippy::disallowed_macros, reason = "...")]. Doctests are built
+# by rustdoc, not linted, so their assertions are unaffected.
+disallowed-macros = [
+  { path = "core::assert", reason = "panics; return an error" },
+  { path = "core::assert_eq", reason = "panics; return an error" },
+  { path = "core::assert_ne", reason = "panics; return an error" },
+  { path = "core::debug_assert", reason = "panics in debug builds; return an error" },
+  { path = "core::debug_assert_eq", reason = "panics in debug builds; return an error" },
+  { path = "core::debug_assert_ne", reason = "panics in debug builds; return an error" },
+]

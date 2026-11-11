@@ -52,6 +52,7 @@ cargo = { level = "warn", priority = -1 }
 missing_const_for_fn = "warn"
 use_self = "warn"
 # Production code propagates errors and avoids panic paths, placeholders and debug I/O.
+# Assertions, which no lint here covers, are banned through clippy.toml's disallowed-macros.
 unwrap_used = "warn"
 expect_used = "warn"
 panic = "warn"
@@ -69,9 +70,9 @@ print_stderr = "warn"
 exhaustive_enums = "warn"
 exhaustive_structs = "warn"
 # Suppressions must be reasoned expect attributes, so stale exceptions are detected.
-# The gate rejects an outer #[allow] and any allow without a reason; an inner
-# #![allow(..., reason = "...")] passes both lints, so review enforces the rule for
-# that form.
+# The lints reject an outer #[allow] and any allow without a reason; an inner
+# #![allow(..., reason = "...")] passes both, so the clippy recipe rejects that form
+# with a search of its own.
 allow_attributes = "warn"
 allow_attributes_without_reason = "warn"
 # Colocate unit tests in test modules and use the flat Rust module file layout.

@@ -15,6 +15,10 @@ pub const fn version() -> &'static str {
 }
 
 #[cfg(test)]
+#[expect(
+    clippy::disallowed_macros,
+    reason = "a failing test assertion should panic"
+)]
 mod tests {
     use super::version;
 

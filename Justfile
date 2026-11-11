@@ -107,8 +107,6 @@ format:
 
 # ------------------------------------------------------------------ check ---
 
-# Every lint the manifests declare, as errors. The manifests say `warn` so a
-# local build never breaks mid-edit; this is where warnings become failures.
 fmt-check:
     cargo fmt --all --check
 
@@ -116,7 +114,18 @@ toml-check:
     taplo fmt --check
     taplo lint
 
+# Every lint the manifests declare, as errors. The manifests say `warn` so a
+# local build never breaks mid-edit; this is where warnings become failures.
+# allow_attributes sees only outer attributes, so an inner
+# #![allow(..., reason = "...")] would pass it and silence the policy for a whole
+# module; the search first rejects that form. POSIX ERE, so BSD and GNU grep agree.
 clippy:
+    #!/bin/sh
+    set -eu
+    if grep -rnE --include='*.rs' '^[[:space:]]*#!\[(cfg_attr\(.*,[[:space:]]*)?allow[[:space:](]' crates; then
+        printf '%s\n' 'clippy: inner #![allow] attribute found; use #[expect(..., reason = "...")]' >&2
+        exit 1
+    fi
     cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
 
 # Complexity, cohesion and coupling, through rustqual against rustqual.toml,
@@ -135,10 +144,12 @@ metrics:
     rustqual crates/libtransect --config rustqual.toml --fail-on-warnings --format github
     rustqual crates/transect --config rustqual.toml --fail-on-warnings --format github
 
-# Every feature combination compiles. Not --no-dev-deps: that rewrites Cargo.toml
-# while it runs and would trip the worktree snapshot on a crash.
+# Every feature combination compiles and passes clippy, so a panic path behind
+# `cfg(not(feature = ...))` is linted too. Not --no-dev-deps: that rewrites
+# Cargo.toml while it runs and would trip the worktree snapshot on a crash.
 features:
     cargo hack check --workspace --feature-powerset --locked
+    cargo hack clippy --workspace --all-targets --feature-powerset --locked -- -D warnings
 
 # Runs every nextest test under instrumentation and enforces the floor. Doctests
 # are not measured (nightly-only in llvm-cov); test-doc runs them uncovered.
