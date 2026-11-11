@@ -18,8 +18,9 @@ publish = false
 
 # Cargo cannot combine workspace lint inheritance with member overrides, and this
 # crate is where Rust meets the host application, so it keeps its own copy: the
-# root [workspace.lints] tables verbatim, under [lints]. Keep the two equal; the
-# clippy recipe's positive control proves the policy applies here.
+# root [workspace.lints] tables verbatim, under [lints]. Keep the two equal by
+# hand: no gate compares them, and ticket 04's positive control (an unwrap here
+# failing just clippy) proved the policy applies.
 # Every level here is `warn` so a local build never breaks mid-edit; `just clippy`
 # passes `-D warnings`, which is where a warning becomes a failure.
 [lints.rust]

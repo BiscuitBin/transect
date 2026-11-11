@@ -24,7 +24,7 @@ Because this ticket has no direct model, choices that are not forced (the releas
 
 ## Hand-back
 
-Commits on `complete-bootstrap`: the ticket 14 commit, a temporary `pull_request` trigger for the pre-merge dry run, and the commit carrying this hand-back (review fixes, trigger removed). Draft PR #2.
+Commits on `complete-bootstrap`: `b790492` (ticket 14), `7e37ed1` (a temporary `pull_request` trigger for the pre-merge dry run), and `e0043ba`, which carries this hand-back (review fixes, trigger removed). Draft PR #2.
 
 ### The proposal and the maintainer's choices
 
@@ -110,3 +110,7 @@ The reviewers were asked four questions. Their answers:
 - **First publish** of each crate by hand: `cargo publish --locked -p libtransect`, then `-p transect`, using a token scoped to new crates.
 - **Then configure trusted publishing** on crates.io for both crates (`BiscuitBin/transect`, `release-crates.yml`, environment `crates-io`), and revoke the token.
 - **After merge,** run `gh workflow run release-crates.yml --ref main -f publish=false` once from `main`.
+
+### CI after hand-back
+
+Run 43019499102 on `e0043ba` was green on every job, `ci-ok` included.

@@ -316,8 +316,8 @@ audit:
 
 # Unused dependencies in the workspace's manifests and the fuzz crate's.
 deps-unused:
-    cargo shear
-    cargo shear fuzz
+    cargo shear --locked
+    cargo shear --locked fuzz
 
 # Mutation testing, a report and never a gate: it grows with the code towards
 # hours, and a mutant that survives asks for a judgement. It mutates a copy of
@@ -437,7 +437,7 @@ wheel-smoke-floor: wheel
     rm -rf target/wheel-smoke/venv-floor
     UV_PYTHON_INSTALL_DIR=.tools/python uv venv --python {{python_floor}} --managed-python --no-python-downloads --offline target/wheel-smoke/venv-floor
     uv pip install --python target/wheel-smoke/venv-floor --offline --no-index --no-deps "$1"
-    target/wheel-smoke/venv-floor/bin/python -I -c 'import sys; assert sys.version_info[:3] == (3, 11, 18), sys.version'
+    target/wheel-smoke/venv-floor/bin/python -I -c 'import sys; assert ".".join(map(str, sys.version_info[:3])) == sys.argv[1], sys.version' {{python_floor}}
     target/wheel-smoke/venv-floor/bin/python -I tests/fixtures/smoke/smoke.py
 
 # Gate: one version, in every place it is written: the workspace, every member

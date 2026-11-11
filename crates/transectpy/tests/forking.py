@@ -99,6 +99,13 @@ def _wait_until(pid: int, deadline: float) -> int | None:
         time.sleep(0.005)
 
 
+def _kill_and_reap(pid: int) -> None:
+    """SIGKILL a forked child and reap it; a child already reaped is no error."""
+    with suppress(ProcessLookupError, ChildProcessError):
+        os.kill(pid, signal.SIGKILL)
+        os.waitpid(pid, 0)
+
+
 def run_in_fork(fn: Callable[[], T], timeout: float) -> T:
     """Fork, run `fn` in the child, and return what it returned."""
     deadline = time.monotonic() + timeout
@@ -110,13 +117,18 @@ def run_in_fork(fn: Callable[[], T], timeout: float) -> T:
         _child(fn, write_end)
     os.close(write_end)
     try:
-        data = _read_until(read_end, deadline)
-    finally:
-        os.close(read_end)
-    status = None if data is None else _wait_until(pid, deadline)
+        try:
+            data = _read_until(read_end, deadline)
+        finally:
+            os.close(read_end)
+        status = None if data is None else _wait_until(pid, deadline)
+    except BaseException:
+        # Interrupted while waiting (Ctrl-C, a test timeout): the child must not
+        # outlive the test, so kill and reap it before the exception goes on.
+        _kill_and_reap(pid)
+        raise
     if data is None or status is None:
-        os.kill(pid, signal.SIGKILL)
-        os.waitpid(pid, 0)
+        _kill_and_reap(pid)
         raise ForkTimeoutError(timeout, pid)
     if status != 0:
         message = f"forked child {pid} failed: {_describe(status)}"
@@ -160,7 +172,9 @@ def _kill(workers: list[multiprocessing.process.BaseProcess]) -> None:
     lock held and deadlock terminate().
     """
     for worker in workers:
-        if worker.pid is not None:
+        # is_alive() reaps a worker that already exited, so a pid the pool has
+        # given up, and the system may have reused, is never signalled.
+        if worker.pid is not None and worker.is_alive():
             with suppress(ProcessLookupError):
                 os.kill(worker.pid, signal.SIGKILL)
 

@@ -129,7 +129,13 @@ def check(root: Path) -> list[str]:
 def main() -> int:
     """Print every disagreement, or the one version, and exit accordingly."""
     root = Path(__file__).resolve().parents[1]
-    problems = check(root)
+    try:
+        problems = check(root)
+    except subprocess.CalledProcessError as error:
+        # The captured stderr is the reason; without it only the exit status shows.
+        print(f"version-check: {' '.join(map(str, error.cmd))} failed:", file=sys.stderr)
+        print(error.stderr, file=sys.stderr)
+        return 1
     for problem in problems:
         print(f"version-check: {problem}", file=sys.stderr)
     if problems:
