@@ -26,8 +26,9 @@ description: Implement or review a change to the core, the Rust client or the bi
    stub and the binding changed together (`python-change`).
 6. Silence an item lint only with `#[expect(lint, reason = "...")]` on the item; an
    inner `#![allow` fails `just clippy`.
-7. A new dependency needs a reason beside its caret range in `[workspace.dependencies]`
-   (decision 0005).
+7. A new dependency needs a reason beside its caret range in `[workspace.dependencies]`;
+   a dependency of the excluded fuzz crate goes in `fuzz/Cargo.toml` instead, with its
+   reason, pinned by `fuzz/Cargo.lock` (decision 0005).
 8. Run `just fmt-check`, `just clippy`, `just test`, `just coverage` and, for public
    documentation, `just doc`, then `just check`. After a change to the core, read
    `just mutants`: a missed mutant is a missing test.
