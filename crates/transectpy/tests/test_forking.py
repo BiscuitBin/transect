@@ -137,3 +137,30 @@ def test_the_harness_survives_a_background_thread_in_the_parent() -> None:
         stop.set()
         thread.join()
     assert [str(w.message) for w in caught if "fork()" in str(w.message)] == []
+
+
+def worker_ignores_sigterm() -> None:
+    """A pool task that ignores SIGTERM, so terminate() alone cannot end it."""
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    time.sleep(3600)
+
+
+def test_a_pool_worker_ignoring_sigterm_fails_within_the_bound() -> None:
+    """Cleanup after a timeout escalates to SIGKILL instead of waiting forever."""
+    started = time.monotonic()
+    with pytest.raises(ForkTimeoutError):
+        run_in_fork_pool(worker_ignores_sigterm, timeout=1)
+    assert time.monotonic() - started < BOUND_SECONDS
+
+
+def test_a_child_hanging_after_closing_its_pipe_fails_within_the_bound() -> None:
+    """End of file on the pipe is not the child's exit; the deadline covers both."""
+
+    def close_and_hang() -> None:
+        os.closerange(3, 1024)
+        time.sleep(3600)
+
+    started = time.monotonic()
+    with pytest.raises(ForkTimeoutError):
+        run_in_fork(close_and_hang, timeout=1)
+    assert time.monotonic() - started < BOUND_SECONDS

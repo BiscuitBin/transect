@@ -3,6 +3,7 @@
 
 import multiprocessing
 import multiprocessing.pool
+import multiprocessing.process
 import os
 import pickle
 import select
@@ -11,7 +12,7 @@ import time
 import traceback
 import warnings
 from collections.abc import Callable, Iterator
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from typing import TypeVar
 
 T = TypeVar("T")
@@ -83,8 +84,24 @@ def _read_until(read_end: int, deadline: float) -> bytes | None:
         chunks.append(chunk)
 
 
+def _wait_until(pid: int, deadline: float) -> int | None:
+    """Reap `pid` and return its wait status, or None if it is still running at the deadline.
+
+    End of file on the result pipe does not mean the child exited, so the deadline
+    covers the exit too.
+    """
+    while True:
+        reaped, status = os.waitpid(pid, os.WNOHANG)
+        if reaped:
+            return status
+        if time.monotonic() >= deadline:
+            return None
+        time.sleep(0.005)
+
+
 def run_in_fork(fn: Callable[[], T], timeout: float) -> T:
     """Fork, run `fn` in the child, and return what it returned."""
+    deadline = time.monotonic() + timeout
     read_end, write_end = os.pipe()
     with _forking():
         pid = os.fork()
@@ -93,14 +110,14 @@ def run_in_fork(fn: Callable[[], T], timeout: float) -> T:
         _child(fn, write_end)
     os.close(write_end)
     try:
-        data = _read_until(read_end, time.monotonic() + timeout)
+        data = _read_until(read_end, deadline)
     finally:
         os.close(read_end)
-    if data is None:
+    status = None if data is None else _wait_until(pid, deadline)
+    if data is None or status is None:
         os.kill(pid, signal.SIGKILL)
         os.waitpid(pid, 0)
         raise ForkTimeoutError(timeout, pid)
-    _, status = os.waitpid(pid, 0)
     if status != 0:
         message = f"forked child {pid} failed: {_describe(status)}"
         raise ForkFailedError(message)
@@ -123,17 +140,42 @@ def run_in_fork_pool(fn: Callable[[], T], timeout: float) -> T:
     default is no longer fork on either supported platform.
     """
     context = multiprocessing.get_context("fork")
+    before = set(multiprocessing.active_children())
+    # The pool replaces a dead worker from its own thread, so the whole run, not just
+    # the first fork, is inside the filter.
     with _forking():
-        return _run_in_pool(context.Pool(1), fn, timeout)
+        pool = context.Pool(1)
+        workers = [child for child in multiprocessing.active_children() if child not in before]
+        return _run_in_pool(pool, workers, fn, timeout)
 
 
-def _run_in_pool(pool: multiprocessing.pool.Pool, fn: Callable[[], T], timeout: float) -> T:
-    """Run `fn` on `pool`, then terminate and join it whatever happened."""
+def _kill(workers: list[multiprocessing.process.BaseProcess]) -> None:
+    """SIGKILL busy pool workers before terminate().
+
+    terminate() sends SIGTERM and then joins without a deadline, so a worker that
+    ignores SIGTERM would hang it; SIGKILL cannot be ignored.
+    Only for a worker stuck in a task: killing an idle one can leave the pool's queue
+    lock held and deadlock terminate().
+    """
+    for worker in workers:
+        if worker.pid is not None:
+            with suppress(ProcessLookupError):
+                os.kill(worker.pid, signal.SIGKILL)
+
+
+def _run_in_pool(
+    pool: multiprocessing.pool.Pool,
+    workers: list[multiprocessing.process.BaseProcess],
+    fn: Callable[[], T],
+    timeout: float,
+) -> T:
+    """Run `fn` on `pool`, then kill, terminate and join it whatever happened."""
     try:
         pending = pool.apply_async(fn)
         try:
             result: T = pending.get(timeout)
         except multiprocessing.TimeoutError:
+            _kill(workers)
             raise ForkTimeoutError(timeout) from None
         except Exception as error:
             message = f"forked pool worker raised: {error!r}"
