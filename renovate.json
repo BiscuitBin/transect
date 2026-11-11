@@ -1,0 +1,290 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    "helpers:pinGitHubActionDigests",
+    "schedule:earlyMondays",
+    ":dependencyDashboardApproval"
+  ],
+  "rangeStrategy": "update-lockfile",
+  "automerge": false,
+  "lockFileMaintenance": {
+    "enabled": true,
+    "schedule": [
+      "* 0-3 * * 1"
+    ]
+  },
+  "pre-commit": {
+    "enabled": false
+  },
+  "packageRules": [
+    {
+      "description": "Crates: Cargo.lock within the caret ranges, or a range in Cargo.toml when a release falls outside it, both cargo roots (the workspace and fuzz/), one pull request, with major updates in a pull request of their own beside it (separateMajorMinor). One of the two groups that skip the held default: it opens without a dashboard click, once a release is seven days old, and a person merges it. Lock-file maintenance stays held by its own rule below, and a vulnerability fix does not wait for the seven days.",
+      "matchManagers": [
+        "cargo"
+      ],
+      "groupName": "crates",
+      "dependencyDashboardApproval": false,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "Remote actions, SHA and version comment together, one pull request, with major updates in a pull request of their own beside it (separateMajorMinor). The other group that skips the held default: it opens without a dashboard click, once a release is seven days old, and a person merges it. A vulnerability fix does not wait for the seven days.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "groupName": "github actions",
+      "dependencyDashboardApproval": false,
+      "minimumReleaseAge": "7 days"
+    },
+    {
+      "description": "The toolchain: channel in rust-toolchain.toml and rust-version in the workspace and fuzz manifests, one pull request. rust-release-channel versioning keeps the precision of the value it replaces, so rust-version stays major.minor. Held for dashboard approval, because a toolchain moves the clippy lint set; a vulnerability-fix pull request skips that approval.",
+      "matchDepNames": [
+        "rust"
+      ],
+      "groupName": "rust toolchain",
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Tool pins in pyproject.toml. The hosted app relocks pixi.lock on the same branch, with a pixi that can be newer than the pin (docs/how-to/maintain-dependencies.md); a stale pixi.lock fails lock-check. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
+      "matchManagers": [
+        "pixi"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "python = \"==3.14.10\" is the tooling interpreter, moved by hand with the lockfile, not a pin to bump; the manager would otherwise offer 3.15.",
+      "matchManagers": [
+        "pixi"
+      ],
+      "matchDepNames": [
+        "python"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "python-version inputs of setup-python are manual: 3.11 is the abi3 floor (decision 0007), not a version to bump.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepNames": [
+        "python"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "uv: the pin in pyproject.toml, read from conda-forge. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
+      "matchDatasources": [
+        "conda"
+      ],
+      "matchDepNames": [
+        "uv"
+      ],
+      "groupName": "uv",
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "maturin: the pin in pyproject.toml, read from conda-forge. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
+      "matchDatasources": [
+        "conda"
+      ],
+      "matchDepNames": [
+        "maturin"
+      ],
+      "groupName": "maturin",
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "nextest-version in .config/nextest.toml equals the cargo-nextest pin in pyproject.toml, so both read conda-forge and move in one pull request. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
+      "matchDatasources": [
+        "conda"
+      ],
+      "matchDepNames": [
+        "cargo-nextest"
+      ],
+      "groupName": "cargo-nextest",
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "The maturin range in build-system.requires of crates/transectpy/pyproject.toml: what an installer honours when it builds the package from source. The pixi pin is what builds locally and in just check. The range is kept rather than pinned, and Renovate proposes widening it on a maturin 2.0. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
+      "matchManagers": [
+        "pep621"
+      ],
+      "matchDepNames": [
+        "maturin"
+      ],
+      "groupName": "python build backend",
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "The tooling package's release tag: the checkers and the gate runner. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
+      "matchDepNames": [
+        "biscuit-games-tooling"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "pixi itself: the requires-pixi floor in pyproject.toml and pixi-version in the setup action, one pull request. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
+      "matchDepNames": [
+        "prefix-dev/pixi"
+      ],
+      "groupName": "pixi bootstrap",
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "The github-actions manager would read setup-pixi's pixi-version input under prefix-dev/pixi as well; the regex manager owns it.",
+      "matchManagers": [
+        "github-actions"
+      ],
+      "matchDepNames": [
+        "prefix-dev/pixi"
+      ],
+      "enabled": false
+    },
+    {
+      "description": "Lock-file maintenance rewrites pixi.lock as well as both Cargo lockfiles. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
+      "matchUpdateTypes": [
+        "lockFileMaintenance"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Binaries in tools.txt and source builds in tools-source.txt. Each is a download nothing verifies beyond the transport or the registry checksum, and rustqual is a gate. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
+      "matchDepNames": [
+        "cargo-hack",
+        "cargo-fuzz",
+        "rustqual"
+      ],
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "The Python floor interpreter: python_floor in the Justfile, the CPython 3.11 patch release install-tools fetches. Held to 3.11, the abi3 floor, and for dashboard approval; a vulnerability-fix pull request skips that approval.",
+      "matchDepNames": [
+        "python-floor"
+      ],
+      "allowedVersions": "<3.12",
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "Hook revs in both prek configs, one pull request, because a hook is code the gate runs on every commit. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
+      "matchFileNames": [
+        ".pre-commit-config.yaml",
+        ".pre-commit-fix.yaml"
+      ],
+      "groupName": "hook revs",
+      "dependencyDashboardApproval": true
+    },
+    {
+      "description": "lychee moves by hand: LYCHEE_VERSION in both argument lists must match its rev, and its tag prefix is lychee-v.",
+      "matchDepNames": [
+        "lycheeverse/lychee"
+      ],
+      "enabled": false
+    }
+  ],
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "rust-version in the workspace and fuzz manifests, grouped with the native rust-toolchain manager's channel.",
+      "managerFilePatterns": [
+        "/^Cargo\\.toml$/",
+        "/^fuzz/Cargo\\.toml$/"
+      ],
+      "matchStrings": [
+        "rust-version = \"(?<currentValue>\\d+\\.\\d+)\""
+      ],
+      "depNameTemplate": "rust",
+      "datasourceTemplate": "rust-version",
+      "versioningTemplate": "rust-release-channel"
+    },
+    {
+      "customType": "regex",
+      "description": "python_floor in the Justfile: the exact CPython 3.11 release the floor smoke installs with uv.",
+      "managerFilePatterns": [
+        "/^Justfile$/"
+      ],
+      "matchStrings": [
+        "python_floor := \"(?<currentValue>3\\.11\\.\\d+)\""
+      ],
+      "depNameTemplate": "python-floor",
+      "packageNameTemplate": "python",
+      "datasourceTemplate": "python-version"
+    },
+    {
+      "customType": "regex",
+      "description": "tools.txt and tools-source.txt: one name@version per line, resolved on crates.io.",
+      "managerFilePatterns": [
+        "/^tools\\.txt$/",
+        "/^tools-source\\.txt$/"
+      ],
+      "matchStrings": [
+        "(?<depName>[a-z0-9_-]+)@(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "datasourceTemplate": "crate"
+    },
+    {
+      "customType": "regex",
+      "description": "nextest-version, which must equal the cargo-nextest pin in pyproject.toml, read from the same conda-forge package.",
+      "managerFilePatterns": [
+        "/^\\.config/nextest\\.toml$/"
+      ],
+      "matchStrings": [
+        "nextest-version = \"(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
+      ],
+      "depNameTemplate": "cargo-nextest",
+      "packageNameTemplate": "conda-forge/cargo-nextest",
+      "datasourceTemplate": "conda"
+    },
+    {
+      "customType": "regex",
+      "description": "The tooling package's release tag.",
+      "managerFilePatterns": [
+        "/^pyproject\\.toml$/"
+      ],
+      "matchStrings": [
+        "biscuit-games-tooling = \\{ git = \"https://github\\.com/(?<packageName>[^\"]+)\", tag = \"(?<currentValue>v\\d+\\.\\d+\\.\\d+)\" \\}"
+      ],
+      "depNameTemplate": "biscuit-games-tooling",
+      "datasourceTemplate": "github-tags"
+    },
+    {
+      "customType": "regex",
+      "description": "requires-pixi, the floor that moves with pixi-version in the setup action.",
+      "managerFilePatterns": [
+        "/^pyproject\\.toml$/"
+      ],
+      "matchStrings": [
+        "requires-pixi = \">=(?<currentValue>\\d+\\.\\d+\\.\\d+)\""
+      ],
+      "depNameTemplate": "prefix-dev/pixi",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "description": "setup-pixi's pixi-version input, read here rather than by the github-actions manager, under the requires-pixi floor's depName.",
+      "managerFilePatterns": [
+        "/^\\.github/actions/setup/action\\.yml$/"
+      ],
+      "matchStrings": [
+        "pixi-version: v(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "prefix-dev/pixi",
+      "datasourceTemplate": "github-releases",
+      "extractVersionTemplate": "^v(?<version>.*)$"
+    },
+    {
+      "customType": "regex",
+      "description": "Hook revs in both prek configs: a full SHA with the release tag as its comment. lychee's lychee-v comment does not match.",
+      "managerFilePatterns": [
+        "/^\\.pre-commit-config\\.yaml$/",
+        "/^\\.pre-commit-fix\\.yaml$/"
+      ],
+      "matchStrings": [
+        "- repo: https://github\\.com/(?<depName>[^/\\s]+/[^/\\s]+)\\n    rev: (?<currentDigest>[a-f0-9]{40}) # (?<currentValue>v\\d+(?:\\.\\d+)+)"
+      ],
+      "datasourceTemplate": "github-tags",
+      "versioningTemplate": "loose",
+      "autoReplaceStringTemplate": "- repo: https://github.com/{{{depName}}}\n    rev: {{{newDigest}}} # {{{newValue}}}"
+    }
+  ]
+}

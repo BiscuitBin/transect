@@ -36,6 +36,8 @@ Where everything lives. Paths are relative to the repository root.
 | `.pre-commit-config.yaml`, `.pre-commit-fix.yaml` | The hook gate and the fixers. |
 | `.markdownlint-cli2.jsonc`, `_typos.toml`, `lychee.toml`, `.editorconfig` | The document and text checks. |
 | `.github/actions/setup/`, `.github/workflows/ci.yml` | The CI setup action and workflow. |
+| `.github/workflows/{audit,fuzz,mutants,pages}.yml` | The scheduled and deploy workflows. |
+| `renovate.json` | The dependency bot's configuration. |
 
 ## Documents
 

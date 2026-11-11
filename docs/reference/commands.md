@@ -80,6 +80,7 @@ Each of these is described on [Quality gates](quality-gates.md).
 | --- | --- |
 | `audit` | Security advisories, workspace and fuzz crate. **Network.** |
 | `check-links-online` | Every link, external ones included. **Network.** |
+| `site` | Builds the API reference site GitHub Pages serves into `target/doc`. |
 
 ## Related pages
 

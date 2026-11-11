@@ -27,6 +27,7 @@ has no behaviour yet beyond reporting its version.
 ## How to
 
 - [Develop locally](how-to/develop-locally.md)
+- [Maintain dependencies](how-to/maintain-dependencies.md)
 
 ## Understand
 
@@ -44,3 +45,4 @@ has no behaviour yet beyond reporting its version.
 ## Run it
 
 - [Troubleshooting](operations/troubleshooting.md)
+- [Scheduled maintenance](operations/maintenance.md): advisories, fuzzing, mutation testing and the API reference site.

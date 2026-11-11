@@ -275,6 +275,17 @@ coverage:
 doc:
     RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo doc --workspace --no-deps --all-features --locked
 
+# What GitHub Pages serves: the API reference `doc` builds, from an empty
+# target/doc so that nothing stale is published, and a root index.html that
+# links to every crate's page, because stable rustdoc writes none. Not a gate
+# and outside `just check`: `doc` is the gate, and this adds one file to what it
+# built, with `doc`'s own flags, so the hosted reference is the one the gate
+# proved.
+site:
+    rm -rf target/doc
+    just doc
+    printf '%s\n' '<!doctype html>' '<html lang="en">' '<meta charset="utf-8">' '<title>transect: API reference</title>' '<p><a href="libtransect/index.html">The libtransect API reference</a></p>' '<p><a href="transect/index.html">The transect API reference</a></p>' '<p><a href="transectpy/index.html">The transectpy binding crate</a></p>' '</html>' > target/doc/index.html
+
 # Licences, bans and sources are answerable offline once `just sync` has run.
 # The fuzz crate is outside the workspace, so it gets its own run.
 deny:

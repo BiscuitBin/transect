@@ -105,6 +105,19 @@
       "requires": []
     },
     {
+      "path": "how-to/maintain-dependencies.md",
+      "title": "Maintain dependencies",
+      "kind": "how-to",
+      "audience": [
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "dependency_updates"
+      ],
+      "requires": []
+    },
+    {
       "path": "explanation/architecture.md",
       "title": "Architecture",
       "kind": "explanation",
@@ -158,6 +171,21 @@
       ],
       "canonical_for": [
         "troubleshooting"
+      ],
+      "requires": []
+    },
+    {
+      "path": "operations/maintenance.md",
+      "title": "Scheduled maintenance",
+      "kind": "operations",
+      "audience": [
+        "maintainer",
+        "operator",
+        "agent"
+      ],
+      "canonical_for": [
+        "scheduled_workflows",
+        "api_reference_site"
       ],
       "requires": []
     },
