@@ -11,14 +11,26 @@ exclude = ["fuzz"]
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-# The toolchain pin's major.minor (rust-toolchain.toml); it follows the pin until a
-# crate is first published.
+# The toolchain pin's major.minor (rust-toolchain.toml); lowering it below the
+# pin is a decision of its own, not part of a release.
 rust-version = "1.99"
 license = "Apache-2.0"
 repository = "https://github.com/BiscuitBin/transect"
 homepage = "https://github.com/BiscuitBin/transect"
 authors = ["Steven Cutting"]
-# Nothing goes to crates.io until ticket 14 settles the publishing arrangement.
+
+# cargo-release prepares a release and nothing more (decision 0010): it moves the
+# one version, the requirements on it and the files the transect crate's
+# replacements name, and commits on a release branch. Tagging, pushing and
+# publishing are each a separate, separately authorised step.
+[workspace.metadata.release]
+shared-version = true
+# One release commit for the one version.
+consolidate-commits = true
+allow-branch = ["release/*"]
+pre-release-commit-message = "Release {{version}}"
+tag = false
+push = false
 publish = false
 
 # Every level here is `warn` so a local build never breaks mid-edit; `just clippy`

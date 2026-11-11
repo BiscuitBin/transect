@@ -28,6 +28,7 @@ decision is made.
 | [0007](0007-supported-platforms.md) | Linux and macOS are the supported platforms |
 | [0008](0008-tool-manager.md) | pixi, rustup and just as the tool manager |
 | [0009](0009-hooks.md) | A read-only hook gate and a separate fixer |
+| [0010](0010-release-process.md) | One tag releases to PyPI and crates.io, each behind its own approval |
 
 Decisions 0001 and 0002 are the two shaping rules every design is held to.
 

@@ -11,4 +11,5 @@ Run `just doc` from the repository root and open `target/doc/transect/index.html
 the API reference; the tested example lives in rustdoc. The handbook starts at
 `docs/README.md` in the repository.
 
-Requires Rust 1.99 or newer. Licensed under Apache-2.0; not published to crates.io.
+Requires Rust 1.99 or newer. Licensed under Apache-2.0. Repository:
+<https://github.com/BiscuitBin/transect>.

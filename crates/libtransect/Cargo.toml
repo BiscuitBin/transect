@@ -1,12 +1,12 @@
 [package]
 name = "libtransect"
-# description, keywords and categories are the metadata the clippy cargo group's
-# cargo_common_metadata names. It skips a `publish = false` package, so they are
-# kept for the docs and for ticket 14, which settles publishing.
+# The registry metadata crates.io shows (decision 0010); description, keywords,
+# categories and readme are also what clippy's cargo_common_metadata requires.
 description = "The core of Transect's in-application client."
 keywords = ["transect", "client", "tables"]
 categories = ["development-tools"]
 readme = "README.md"
+documentation = "https://docs.rs/libtransect"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,7 +14,6 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
-publish.workspace = true
 
 # The workspace lint policy: the never-raise rule's enforcement.
 [lints]

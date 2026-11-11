@@ -19,3 +19,5 @@ them all. Nothing has been released yet.
   and a fork test harness for the Python client.
 - Weekly advisory, fuzz and mutation-testing workflows, the Pages workflow and Renovate.
 - The handbook with its decision records, and the agent contract with its skills.
+- Release workflows for PyPI and crates.io, both started by one version tag, and run so
+  far only as dry runs.

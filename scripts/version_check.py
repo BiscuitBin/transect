@@ -3,12 +3,18 @@
 
 import json
 import os
+import re
 import subprocess
 import sys
 import tomllib
 from pathlib import Path
 
 WHEEL_MANIFEST = "crates/transectpy/pyproject.toml"
+# Outside the workspace, so neither cargo metadata nor cargo-release sees it.
+FUZZ_MANIFEST = "fuzz/Cargo.toml"
+# A released version's heading, `## [X.Y.Z] - YYYY-MM-DD`; the first one in the
+# file is the newest, and before the first release there is none.
+RELEASE_HEADING = re.compile(r"^## \[(\d+\.\d+\.\d+)\] - \d{4}-\d{2}-\d{2}$", re.MULTILINE)
 VENV = "target/wheel-smoke/venv"
 # Run with -I in the venv wheel-smoke built, so nothing in the worktree shadows
 # the installed package: the module's own version, then the wheel's metadata.
@@ -44,6 +50,24 @@ def member_versions(root: Path) -> dict[str, str]:
     return {package["name"]: package["version"] for package in packages}
 
 
+def path_requirements(manifest: dict[str, object], table: str) -> dict[str, str]:
+    """The version written beside each path dependency in one dependency table.
+
+    A path dependency names a crate of this repository, so its requirement is
+    the one version, written again.
+    """
+    section: object = manifest
+    for key in table.split("."):
+        section = section.get(key, {}) if isinstance(section, dict) else {}
+    if not isinstance(section, dict):
+        return {}
+    return {
+        name: spec["version"]
+        for name, spec in section.items()
+        if isinstance(spec, dict) and "path" in spec and "version" in spec
+    }
+
+
 def installed_versions(root: Path) -> tuple[str, str] | None:
     """The installed wheel's module and metadata versions, or None with no venv."""
     python = root / VENV / "bin" / "python"
@@ -58,13 +82,32 @@ def installed_versions(root: Path) -> tuple[str, str] | None:
 
 def check(root: Path) -> list[str]:
     """Every disagreement between the places the version is written."""
-    workspace = tomllib.loads((root / "Cargo.toml").read_text())["workspace"]["package"]["version"]
+    manifest = tomllib.loads((root / "Cargo.toml").read_text())
+    workspace = manifest["workspace"]["package"]["version"]
     wheel = tomllib.loads((root / WHEEL_MANIFEST).read_text())["project"]["version"]
     problems = [
         f"crate {name} says {version}, the workspace version is {workspace}"
         for name, version in sorted(member_versions(root).items())
         if version != workspace
     ]
+    problems += [
+        f"Cargo.toml [workspace.dependencies] requires {name} {required},"
+        f" the workspace version is {workspace}"
+        for name, required in sorted(path_requirements(manifest, "workspace.dependencies").items())
+        if required != workspace
+    ]
+    fuzz = tomllib.loads((root / FUZZ_MANIFEST).read_text())
+    problems += [
+        f"{FUZZ_MANIFEST} requires {name} {required}, the workspace version is {workspace}"
+        for name, required in sorted(path_requirements(fuzz, "dependencies").items())
+        if required != workspace
+    ]
+    newest = RELEASE_HEADING.search((root / "CHANGELOG.md").read_text())
+    if newest is not None and newest.group(1) != workspace:
+        problems.append(
+            f"CHANGELOG.md's newest release heading is {newest.group(1)},"
+            f" the workspace version is {workspace}"
+        )
     if wheel != workspace:
         problems.append(
             f"wheel manifest {WHEEL_MANIFEST} says {wheel}, the workspace version is {workspace}"

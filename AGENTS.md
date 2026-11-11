@@ -71,7 +71,8 @@ for one action is not approval for the next. Destructive operations need the sam
 authorization inside the worktree, such as discarding changes or deleting a branch. The
 recipes that reach the network are `just initialize`, `just install-toolchain`,
 `just install-tools`, `just install-hooks`, `just sync`, `just lock`, `just lock-upgrade`,
-`just audit` and `just check-links-online`; each runs only when the task authorises it.
+`just audit`, `just check-links-online` and `just package-dry-run`; each runs only when
+the task authorises it.
 The other cargo recipes resolve from the cache `just sync` fills and reach the network
 only on a cold cache: on a fresh worktree, run `just sync` (authorised) before them, and
 report a fetch failure rather than work around it.

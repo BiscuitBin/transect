@@ -10,3 +10,7 @@ cargo-hack@0.6.45
 # conda-forge does not carry it. Its macOS release binary is x86_64 only, so on
 # Apple silicon it runs under Rosetta 2.
 cargo-fuzz@0.13.2
+# For preparing a release (decision 0010); verified with `cargo info` and its
+# GitHub release on 2026-11-11: release binaries for both platforms, no conda
+# package.
+cargo-release@1.1.7

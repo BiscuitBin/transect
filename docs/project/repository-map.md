@@ -37,7 +37,7 @@ Where everything lives. Paths are relative to the repository root.
 | `.markdownlint-cli2.jsonc`, `_typos.toml`, `lychee.toml`, `.editorconfig` | The document and text checks. |
 | `.github/actions/setup/`, `.github/workflows/ci.yml` | The CI setup action and workflow. |
 | `.github/workflows/{audit,fuzz,mutants,pages}.yml` | The scheduled and deploy workflows. |
-| `.github/workflows/release-pypi.yml` | The PyPI release workflow; see [Release to PyPI](../how-to/release.md). |
+| `.github/workflows/release-pypi.yml`, `.github/workflows/release-crates.yml` | The PyPI and crates.io release workflows; see [Cut a release](../how-to/release.md). |
 | `renovate.json` | The dependency bot's configuration. |
 
 ## Documents
@@ -47,7 +47,7 @@ Where everything lives. Paths are relative to the repository root.
 | `docs/` | This handbook; `docs/manifest.yml` registers every page. |
 | `AGENTS.md` | The canonical agent contract. `CLAUDE.md` and `.github/copilot-instructions.md` point to it; `.agents/skills/` holds the canonical skills, bridged by `.claude/skills/` and `.codex/skills/`. |
 | `README.md`, `CHANGELOG.md`, `SECURITY.md` | The entry files: what the project is, the single changelog, and how to report a vulnerability. |
-| `crates/*/README.md` | Each crate's README; `crates/transectpy/README.md` is the wheel's PyPI long description. |
+| `crates/*/README.md`, `crates/*/LICENSE` | Each crate's README and a copy of the root `LICENSE`, which the crate package and the wheel ship; `crates/transectpy/README.md` is the wheel's PyPI long description. |
 | `.scratch/` | Tracked bootstrap tickets; local ticket scratch is otherwise gitignored. |
 
 ## Generated and local, never committed

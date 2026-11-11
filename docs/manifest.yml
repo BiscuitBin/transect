@@ -331,8 +331,21 @@
       "requires": []
     },
     {
+      "path": "decisions/0010-release-process.md",
+      "title": "Decision 0010: The release process",
+      "kind": "decision",
+      "audience": [
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "decision_release_process"
+      ],
+      "requires": []
+    },
+    {
       "path": "how-to/release.md",
-      "title": "Release to PyPI",
+      "title": "Cut a release",
       "kind": "how-to",
       "audience": [
         "maintainer",

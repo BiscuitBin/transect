@@ -1,12 +1,12 @@
 [package]
 name = "transect"
-# description, keywords and categories are the metadata the clippy cargo group's
-# cargo_common_metadata names. It skips a `publish = false` package, so they are
-# kept for the docs and for ticket 14, which settles publishing.
+# The registry metadata crates.io shows (decision 0010); description, keywords,
+# categories and readme are also what clippy's cargo_common_metadata requires.
 description = "The Rust client API of Transect's in-application client."
 keywords = ["transect", "client", "tables"]
 categories = ["development-tools"]
 readme = "README.md"
+documentation = "https://docs.rs/transect"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
@@ -14,11 +14,21 @@ license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 authors.workspace = true
-publish.workspace = true
 
 # The workspace lint policy: the never-raise rule's enforcement.
 [lints]
 workspace = true
+
+# The release's replacements, here on one crate so they run once per release
+# under consolidate-commits; paths are relative to this manifest. Each must match
+# exactly once, so a file that changed shape stops the release instead of being
+# skipped.
+[package.metadata.release]
+pre-release-replacements = [
+  { file = "../transectpy/pyproject.toml", search = '(?m)^version = "[0-9]+\.[0-9]+\.[0-9]+"$', replace = 'version = "{{version}}"', exactly = 1 },
+  { file = "../../fuzz/Cargo.toml", search = 'libtransect = \{ path = "\.\./crates/libtransect", version = "[0-9]+\.[0-9]+\.[0-9]+" \}', replace = 'libtransect = { path = "../crates/libtransect", version = "{{version}}" }', exactly = 1 },
+  { file = "../../CHANGELOG.md", search = '(?m)^## \[Unreleased\]\n', replace = "## [Unreleased]\n\n## [{{version}}] - {{date}}\n", exactly = 1 },
+]
 
 [dependencies]
 # The client depends on the core, never the reverse.

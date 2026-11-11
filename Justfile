@@ -299,6 +299,15 @@ deny:
     cargo deny --locked check licenses bans sources
     cargo deny --locked --manifest-path fuzz/Cargo.toml check licenses bans sources
 
+# Packages the publishable crates in dependency order and builds each from its
+# package, as `cargo publish` would, without uploading (decision 0010). Cargo
+# verifies transect against the freshly packaged, unpublished libtransect through
+# a temporary local registry, so the core need not be on crates.io; transectpy is
+# `publish = false` and skipped. It reads the crates.io index, so it needs the
+# network and sits outside `just check`.
+package-dry-run:
+    cargo publish --dry-run --workspace --locked
+
 # Advisories need the RustSec database over the network, so this sits outside
 # `just check`.
 audit:
