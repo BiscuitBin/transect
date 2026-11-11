@@ -11,13 +11,6 @@ on:
   push:
     tags:
       - 'v[0-9]+.[0-9]+.[0-9]+'
-  # TEMPORARY, removed in the next commit: the pre-merge dry run, since
-  # workflow_dispatch needs the file on the default branch. A pull_request run
-  # never publishes: verify decides publish=false for any event but a tag push
-  # or a dispatch with publish true.
-  pull_request:
-    paths:
-      - .github/workflows/release-crates.yml
   workflow_dispatch:
     inputs:
       publish:
@@ -118,17 +111,22 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
           PUBLISH: ${{ steps.mode.outputs.publish }}
         run: |
-          awk -v heading="## [$VERSION] - " '
-            index($0, heading) == 1 { found = 1; next }
-            found && (index($0, "## [") == 1 || (index($0, "[") == 1 && index($0, "]: ") > 0)) { exit }
+          # Exactly one heading `## [<version>] - YYYY-MM-DD`; a second one empties
+          # the notes. The section runs to the next heading or the link lines and
+          # must hold a line that is neither blank nor a heading.
+          awk -v prefix="## [$VERSION] - " '
+            index($0, prefix) == 1 && substr($0, length(prefix) + 1) ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/ { if (seen) { dup = 1; exit } seen = 1; found = 1; next }
+            found && (index($0, "## [") == 1 || (index($0, "[") == 1 && index($0, "]: ") > 0)) { found = 0 }
             found { print }
-          ' CHANGELOG.md > release-notes.md
-          if ! grep -q '[^[:space:]]' release-notes.md; then
+            END { exit dup }
+          ' CHANGELOG.md > release-notes.md || : > release-notes.md
+          message="CHANGELOG.md needs exactly one section headed ## [$VERSION] - YYYY-MM-DD with a line that is not a heading"
+          if ! grep -qv -e '^#' -e '^[[:space:]]*$' release-notes.md; then
             if [ "$PUBLISH" = true ]; then
-              echo "::error::CHANGELOG.md has no non-empty section headed ## [$VERSION] -"
+              echo "::error::$message"
               exit 1
             fi
-            echo "::warning::CHANGELOG.md has no non-empty section headed ## [$VERSION] -"
+            echo "::warning::$message"
           else
             cat release-notes.md
           fi

@@ -70,3 +70,7 @@ Findings:
 ### Maintainer steps
 
 - When the repository becomes public, enable private vulnerability reporting. Until then, decide on an interim route for internal reporters.
+
+### CI after hand-back
+
+Run 43013249650 on `1bc4b72`, the first push carrying `9a04c1c`, was green on every job, `ci-ok` included.

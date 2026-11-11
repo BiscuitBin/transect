@@ -95,3 +95,7 @@ The reviewers were asked four questions. Their answers:
   - Create the `pypi` environment with a required reviewer and deployment rules for `v*` tags and `main`.
   - Register a pending trusted publisher on PyPI: project `transectpy`, `BiscuitBin/transect`, `release-pypi.yml`, environment `pypi`.
 - **After merge,** run `gh workflow run release-pypi.yml --ref main -f publish=false` once from `main`.
+
+### CI after hand-back
+
+Run 43014398597 on `43b47dd` was green on every job, `ci-ok` included.

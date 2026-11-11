@@ -38,7 +38,8 @@ It runs on a `v<major>.<minor>.<patch>` tag push and on demand. A dispatch has o
 - **`guards`.** Downloads the seven files and checks that the commit is on `main`, that a
   run started from a tag (pushed or dispatched) builds the commit the tag names and that
   the tag equals `[project] version`, that `CHANGELOG.md`
-  has a non-empty `## [<version>] - <date>` section, and that `dist/` holds exactly six
+  has exactly one `## [<version>] - YYYY-MM-DD` section holding a line that is not a
+  heading, and that `dist/` holds exactly six
   abi3 wheels and one sdist, each carrying the version. A run that publishes fails on
   any of them; a dry run reports the commit and changelog guards as warnings, since a
   dry run from a branch or before the changelog is dated is expected.
@@ -129,8 +130,9 @@ release stops; publishing anyway is a decision to record first.
 ## Cutting a release
 
 1. **local** `git switch -c release/v<version>` from an up-to-date `main`, then
-   `cargo release <level> --workspace --execute` with `<level>` `patch`, `minor` or
-   `major`. In one commit it moves the workspace version, the `[workspace.dependencies]`
+   `PATH="$PWD/.tools/bin:$PATH" cargo release <level> --workspace --execute` with
+   `<level>` `patch`, `minor` or `major` (the pinned binary `just install-tools` installs
+   lives in `.tools/bin`, which only recipes put on PATH). In one commit it moves the workspace version, the `[workspace.dependencies]`
    requirements, `[project] version` in `crates/transectpy/pyproject.toml` and the fuzz
    crate's requirement, and inserts `## [<version>] - <UTC date>` below
    `## [Unreleased]` in `CHANGELOG.md`, so the unreleased entries become that version's.
@@ -139,8 +141,9 @@ release stops; publishing anyway is a decision to record first.
 2. **read-only network** `just lock`, which refreshes `fuzz/Cargo.lock` for the new
    version (cargo-release cannot reach the excluded fuzz crate), then
    `git commit --amend --no-edit fuzz/Cargo.lock` on the release branch.
-3. **local** `just version-check`, then `just check`, which must end with
-   `All checks passed and the worktree is unchanged.`
+3. **local** `just check`, which must end with
+   `All checks passed and the worktree is unchanged.` It rebuilds the wheel before
+   `version-check` compares every place the version is written.
 4. **authorised** Push the branch, open a pull request and merge it once `ci-ok` is green.
    If the merge lands on a later UTC day than the heading, a one-line pull request
    re-dates it before the tag.
