@@ -33,7 +33,8 @@ scope when discovered through a consumer.
 - Every crate forbids unsafe code through its lint table
   ([decision 0004](docs/decisions/0004-lint-policy-enforces-never-raise.md)).
 - `Cargo.lock`, `fuzz/Cargo.lock` and `pixi.lock` are committed, the cargo gates that
-  resolve dependencies pass `--locked`, and wheel builds use maturin's `locked = true`
+  resolve dependencies pass `--locked` (the snapshot and fuzz recipes check the locks
+  first and run offline), and wheel builds use maturin's `locked = true`
   ([decision 0005](docs/decisions/0005-dependency-policy.md)).
 - `cargo deny` checks licences, bans and sources in every `just check`; the audit
   workflow checks the locked Rust dependencies against RustSec advisories on pull
