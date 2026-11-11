@@ -48,6 +48,11 @@ jobs:
       - uses: ./.github/actions/setup
         with:
           cache-key: check
+      # The contributor's first-run path, exactly: the setup action above
+      # provides pixi and warm caches, and this proves the initialize script
+      # itself works from a fresh checkout on both platforms. It installs the
+      # hook shim into the runner's .git, which is harmless.
+      - run: just initialize
       # The whole gate: the recipes pyproject.toml lists, the worktree
       # snapshotted between each, then check-clean.
       - run: just check
