@@ -56,6 +56,9 @@ jobs:
       # The whole gate: the recipes pyproject.toml lists, the worktree
       # snapshotted between each, then check-clean.
       - run: just check
+      # `just check` compares against a baseline taken after initialize, so
+      # this proves absolutely that the checkout is clean, as every job does.
+      - run: just check-clean
 
   # The Rust gates, one recipe per step in the gate's order so a failure names
   # itself in the step list. Tests run on both platforms; the other gates

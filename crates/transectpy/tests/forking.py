@@ -136,8 +136,10 @@ def run_in_fork_pool(fn: Callable[[], T], timeout: float) -> T:
     """Run `fn` in a one-worker pool forked from this process, as gunicorn-style servers do.
 
     `fn` must be importable by name (a module-level function), because the pool sends
-    it to the worker pickled. The fork start method is requested explicitly: the
-    default is no longer fork on either supported platform.
+    it to the worker pickled. The deadline covers the worker, not unpickling its
+    result in this process: a value whose own `__reduce__` blocks would block here.
+    The fork start method is requested explicitly: the default is no longer fork on
+    either supported platform.
     """
     context = multiprocessing.get_context("fork")
     before = set(multiprocessing.active_children())
