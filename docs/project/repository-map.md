@@ -16,7 +16,7 @@ Where everything lives. Paths are relative to the repository root.
 | --- | --- |
 | `crates/libtransect/` | The core crate. `src/lib.rs` holds `version()`; `src/ingest_queue.rs`, `src/local_database.rs`, `src/schema_evolution.rs` and `src/data_writer.rs` are documentation-only placeholders; `benches/version.rs` is the divan benchmark. |
 | `crates/transect/` | The Rust client API crate; `src/lib.rs` holds `version()`. |
-| `crates/transectpy/` | The PyO3 binding crate (`src/lib.rs`), its maturin manifest (`pyproject.toml`), the Python package under `python/transectpy/` (with the hand-written stub `_transectpy.pyi` and `py.typed`), and the Python tests under `tests/`. |
+| `crates/transectpy/` | The PyO3 binding crate (`src/lib.rs`), its maturin manifest (`pyproject.toml`), the Python package under `python/transectpy/` (with the hand-written stub `_transectpy.pyi` and `py.typed`), and the Python tests under `tests/`, including the fork harness `forking.py` and the fork tests. |
 | `fuzz/` | The fuzz crate, outside the workspace, with its own `Cargo.lock` and the `smoke` target. |
 | `scripts/` | `initialize.sh`, `version_check.py` and `check_undecided.py`. |
 | `tests/` | The scripts' tests (`tests/scripts/`), the lint and type-check positive-control fixtures (`tests/fixtures/py-lint-violation/`) and the installed-wheel smoke (`tests/fixtures/smoke/`). |

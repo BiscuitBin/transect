@@ -29,9 +29,12 @@ it depends on the undecided ingest queue and local database. Whether it will nee
 code, which [decision 0004](0004-lint-policy-enforces-never-raise.md) forbids today, is an
 open point on the [register](../project/open-decisions.md).
 
-The Python test suite is to gain a harness that runs a callable in an explicitly forked
-child, so that the requirement can be tested as soon as the client has behaviour. It does
-not exist yet.
+The Python test suite carries a harness, `crates/transectpy/tests/forking.py`, that runs
+a callable in an explicitly forked child, by a raw `os.fork` or in a forked worker pool,
+and fails within a bounded time if the child hangs, crashes or exits non-zero. Its tests
+prove the child is forked rather than started fresh. Until the client has behaviour, the
+child can check only the import and the version; the marked placeholder for real
+assertions is listed on the register.
 
 ## Consequences
 

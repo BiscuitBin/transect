@@ -54,6 +54,10 @@ Questions that are not modules of their own.
   every public API.
 - **Data the client cannot accept.** What happens to data the client cannot take without
   raising or blocking. Blocks: the ingest queue's capacity behaviour.
+- **Fork-safety assertions.** The test marked `# FORK-SAFETY PLACEHOLDER` in
+  `crates/transectpy/tests/test_fork.py` is where the client's behaviour under fork will
+  be asserted once the ingest queue, local database and data writer exist; today it
+  checks only the version. Blocks: nothing; it waits on the undecided areas.
 - **Arithmetic overflow.** Whether overflow in `+`, `-`, `*`, shifts and negation, which
   panics in debug builds and is not linted, gets a lint or a checked-arithmetic rule once
   the client has real arithmetic. Blocks: nothing yet.
