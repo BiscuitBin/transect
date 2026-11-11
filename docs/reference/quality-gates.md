@@ -38,8 +38,9 @@ worktree, stops the run. On success it prints
 | 20 | `wheel-smoke-floor` | The same wheel works on CPython 3.11. | `python` and `wheel-smoke-py311`, both platforms |
 | 21 | `version-check` | One version everywhere ([decision 0006](../decisions/0006-single-version.md)). | `python`, both platforms |
 | 22 | `check-docs` | The documents lint clean and the handbook contract holds. | `documents` |
-| 23 | `check-undecided` | The `UNDECIDED` markers and the register agree. | `documents` |
-| 24 | `snapshots-check` | Snapshots match and none is orphaned. | `rust`, Linux |
+| 23 | `check-agents` | `AGENTS.md`, its adapters and every skill's bridges satisfy the agent contract. | `documents` |
+| 24 | `check-undecided` | The `UNDECIDED` markers and the register agree. | `documents` |
+| 25 | `snapshots-check` | Snapshots match and none is orphaned. | `rust`, Linux |
 
 The `check` job also runs `just check` whole on both platforms. Every CI job that runs
 recipes ends with `just check-clean`.

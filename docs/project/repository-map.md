@@ -42,7 +42,8 @@ Where everything lives. Paths are relative to the repository root.
 | Path | What it is |
 | --- | --- |
 | `docs/` | This handbook; `docs/manifest.yml` registers every page. |
-| `README.md`, `CHANGELOG.md`, `AGENTS.md`, `CLAUDE.md` | Entry files; placeholders until later tickets replace them. |
+| `AGENTS.md` | The canonical agent contract. `CLAUDE.md` and `.github/copilot-instructions.md` point to it; `.agents/skills/` holds the canonical skills, bridged by `.claude/skills/` and `.codex/skills/`. |
+| `README.md`, `CHANGELOG.md` | Entry files; placeholders until ticket 12 replaces them. |
 | `.scratch/` | Tracked bootstrap tickets; local ticket scratch is otherwise gitignored. |
 
 ## Generated and local, never committed

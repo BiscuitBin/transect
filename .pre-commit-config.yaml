@@ -75,6 +75,14 @@ repos:
         pass_filenames: false
         files: ^(README\.md|docs/|pyproject\.toml$)
 
+      # The agent contract, run through pixi for the reason validate-docs gives.
+      - id: validate-agents
+        name: Agent instruction contract
+        entry: pixi run --frozen bg-validate-agents
+        language: system
+        pass_filenames: false
+        files: ^(AGENTS\.md|CLAUDE\.md|\.agents/|\.claude/|\.codex/|\.github/copilot-instructions\.md|pyproject\.toml$)
+
       # The UNDECIDED markers and the open-decisions register agree.
       - id: check-undecided
         name: UNDECIDED markers match the register

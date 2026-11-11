@@ -224,6 +224,7 @@ jobs:
           cache-key: documents
       - run: just lint
       - run: just check-docs
+      - run: just check-agents
       - run: just check-undecided
       # For the reason rust's last step gives.
       - run: just check-clean

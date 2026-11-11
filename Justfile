@@ -323,6 +323,11 @@ check-docs:
 check-undecided:
     python -I scripts/check_undecided.py
 
+# The agent contract: AGENTS.md carries the required guidance, the adapters
+# are exact, and every skill's bridges repeat its frontmatter and add nothing.
+check-agents:
+    bg-validate-agents
+
 # Every link, external ones included (network); outside `just check`.
 check-links-online:
     prek run --all-files --hook-stage manual lychee-online
