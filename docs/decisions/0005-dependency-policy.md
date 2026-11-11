@@ -20,9 +20,17 @@ the worktree between recipes, so no recipe may rewrite a lockfile.
 
 Third-party Rust dependencies use full `x.y.z` caret ranges in the one
 `[workspace.dependencies]` table, and members inherit them. `Cargo.lock` is committed and
-is the pin; every gate passes `--locked`, and `just lock-check` proves the lockfiles match
-their manifests, offline. The fuzz crate has its own committed `fuzz/Cargo.lock` under
-the same rule. pixi's tools are exact pins in `pyproject.toml`, locked in `pixi.lock`;
+is the pin; every cargo invocation that resolves dependencies passes `--locked`, with the
+exceptions below, and `just lock-check` proves the lockfiles match their manifests,
+offline.
+
+The snapshot recipes cannot pass `--locked`, because cargo-insta hands trailing options
+to nextest's test binaries; they depend on `just lock-check` and run offline
+(`CARGO_NET_OFFLINE`). The fuzz recipes cannot pass it to cargo-fuzz either, and run an
+offline `cargo update --locked` first. `libfuzzer-sys` is a caret range in
+`fuzz/Cargo.toml`, not in the workspace table: the fuzz crate is excluded from the
+workspace, never published, and cannot inherit the table, and its committed
+`fuzz/Cargo.lock` is its pin. pixi's tools are exact pins in `pyproject.toml`, locked in `pixi.lock`;
 tools pixi cannot supply are exact pins in `tools.txt` and `tools-source.txt`.
 
 `deny.toml` holds the policy cargo-deny enforces, offline in `just deny` for both the

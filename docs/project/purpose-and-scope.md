@@ -24,8 +24,9 @@ links or imports to record its data. It has three parts, one per crate:
 
 Today it is a scaffold. Each part exposes one thing, its version, and the places where
 the ingest queue, the local database, schema evolution and the data writer will live are
-documentation-only placeholders. Its quality gate, CI, handbook and agent contract are
-complete; its client behaviour has not started.
+documentation-only placeholders. Its quality gate, CI and handbook are complete; the
+agent contract in `AGENTS.md` is still a placeholder, and the client's behaviour has not
+started.
 
 Two rules shape everything the client will do: it never raises into or blocks the host
 application ([decision 0001](../decisions/0001-never-raise-never-block.md)), and it
