@@ -39,10 +39,11 @@ gh workflow run pages.yml --ref main
 
 ## What to do with a finding
 
-- **Advisory:** update the affected crate within its range (`just lock`), or record why
-  the advisory does not apply.
-- **Fuzz crash:** reproduce with `just fuzz smoke` locally on the downloaded input, fix it
-  in the core, and add a regression test.
+- **Advisory:** move the affected crate to the newest release its range admits
+  (`just lock-upgrade`, then review the lockfile diff), or record why the advisory does
+  not apply.
+- **Fuzz crash:** replay the downloaded input with `just fuzz-replay <target> <file>`,
+  fix the crash in the core, and add a regression test.
 - **Surviving mutant:** add the test that kills it.
 
 ## Related pages

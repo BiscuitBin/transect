@@ -79,3 +79,7 @@ There were no parallel lanes: tickets 01–09 ran in order on one branch. "Mergi
 
 - Mark `ci-ok` as the only required status check on `main`.
 - Enable branch protection on `main`: require pull requests and the `ci-ok` check, and disallow force pushes.
+
+### CI after hand-back
+
+Run 43010439622 on the hand-back commit `f233870` was cancelled by the concurrency group when `720a534` was pushed; run 43010760092 on `720a534` was green on all jobs, `ci-ok` included.

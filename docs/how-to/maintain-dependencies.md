@@ -27,8 +27,8 @@ Renovate proposes every version bump in this repository; nothing merges automati
 | Hook revisions | both prek configurations | Held for dashboard approval. |
 | Lockfile maintenance | all three lockfiles | Held for dashboard approval. |
 
-The tooling interpreter (`python` in `pyproject.toml`), the `setup-python` floor input
-and lychee's hook revision move by hand. A vulnerability fix skips the approval hold.
+The `setup-python` floor input moves by hand; the tooling interpreter moves only within
+3.14, and lychee's revision and its two `LYCHEE_VERSION` arguments move together. A vulnerability fix skips the approval hold.
 
 ## Taking an update
 

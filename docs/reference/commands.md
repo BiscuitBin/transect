@@ -37,6 +37,7 @@ every other recipe runs offline once `just initialize` has run.
 | `fix` | Runs every fixer in `.pre-commit-fix.yaml`, then clippy's fixes, then `lint`. |
 | `py-develop` | Builds the extension in place into the pixi environment. |
 | `bench` | Runs the benchmarks; never a gate. |
+| `fuzz-replay <target> <input>` | Replays one saved failing input against a fuzz target; never a gate. |
 | `fuzz [target] [seconds]` | Fuzzes a target for a bounded time; never a gate. |
 | `mutants` | Mutation testing over `libtransect` and `transect`; a report, never a gate. |
 | `snapshots-review` | Reviews pending snapshots interactively. |

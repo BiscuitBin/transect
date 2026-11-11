@@ -140,6 +140,13 @@ fuzz target="smoke" seconds="300":
     cargo update --workspace --locked --offline --manifest-path fuzz/Cargo.toml
     CARGO_NET_OFFLINE=true cargo fuzz run --sanitizer none --target "$(rustc -vV | sed -n 's/^host: //p')" "$1" -- -max_total_time="$2"
 
+# Replays one saved failing input, such as the artefact fuzz.yml uploads,
+# against a target once, with the same offline lock guard and target triple as
+# fuzz.
+fuzz-replay target input:
+    cargo update --workspace --locked --offline --manifest-path fuzz/Cargo.toml
+    CARGO_NET_OFFLINE=true cargo fuzz run --sanitizer none --target "$(rustc -vV | sed -n 's/^host: //p')" "$1" "$2"
+
 # The fuzz crate compiles on the pinned stable the way cargo-fuzz builds it,
 # without running it, so a fuzz target that stops building fails the gate rather
 # than the weekly job. The same offline lock guard and CARGO_NET_OFFLINE as fuzz.

@@ -52,14 +52,14 @@
       "dependencyDashboardApproval": true
     },
     {
-      "description": "python = \"==3.14.10\" is the tooling interpreter, moved by hand with the lockfile, not a pin to bump; the manager would otherwise offer 3.15.",
+      "description": "python = \"==3.14.10\" is the tooling interpreter: patch releases within 3.14 only, held for dashboard approval like every pixi pin; 3.15 is a decision, not a bump.",
       "matchManagers": [
         "pixi"
       ],
       "matchDepNames": [
         "python"
       ],
-      "enabled": false
+      "allowedVersions": "/^3\\.14\\./"
     },
     {
       "description": "python-version inputs of setup-python are manual: 3.11 is the abi3 floor (decision 0007), not a version to bump.",
@@ -174,11 +174,12 @@
       "dependencyDashboardApproval": true
     },
     {
-      "description": "lychee moves by hand: LYCHEE_VERSION in both argument lists must match its rev, and its tag prefix is lychee-v.",
+      "description": "lychee: the hook's rev SHA with its lychee-v tag comment and both LYCHEE_VERSION arguments, read by one regex manager and moved in one pull request. Held for dashboard approval; a vulnerability-fix pull request skips that approval.",
       "matchDepNames": [
         "lycheeverse/lychee"
       ],
-      "enabled": false
+      "groupName": "lychee",
+      "dependencyDashboardApproval": true
     }
   ],
   "customManagers": [
@@ -285,6 +286,20 @@
       "datasourceTemplate": "github-tags",
       "versioningTemplate": "loose",
       "autoReplaceStringTemplate": "- repo: https://github.com/{{{depName}}}\n    rev: {{{newDigest}}} # {{{newValue}}}"
+    },
+    {
+      "customType": "regex",
+      "description": "lychee: the rev SHA with its lychee-v tag comment, and both LYCHEE_VERSION arguments, which must equal it; the generic hook-rev manager does not match the lychee-v comment.",
+      "managerFilePatterns": [
+        "/^\\.pre-commit-config\\.yaml$/"
+      ],
+      "matchStrings": [
+        "- repo: https://github\\.com/lycheeverse/lychee\\n    rev: (?<currentDigest>[a-f0-9]{40}) # lychee-v(?<currentValue>\\d+(?:\\.\\d+)+)",
+        "LYCHEE_VERSION=(?<currentValue>\\d+\\.\\d+\\.\\d+)"
+      ],
+      "depNameTemplate": "lycheeverse/lychee",
+      "datasourceTemplate": "github-tags",
+      "extractVersionTemplate": "^lychee-v(?<version>.*)$"
     }
   ]
 }
