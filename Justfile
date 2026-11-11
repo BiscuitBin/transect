@@ -227,17 +227,21 @@ doc:
     RUSTDOCFLAGS="-D warnings --cfg docsrs" cargo doc --workspace --no-deps --all-features --locked
 
 # Licences, bans and sources are answerable offline once `just sync` has run.
+# The fuzz crate is outside the workspace, so it gets its own run.
 deny:
     cargo deny --locked check licenses bans sources
+    cargo deny --locked --manifest-path fuzz/Cargo.toml check licenses bans sources
 
 # Advisories need the RustSec database over the network, so this sits outside
 # `just check`.
 audit:
     cargo deny --locked check advisories
+    cargo deny --locked --manifest-path fuzz/Cargo.toml check advisories
 
-# Unused dependencies in the workspace's manifests.
+# Unused dependencies in the workspace's manifests and the fuzz crate's.
 deps-unused:
     cargo shear
+    cargo shear fuzz
 
 # Mutation testing, a report and never a gate: it grows with the code towards
 # hours, and a mutant that survives asks for a judgement. It mutates a copy of

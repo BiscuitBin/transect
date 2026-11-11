@@ -1,3 +1,5 @@
+# The dependency policy for both graphs: the workspace's, and the fuzz crate's,
+# which is outside the workspace and checked by its own run of each recipe.
 [graph]
 # Every feature is on, so a dependency behind a feature is checked too.
 all-features = true
@@ -49,6 +51,9 @@ confidence-threshold = 0.9
 # Skip licence checks for this workspace's unpublished crates; until ticket 14
 # settles publishing, they carry their licence in package metadata.
 private = { ignore = true }
+# libFuzzer's licence adds NCSA, a permissive licence; the crate is built only into
+# the fuzz binary, which is never shipped.
+exceptions = [{ crate = "libfuzzer-sys", allow = ["NCSA"] }]
 
 [bans]
 # Surface duplicate versions without banning otherwise compatible transitive trees.
