@@ -42,8 +42,10 @@ worktree, stops the run. On success it prints
 | 24 | `check-undecided` | The `UNDECIDED` markers and the register agree. | `documents` |
 | 25 | `snapshots-check` | Snapshots match and none is orphaned. | `rust`, Linux |
 
-The `check` job also runs `just check` whole on both platforms. Every CI job that runs
-recipes ends with `just check-clean`.
+The `check` job also runs `just check` whole on both platforms. Every CI job ends by
+proving the worktree clean: `just check-clean` where it has `just`, `git status` in
+`wheel-smoke-py311`. The `ci-ok` job needs every other job and fails if any failed, was
+cancelled or was skipped; it is the one status branch protection should require.
 
 ## Related pages
 

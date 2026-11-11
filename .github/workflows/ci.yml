@@ -25,8 +25,10 @@ env:
   CARGO_NET_RETRY: '10'
   RUST_BACKTRACE: '1'
 
-# Linux and macOS, the two supported platforms. Later tickets add one job per
-# group of gates; ticket 10 puts every job behind one aggregate required check.
+# Linux and macOS, the two supported platforms. `check` runs the whole gate on
+# both; the other jobs split the gates so a failure names itself, and run the
+# platform-dependent ones on both. `ci-ok`, last, is the one required check: it
+# needs every other job, so no job name carries a slash or a space.
 jobs:
   check:
     name: check (${{ matrix.os }})
@@ -161,11 +163,15 @@ jobs:
         with:
           name: wheel-${{ runner.os }}
           path: dist
+      # The venv lives outside the checkout, so the last line can prove the
+      # checkout clean the way check-clean does in the jobs that have `just`.
       - run: |
-          python -m venv venv
-          venv/bin/python -c 'import sys; assert sys.version_info[:2] == (3, 11), sys.version'
-          venv/bin/pip install --no-index --no-deps dist/*.whl
-          venv/bin/python -I tests/fixtures/smoke/smoke.py
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/python" -c 'import sys; assert sys.version_info[:2] == (3, 11), sys.version'
+          "$RUNNER_TEMP/venv/bin/pip" install --no-index --no-deps dist/*.whl
+          "$RUNNER_TEMP/venv/bin/python" -I tests/fixtures/smoke/smoke.py
+          rm -rf dist
+          test -z "$(git status --porcelain)" || { git status --porcelain; exit 1; }
 
   coverage:
     name: coverage
@@ -228,3 +234,18 @@ jobs:
       - run: just check-undecided
       # For the reason rust's last step gives.
       - run: just check-clean
+
+  # The one required check. It needs every gate job and fails if any of them
+  # failed, was cancelled or was skipped, so branch protection names `ci-ok`
+  # alone and never changes when a job is added: a new job joins `needs` here.
+  # `if: always()` makes it report on a failure instead of being skipped, which
+  # is why the step reads `needs.*.result` itself. No checkout, no setup.
+  ci-ok:
+    name: ci-ok
+    needs: [check, rust, python, wheel-smoke-py311, coverage, deny, documents]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - if: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') || contains(needs.*.result, 'skipped') }}
+        run: exit 1
