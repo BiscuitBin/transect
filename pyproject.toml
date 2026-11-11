@@ -23,6 +23,8 @@ requires-pixi = ">=0.84.1"
 # pick 3.15.0rc2, and "3.14.*" would let `just lock-upgrade` move the patch level.
 python = "==3.14.10"
 just = "==1.59.0"
+# The hook runner for both hook configurations.
+prek = "==0.5.7"
 # For tools.txt and tools-source.txt only: cargo-hack and rustqual are not on conda-forge.
 cargo-binstall = "==1.26.1"
 cargo-nextest = "==0.9.150"
@@ -57,6 +59,7 @@ biscuit-games-tooling = { git = "https://github.com/steven-cutting/biscuit_games
 recipes = [
   "check-toolchain",
   "lock-check",
+  "lint",
   "fmt-check",
   "toml-check",
   "clippy",

@@ -1,9 +1,10 @@
 name: Set up the transect toolchain
 description: >-
-  pixi and the environment pixi.lock pins (every tool binary, Python and the
-  tooling package's checkers), the toolchain rust-toolchain.toml pins through
+  pixi and the environment pixi.lock pins (every tool binary, Python, prek and
+  the tooling package's checkers), the toolchain rust-toolchain.toml pins through
   the runner's rustup, the cargo caches, the binaries in .tools/bin that
-  conda-forge lacks, and the lockfile sync. Runs after the checkout.
+  conda-forge lacks, the lockfile sync, and every hook environment. Runs after
+  the checkout.
 
 inputs:
   cache-key:
@@ -72,7 +73,22 @@ runs:
       env:
         GITHUB_TOKEN: ${{ github.token }}
     # Exactly what the lockfiles say: both Cargo.locks fetched, pixi.lock
-    # installed, none rewritten. After this step no step reaches the
-    # network.
+    # installed, none rewritten.
     - run: just sync
+      shell: bash
+    # prek's cache outside the workspace, so check-clean's snapshot never
+    # sees it. PREK_HOME is the variable prek reads for that cache.
+    - run: echo "PREK_HOME=${{ runner.temp }}/prek" >> "$GITHUB_ENV"
+      shell: bash
+    # The hook clones, the Go, Node and rustup toolchains and the ripsecrets
+    # build, which every gate job would otherwise fetch again. Keyed on both
+    # hook configs and on pixi.lock, which pins prek.
+    - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ${{ runner.temp }}/prek
+        key: ${{ runner.os }}-${{ runner.arch }}-prek-${{ hashFiles('.pre-commit-config.yaml', '.pre-commit-fix.yaml', 'pixi.lock') }}
+    # The prepare and the lychee warm are the point; the shim it writes into
+    # the runner's .git is harmless. After this step no step reaches the
+    # network.
+    - run: just install-hooks
       shell: bash

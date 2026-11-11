@@ -6,6 +6,10 @@
 .env.*
 !.env.example
 
+# lychee's link cache: `cache = true` in lychee.toml, so the offline hook
+# writes it beside the config and reads it on the next run.
+.lycheecache
+
 # Scratch for agents and maintainers alike: anything that is not a
 # deliverable goes here, never in a commit.
 ai_tmp/

@@ -100,6 +100,25 @@ lock-check:
     cargo update --workspace --locked --offline --manifest-path fuzz/Cargo.toml
     pixi lock --check --offline --dry-run
 
+# The shim, then every hook environment, so that `just check` never fetches.
+# Primary checkout only: every worktree of this repository shares one
+# .git/hooks directory, and `prek install` writes a shim naming an absolute
+# path into whichever worktree ran it, so a hook installed from a secondary
+# worktree runs that worktree's prek for commits made anywhere, and fails every
+# commit once the worktree is deleted. In a secondary worktree the common
+# directory and the git directory differ, which is the test git itself uses.
+# lychee is `language: script` and downloads its binary at first run, not at
+# prepare, so it is run once here on one Markdown file; its exit status is
+# lint's business, not this recipe's. RUSTUP_AUTO_INSTALL=0 stops its
+# cargo-binstall step from installing another toolchain.
+install-hooks:
+    git rev-parse --is-inside-work-tree >/dev/null
+    [ "$(git rev-parse --git-common-dir)" = "$(git rev-parse --git-dir)" ] || { printf '%s\n' 'install-hooks: this is a secondary worktree; run it once from the primary checkout' >&2; exit 2; }
+    test -x .pixi/envs/default/bin/prek || { printf '%s\n' 'the pixi environment is not installed; run just initialize first' >&2; exit 2; }
+    prek install --overwrite --hook-type=pre-commit --prepare-hooks
+    prek prepare-hooks --config .pre-commit-fix.yaml
+    -RUSTUP_AUTO_INSTALL=0 prek run lychee --files README.md
+
 # ---------------------------------------------------------------- develop ---
 
 # Benchmarks, by hand: timings measure the machine and its load as much as the
@@ -170,7 +189,22 @@ format:
     cargo fmt --manifest-path fuzz/Cargo.toml
     taplo fmt
 
+# Automatic repairs. The fix config is run twice because a fixer's first pass
+# may itself fail on what another fixer then repairs. Then clippy's own fixes,
+# and the read-only gate to show what is left.
+fix:
+    -prek run --all-files --config .pre-commit-fix.yaml
+    prek run --all-files --config .pre-commit-fix.yaml
+    cargo fmt --manifest-path fuzz/Cargo.toml
+    cargo clippy --workspace --all-targets --all-features --locked --fix --allow-dirty --allow-staged
+    cargo clippy --manifest-path fuzz/Cargo.toml --all-targets --locked --fix --allow-dirty --allow-staged
+    just lint
+
 # ------------------------------------------------------------------ check ---
+
+# Every hook in the read-only gate configuration, over every file.
+lint:
+    prek run --all-files
 
 fmt-check:
     cargo fmt --all --check
@@ -273,6 +307,16 @@ deps-unused:
 mutants *args: lock-check
     [ "$(cargo mutants --list --package libtransect --package transect --all-features "$@" | grep -c .)" -gt 0 ] || { printf '%s\n' 'mutants: no mutants found; the filters select nothing' >&2; exit 1; }
     cargo mutants --package libtransect --package transect --all-features --gitignore=true --cargo-arg=--locked "$@"
+
+# --------------------------------------------------------------- documents ---
+
+# Markdown lint, typos and the offline link check over every file.
+check-docs:
+    prek run --all-files markdownlint-cli2 typos lychee
+
+# Every link, external ones included (network); outside `just check`.
+check-links-online:
+    prek run --all-files --hook-stage manual lychee-online
 
 # ------------------------------------------------------------------ python ---
 
