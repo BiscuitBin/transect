@@ -22,17 +22,18 @@ initialize:
 
 # The pin in rust-toolchain.toml is honoured only by rustup's cargo proxy. A
 # cargo from pixi, Homebrew or a distribution ignores the file and builds with
-# whatever it is, so the gate refuses it before anything else runs. A proxy is
-# rustup itself under another name (a symlink or hard link), so the test is file
-# identity, not a path: CARGO_HOME pointed elsewhere cannot make a foreign cargo
-# pass. The proxy
+# whatever it is, so the gate refuses it before anything else runs. The test is
+# behaviour, not a path: only a rustup proxy accepts `+toolchain`, and the
+# runners lay rustup out differently (Ubuntu's ~/.cargo/bin, macOS's Homebrew
+# keg), so neither the path nor file identity with `rustup` would hold on both.
+# Pointing CARGO_HOME elsewhere cannot make a foreign cargo pass. The proxy
 # still obeys RUSTUP_TOOLCHAIN or a `rustup override`, both of which outrank
 # the file, so the active toolchain must then be the pinned channel, selected
 # by rust-toolchain.toml itself. RUSTUP_AUTO_INSTALL=0 makes an uninstalled
 # toolchain a refusal instead of a download.
 check-toolchain:
     command -v rustup >/dev/null || { printf '%s\n' 'rustup is not installed; see https://rustup.rs' >&2; exit 2; }
-    [ "$(command -v cargo)" -ef "$(command -v rustup)" ] || { printf '%s\n' "cargo resolves to $(command -v cargo), not rustup's proxy" >&2; exit 2; }
+    pin=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml); [ -n "$pin" ] || { printf '%s\n' 'rust-toolchain.toml names no channel' >&2; exit 2; }; RUSTUP_AUTO_INSTALL=0 cargo "+$pin" --version >/dev/null 2>&1 || { printf '%s\n' "cargo resolves to $(command -v cargo), not rustup's proxy for $pin" >&2; exit 2; }
     pin=$(sed -n 's/^channel = "\(.*\)"$/\1/p' rust-toolchain.toml); [ -n "$pin" ] || { printf '%s\n' 'rust-toolchain.toml names no channel' >&2; exit 2; }; active=$(RUSTUP_AUTO_INSTALL=0 rustup show active-toolchain); case "$active" in "$pin"-*" (overridden by '"*"/rust-toolchain.toml')") printf '%s\n' "$active" ;; *) printf '%s\n' "the active toolchain is $active; it must be $pin, selected by rust-toolchain.toml" >&2; exit 2;; esac
 
 # Installs the toolchain and components rust-toolchain.toml names.
