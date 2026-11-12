@@ -1,0 +1,75 @@
+[package]
+name = "libtransect-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+rust-version = "1.99"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+# libFuzzer drives arbitrary bytes into the smoke target. This unpublished crate is
+# outside the workspace and pinned by fuzz/Cargo.lock.
+libfuzzer-sys = "0.4.13"
+libtransect = { path = "../crates/libtransect", version = "0.1.0" }
+
+# An excluded crate cannot inherit [workspace.lints], so these tables are copied by
+# hand from the root Cargo.toml (comments dropped); keep them identical when the
+# policy changes. The root clippy.toml still applies: clippy finds it walking up
+# from this directory.
+[lints.rust]
+unsafe_code = "forbid"
+non_ascii_idents = "forbid"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+unreachable_pub = "warn"
+unnameable_types = "warn"
+unused_qualifications = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+
+[lints.rustdoc]
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"
+missing_crate_level_docs = "warn"
+unescaped_backticks = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+missing_const_for_fn = "warn"
+use_self = "warn"
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+unreachable = "warn"
+todo = "warn"
+unimplemented = "warn"
+indexing_slicing = "warn"
+integer_division_remainder_used = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+exhaustive_enums = "warn"
+exhaustive_structs = "warn"
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+tests_outside_test_module = "warn"
+mod_module_files = "warn"
+iter_over_hash_type = "warn"
+str_to_string = "warn"
+lossy_float_literal = "warn"
+float_cmp_const = "warn"
+same_name_method = "warn"
+cognitive_complexity = "warn"
+module_name_repetitions = "allow"
+multiple_crate_versions = "allow"
+
+[[bin]]
+name = "smoke"
+path = "fuzz_targets/smoke.rs"
+test = false
+doc = false
+bench = false

@@ -1,0 +1,192 @@
+# Publishes libtransect and then transect to crates.io from a version tag
+# (decision 0010). Neither model repository publishes crates; the shape follows
+# pachinko's release.yml (a read-only verify job running the whole gate, then a
+# publish job behind an environment that re-checks the tag) and the guards are
+# this repository's release-pypi.yml's. The same `v<version>` tag starts both
+# workflows; each publishes on its own environment approval. How a release is
+# cut: docs/how-to/release.md.
+name: Release to crates.io
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: publish to crates.io (a tag push always publishes; a dispatch publishes only when true)
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# Never cancel a run that may be mid-publish.
+concurrency:
+  group: release-crates-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  # The whole gate, the packaging dry run and the guards, with a read-only
+  # token and no OIDC token. A run that publishes (a tag push, or a dispatch
+  # with `publish` true) fails on any guard; a dry run reports the commit and
+  # changelog guards as warnings, as release-pypi.yml does.
+  verify:
+    name: verify
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      publish: ${{ steps.mode.outputs.publish }}
+      commit: ${{ steps.commit.outputs.commit }}
+    steps:
+      # The full history, so origin/main is present for the commit guard.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: release-crates
+      - run: just initialize
+      - run: just check
+      - run: just package-dry-run
+      - id: mode
+        name: Decide whether this run publishes
+        shell: bash
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          PUBLISH_INPUT: ${{ inputs.publish }}
+        run: |
+          publish=false
+          if [ "$EVENT" = push ] && [[ "$REF" == refs/tags/v* ]]; then
+            publish=true
+          elif [ "$EVENT" = workflow_dispatch ] && [ "$PUBLISH_INPUT" = true ]; then
+            publish=true
+          fi
+          echo "publish $publish"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
+      # The tag checks key on the ref type, not the event, so a dispatch that
+      # selects a tag is held to it exactly as a tag push is.
+      - id: commit
+        name: Guard the commit
+        shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+          PUBLISH: ${{ steps.mode.outputs.publish }}
+        run: |
+          level=warning
+          if [ "$PUBLISH" = true ]; then level=error; fi
+          ok=true
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::$level::$GITHUB_SHA is not on main"
+            ok=false
+          fi
+          if [ "$REF_TYPE" = tag ]; then
+            tagged=$(git rev-parse "refs/tags/$GITHUB_REF_NAME^{commit}")
+            if [ "$(git rev-parse HEAD)" != "$tagged" ]; then
+              echo "::error::HEAD is not the commit tag $GITHUB_REF_NAME names"
+              exit 1
+            fi
+          fi
+          if [ "$ok" = false ] && [ "$PUBLISH" = true ]; then exit 1; fi
+          echo "commit guard: $ok"
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - id: version
+        name: Guard the version
+        shell: bash
+        env:
+          REF_TYPE: ${{ github.ref_type }}
+        run: |
+          version=$(python3 -I -c 'import sys, tomllib; sys.stdout.write(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')
+          echo "workspace version $version"
+          if [ "$REF_TYPE" = tag ] && [ "$version" != "${GITHUB_REF_NAME#v}" ]; then
+            echo "::error::tag $GITHUB_REF_NAME disagrees with the workspace version $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Guard the changelog
+        shell: bash
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          PUBLISH: ${{ steps.mode.outputs.publish }}
+        run: |
+          # Exactly one heading `## [<version>] - YYYY-MM-DD`; a second one empties
+          # the notes. The section runs to the next heading or the link lines and
+          # must hold a line that is neither blank nor a heading.
+          awk -v prefix="## [$VERSION] - " '
+            index($0, prefix) == 1 && substr($0, length(prefix) + 1) ~ /^[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]$/ { if (seen) { dup = 1; exit } seen = 1; found = 1; next }
+            found && (index($0, "## [") == 1 || (index($0, "[") == 1 && index($0, "]: ") > 0)) { found = 0 }
+            found { print }
+            END { exit dup }
+          ' CHANGELOG.md > release-notes.md || : > release-notes.md
+          message="CHANGELOG.md needs exactly one section headed ## [$VERSION] - YYYY-MM-DD with a line that is not a heading"
+          if ! grep -qv -e '^#' -e '^[[:space:]]*$' release-notes.md; then
+            if [ "$PUBLISH" = true ]; then
+              echo "::error::$message"
+              exit 1
+            fi
+            echo "::warning::$message"
+          else
+            cat release-notes.md
+          fi
+
+  # The one job with an OIDC token, and it runs only when verify decided this
+  # run publishes: a dry run never reaches the `crates-io` environment. The
+  # environment's required reviewer is the approval that publishes.
+  publish:
+    name: publish
+    needs: [verify]
+    if: needs.verify.outputs.publish == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    environment: crates-io
+    permissions:
+      # The checkout of the verified commit and the tag re-check.
+      contents: read
+      # Trusted publishing's token exchange with crates.io.
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ needs.verify.outputs.commit }}
+          persist-credentials: false
+      # After the approval, which may come long after verify ran: a tag that
+      # was moved or deleted in between stops the publish.
+      - name: Re-check the tag
+        if: github.ref_type == 'tag'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFIED: ${{ needs.verify.outputs.commit }}
+        run: |
+          ref=$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$GITHUB_REF_NAME" --jq '.object.type + " " + .object.sha')
+          read -r kind sha <<< "$ref"
+          if [ "$kind" = tag ]; then
+            sha=$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$sha" --jq .object.sha)
+          fi
+          if [ "$sha" != "$VERIFIED" ]; then
+            echo "::error::tag $GITHUB_REF_NAME names $sha, verify checked $VERIFIED"
+            exit 1
+          fi
+          echo "tag $GITHUB_REF_NAME still names $VERIFIED"
+      - id: auth
+        uses: rust-lang/crates-io-auth-action@3268eb413133e2960fa4ae0e963ca76380c54cd9 # v1.0.6
+      # The core, then the client, which requires it. A version crates.io
+      # already holds is skipped, so a re-run after a part-way release finishes
+      # it; any answer from the sparse index but 200 or 404 stops the job.
+      - name: Publish to crates.io
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: |
+          version=$(python3 -I -c 'import sys, tomllib; sys.stdout.write(tomllib.load(open("Cargo.toml", "rb"))["workspace"]["package"]["version"])')
+          for crate in libtransect transect; do
+            code=$(curl -sS -o index.json -w '%{http_code}' "https://index.crates.io/${crate:0:2}/${crate:2:2}/$crate")
+            case "$code" in
+              200) if grep -q "\"vers\":\"$version\"" index.json; then echo "$crate $version is already published"; continue; fi ;;
+              404) ;;
+              *) echo "::error::the crates.io index answered $code for $crate"; exit 1 ;;
+            esac
+            cargo publish --locked -p "$crate"
+          done

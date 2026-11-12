@@ -1,0 +1,8 @@
+cache = true
+max_retries = 2
+max_concurrency = 8
+timeout = 20
+accept = [200, 204, 206, 429]
+# .scratch/ is tracked ticket scratch whose links point at the model
+# repositories on the author's machine.
+exclude_path = [".git", ".pixi", "ai_tmp", "target", ".tools", ".scratch", "dist"]

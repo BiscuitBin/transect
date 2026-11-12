@@ -1,0 +1,332 @@
+{
+  "schema_version": 1,
+  "pages": [
+    {
+      "path": "README.md",
+      "title": "Documentation map",
+      "kind": "project",
+      "audience": [
+        "user",
+        "contributor",
+        "maintainer",
+        "operator",
+        "agent"
+      ],
+      "canonical_for": [
+        "documentation_navigation"
+      ],
+      "requires": []
+    },
+    {
+      "path": "project/purpose-and-scope.md",
+      "title": "Purpose and scope",
+      "kind": "project",
+      "audience": [
+        "user",
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "project_purpose",
+        "project_non_goals"
+      ],
+      "requires": []
+    },
+    {
+      "path": "project/repository-map.md",
+      "title": "Repository map",
+      "kind": "project",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "repository_layout"
+      ],
+      "requires": []
+    },
+    {
+      "path": "project/glossary.md",
+      "title": "Glossary",
+      "kind": "project",
+      "audience": [
+        "user",
+        "contributor",
+        "maintainer",
+        "operator",
+        "agent"
+      ],
+      "canonical_for": [
+        "project_glossary"
+      ],
+      "requires": []
+    },
+    {
+      "path": "project/open-decisions.md",
+      "title": "Open decisions",
+      "kind": "project",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "open_decisions"
+      ],
+      "requires": []
+    },
+    {
+      "path": "tutorials/clone-to-green.md",
+      "title": "Clone to green",
+      "kind": "tutorial",
+      "audience": [
+        "contributor",
+        "agent"
+      ],
+      "canonical_for": [
+        "first_run_tutorial"
+      ],
+      "requires": []
+    },
+    {
+      "path": "how-to/develop-locally.md",
+      "title": "Develop locally",
+      "kind": "how-to",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "local_development"
+      ],
+      "requires": []
+    },
+    {
+      "path": "how-to/maintain-dependencies.md",
+      "title": "Maintain dependencies",
+      "kind": "how-to",
+      "audience": [
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "dependency_updates"
+      ],
+      "requires": []
+    },
+    {
+      "path": "explanation/architecture.md",
+      "title": "Architecture",
+      "kind": "explanation",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "architecture_overview"
+      ],
+      "requires": []
+    },
+    {
+      "path": "reference/commands.md",
+      "title": "Commands",
+      "kind": "reference",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "command_reference"
+      ],
+      "requires": []
+    },
+    {
+      "path": "reference/quality-gates.md",
+      "title": "Quality gates",
+      "kind": "reference",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "quality_gate_reference"
+      ],
+      "requires": []
+    },
+    {
+      "path": "operations/troubleshooting.md",
+      "title": "Troubleshooting",
+      "kind": "operations",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "operator",
+        "agent"
+      ],
+      "canonical_for": [
+        "troubleshooting"
+      ],
+      "requires": []
+    },
+    {
+      "path": "operations/maintenance.md",
+      "title": "Scheduled maintenance",
+      "kind": "operations",
+      "audience": [
+        "maintainer",
+        "operator",
+        "agent"
+      ],
+      "canonical_for": [
+        "scheduled_workflows",
+        "api_reference_site"
+      ],
+      "requires": []
+    },
+    {
+      "path": "decisions/README.md",
+      "title": "Architecture decisions",
+      "kind": "decision",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "decision_index"
+      ],
+      "requires": []
+    },
+    {
+      "path": "decisions/0003-crate-layering.md",
+      "title": "Decision 0003: Three crates, one dependency direction",
+      "kind": "decision",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "decision_crate_layering"
+      ],
+      "requires": []
+    },
+    {
+      "path": "decisions/0004-lint-policy.md",
+      "title": "Decision 0004: The lint policy rejects panic paths",
+      "kind": "decision",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "decision_lint_policy"
+      ],
+      "requires": []
+    },
+    {
+      "path": "decisions/0005-dependency-policy.md",
+      "title": "Decision 0005: Dependency policy: caret ranges, lockfiles and cargo-deny",
+      "kind": "decision",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "decision_dependency_policy"
+      ],
+      "requires": []
+    },
+    {
+      "path": "decisions/0006-single-version.md",
+      "title": "Decision 0006: One version for every crate and the wheel",
+      "kind": "decision",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "decision_single_version"
+      ],
+      "requires": []
+    },
+    {
+      "path": "decisions/0007-supported-platforms.md",
+      "title": "Decision 0007: Linux and macOS are the supported platforms",
+      "kind": "decision",
+      "audience": [
+        "user",
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "decision_supported_platforms"
+      ],
+      "requires": []
+    },
+    {
+      "path": "decisions/0008-tool-manager.md",
+      "title": "Decision 0008: pixi, rustup and just as the tool manager",
+      "kind": "decision",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "decision_tool_manager"
+      ],
+      "requires": []
+    },
+    {
+      "path": "decisions/0009-hooks.md",
+      "title": "Decision 0009: A read-only hook gate and a separate fixer",
+      "kind": "decision",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "decision_hooks"
+      ],
+      "requires": []
+    },
+    {
+      "path": "decisions/0010-release-process.md",
+      "title": "Decision 0010: The release process",
+      "kind": "decision",
+      "audience": [
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "decision_release_process"
+      ],
+      "requires": []
+    },
+    {
+      "path": "how-to/release.md",
+      "title": "Cut a release",
+      "kind": "how-to",
+      "audience": [
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "release_procedure"
+      ],
+      "requires": []
+    }
+  ]
+}

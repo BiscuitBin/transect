@@ -1,0 +1,16 @@
+# Binaries pixi cannot own, installed by `just install-tools` into the gitignored
+# .tools/bin through cargo-binstall (itself a pixi dependency in pyproject.toml), one
+# name@version per line. Everything conda-forge carries is pinned in pyproject.toml
+# and locked in pixi.lock; this file is the escape hatch for what it lacks, and
+# empties the day cargo-hack is packaged there. Tools a prek hook pins are not
+# listed: one owner per pin.
+# For `just features`; verified with `cargo info` on 2026-11-11.
+cargo-hack@0.6.45
+# For `just fuzz` and `just fuzz-build`; verified with `cargo info` on 2026-11-11:
+# conda-forge does not carry it. Its macOS release binary is x86_64 only, so on
+# Apple silicon it runs under Rosetta 2.
+cargo-fuzz@0.13.2
+# For preparing a release (decision 0010); verified with `cargo info` and its
+# GitHub release on 2026-11-11: release binaries for both platforms, no conda
+# package.
+cargo-release@1.1.7

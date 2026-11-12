@@ -1,0 +1,38 @@
+# The `-in-tests` keys lift unwrap_used, expect_used, panic, dbg_macro, print_stdout,
+# print_stderr and indexing_slicing in `#[test]` functions and `#[cfg(test)]` code: a
+# failing test should panic loudly, and a test may index and print freely. Outside
+# test code every one of them stays in force: this is decision 0004's
+# enforcement for explicit panics, unwrap, expect and indexing. Clippy has no such
+# key for unreachable, todo or unimplemented, so those stay in force in tests too.
+allow-unwrap-in-tests = true
+allow-expect-in-tests = true
+allow-panic-in-tests = true
+allow-indexing-slicing-in-tests = true
+allow-dbg-in-tests = true
+allow-print-in-tests = true
+# Iteration over these is in an unspecified order, so anything built from it can
+# differ between runs; use the ordered collections instead.
+disallowed-types = [
+  { path = "std::collections::HashMap", reason = "iteration order is not deterministic; use BTreeMap" },
+  { path = "std::collections::HashSet", reason = "iteration order is not deterministic; use BTreeSet" },
+]
+# Tighter than clippy's defaults (25, 100 and 7; excessive_nesting does nothing until
+# a threshold is set): a function past one of them is split, not excused.
+# cognitive_complexity is a restriction lint, enabled in Cargo.toml.
+cognitive-complexity-threshold = 15
+excessive-nesting-threshold = 4
+too-many-lines-threshold = 60
+too-many-arguments-threshold = 5
+# assert!, assert_eq!, assert_ne! and their debug_ forms panic too (debug_assert! in
+# every debug build of a host application), and clippy has no `allow-...-in-tests`
+# key for them, so they are banned here and each test module lifts the ban with a
+# reasoned #[expect(clippy::disallowed_macros, reason = "...")]. Doctests are built
+# by rustdoc, not linted, so their assertions are unaffected.
+disallowed-macros = [
+  { path = "core::assert", reason = "panics; return an error" },
+  { path = "core::assert_eq", reason = "panics; return an error" },
+  { path = "core::assert_ne", reason = "panics; return an error" },
+  { path = "core::debug_assert", reason = "panics in debug builds; return an error" },
+  { path = "core::debug_assert_eq", reason = "panics in debug builds; return an error" },
+  { path = "core::debug_assert_ne", reason = "panics in debug builds; return an error" },
+]

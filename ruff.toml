@@ -1,0 +1,49 @@
+# Match the wheel's minimum Python, rather than the tooling interpreter.
+target-version = "py311"
+# Match rustfmt's house line width.
+line-length = 100
+# Normal discovery skips deliberately broken controls; generated paths are
+# gitignored. The tracked ticket scratch under .scratch/ is not this project's
+# Python.
+extend-exclude = ["tests/fixtures/py-lint-violation", ".scratch"]
+# Leave force-exclude at its false default: explicitly named positive controls must run.
+
+[lint]
+# Check every rule so new Python code cannot silently escape a rule family.
+select = ["ALL"]
+ignore = [
+  "COM812", # Conflicts with the formatter's trailing-comma handling.
+  "ISC001", # Conflicts with the formatter's string layout.
+]
+
+[lint.pydocstyle]
+# Google convention chooses compatible docstring spacing and summary rules.
+convention = "google"
+
+[lint.per-file-ignores]
+"crates/transectpy/tests/**" = [
+  "S101",   # Assertions express the public API test contract.
+  "INP001", # Tests are discovered without an importable test package.
+]
+"tests/scripts/**" = [
+  "S101",   # Assertions express the script's test contract.
+  "INP001", # Tests are discovered without an importable test package.
+  "S603",   # The fixture runs cargo with fixed arguments and no shell.
+  "S607",   # The fixture runs PATH's cargo, which check-toolchain proves is rustup's.
+]
+"crates/transectpy/python/transectpy/_transectpy.pyi" = [
+  "PYI021", # The documented stub is the canonical description of the Python API.
+]
+"tests/fixtures/smoke/**" = [
+  "INP001", # The isolated wheel smoke is a standalone script.
+  "S101",   # Assertions are the smoke's contract.
+  "T201",   # The smoke prints what it imported, for the log.
+]
+"scripts/**" = [
+  "INP001", # Repository scripts are standalone, not an importable package.
+  "T201",   # The version checker prints its verdict.
+  "S603",   # The version checker runs fixed executables without a shell.
+]
+
+# All formatter settings retain their defaults.
+[format]

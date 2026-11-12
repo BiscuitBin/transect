@@ -1,0 +1,38 @@
+[build-system]
+requires = ["maturin>=1.16,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "transectpy"
+# Static, not dynamic: the wheel's version is written here and in the workspace
+# Cargo.toml, and `just version-check` holds the two equal.
+version = "0.1.0"
+description = "The Python client of Transect: a scaffold with no implementation yet"
+# The PyPI long description, which describes only what the wheel does.
+readme = "README.md"
+requires-python = ">=3.11"
+license = "Apache-2.0"
+# The text ships in the wheel's .dist-info/licenses/. Globs cannot leave this
+# directory, hence the copy here.
+license-files = ["LICENSE"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Rust",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Typing :: Typed",
+]
+
+[project.urls]
+Repository = "https://github.com/BiscuitBin/transect"
+
+# No [tool.pixi] table: pixi reads only the root pyproject.toml.
+[tool.maturin]
+python-source = "python"
+module-name = "transectpy._transectpy"
+# Every maturin build honours the workspace Cargo.lock, as every gate does.
+locked = true
+# The Python gates leave bytecode beside the source, and maturin would ship it:
+# a .pyc tied to whichever interpreter last imported the package.
+exclude = ["**/__pycache__/**", "**/*.pyc"]

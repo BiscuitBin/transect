@@ -1,0 +1,133 @@
+[workspace]
+# Edition 2024 feature resolution, with every crate discovered under crates/.
+resolver = "3"
+members = ["crates/*"]
+# The fuzz crate is its own root with its own lockfile: outside the workspace,
+# cargo hack, cargo shear, coverage and Cargo.lock.
+exclude = ["fuzz"]
+
+# One version, licence, edition and toolchain floor for every crate; members
+# inherit these fields, so the version is written once here (decision 0006).
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+# The toolchain pin's major.minor (rust-toolchain.toml); lowering it below the
+# pin is a decision of its own, not part of a release.
+rust-version = "1.99"
+license = "Apache-2.0"
+repository = "https://github.com/BiscuitBin/transect"
+homepage = "https://github.com/BiscuitBin/transect"
+authors = ["Steven Cutting"]
+
+# cargo-release prepares a release and nothing more (decision 0010): it moves the
+# one version, the requirements on it and the files the transect crate's
+# replacements name, and commits on a release branch. Tagging, pushing and
+# publishing are each a separate, separately authorised step.
+[workspace.metadata.release]
+shared-version = true
+# One release commit for the one version.
+consolidate-commits = true
+allow-branch = ["release/*"]
+pre-release-commit-message = "Release {{version}}"
+tag = false
+push = false
+publish = false
+
+# Every level here is `warn` so a local build never breaks mid-edit; `just clippy`
+# passes `-D warnings`, which is where a warning becomes a failure.
+[workspace.lints.rust]
+# Forbid unsafe code even in the bindings; pyo3 emits its own trusted macro internals.
+unsafe_code = "forbid"
+# Keep identifiers portable and avoid visually confusable names.
+non_ascii_idents = "forbid"
+# Public Rust API needs docs and Debug; idiom checks keep edition transitions clean.
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+rust_2018_idioms = { level = "warn", priority = -1 }
+# Expose only reachable, nameable API and remove redundant qualification and casts.
+unreachable_pub = "warn"
+unnameable_types = "warn"
+unused_qualifications = "warn"
+trivial_casts = "warn"
+trivial_numeric_casts = "warn"
+
+[workspace.lints.rustdoc]
+# Treat broken or private API links as errors, and keep crate prose well formed.
+broken_intra_doc_links = "deny"
+private_intra_doc_links = "deny"
+missing_crate_level_docs = "warn"
+unescaped_backticks = "warn"
+
+[workspace.lints.clippy]
+# Apply the full pedantic and Cargo policy, allowing individual levels to override groups.
+pedantic = { level = "warn", priority = -1 }
+cargo = { level = "warn", priority = -1 }
+# Keep const-capable functions and self references idiomatic.
+missing_const_for_fn = "warn"
+use_self = "warn"
+# Production code propagates errors and avoids panic paths, placeholders and debug I/O.
+# Assertions, which no lint here covers, are banned through clippy.toml's disallowed-macros.
+unwrap_used = "warn"
+expect_used = "warn"
+panic = "warn"
+unreachable = "warn"
+todo = "warn"
+unimplemented = "warn"
+# Not in the models' list: unchecked `v[i]` and `&s[a..b]` panic when out of range,
+# so they are rejected like unwrap; use `get` and handle the miss. clippy.toml lifts
+# it in test code.
+indexing_slicing = "warn"
+# Not in the models' list either: integer `/` and `%` panic on a zero divisor (and
+# on MIN / -1) in every build profile, so they are rejected like unwrap; use
+# `checked_div` and `checked_rem` and handle the None.
+integer_division_remainder_used = "warn"
+dbg_macro = "warn"
+print_stdout = "warn"
+print_stderr = "warn"
+# Leave public data types extensible as the client's API grows.
+exhaustive_enums = "warn"
+exhaustive_structs = "warn"
+# Suppressions must be reasoned expect attributes, so stale exceptions are detected.
+# The lints reject an outer #[allow] and any allow without a reason; an inner
+# #![allow(..., reason = "...")] passes both, so the clippy recipe rejects that form
+# with a search of its own.
+allow_attributes = "warn"
+allow_attributes_without_reason = "warn"
+# Colocate unit tests in test modules and use the flat Rust module file layout.
+tests_outside_test_module = "warn"
+mod_module_files = "warn"
+# Keep output order deterministic and avoid implicit string allocation or lossy floats.
+iter_over_hash_type = "warn"
+str_to_string = "warn"
+lossy_float_literal = "warn"
+float_cmp_const = "warn"
+# Inherent and trait methods should not silently compete under one name.
+same_name_method = "warn"
+# A restriction lint, so the pedantic group does not enable it; clippy.toml sets its threshold.
+cognitive_complexity = "warn"
+# A type named after its module reads better in a signature than its stem alone;
+# the lint would rename it.
+module_name_repetitions = "allow"
+# cargo-deny's bans.multiple-versions owns this check.
+multiple_crate_versions = "allow"
+
+# Cargo.lock pins the resolved versions; these are the ranges.
+[workspace.dependencies]
+# The client depends on the core, never the reverse. Without the version beside
+# the path, cargo-deny's `wildcards = "deny"` would reject the dependency, and a
+# crates.io package could not name it.
+libtransect = { path = "crates/libtransect", version = "0.1.0" }
+# Development only, for `just bench`, never a gate: outside the graph a consumer
+# resolves and outside cargo-deny's (exclude-dev). Caret range; Cargo.lock is the
+# pin. Its MSRV, 1.80.0, is below the toolchain pin.
+divan = "0.1.21"
+# Caret range; Cargo.lock is the pin. The stable Python ABI starts at 3.11, the
+# wheel's floor; maturin supplies extension-module build behaviour. Only the
+# binding crate may depend on it.
+pyo3 = { version = "0.30.1", features = ["abi3-py311"] }
+# The Rust client, for the binding crate.
+transect = { path = "crates/transect", version = "0.1.0" }
+
+[profile.test]
+# Light optimisation keeps test runs fast without release-build compile costs.
+opt-level = 1

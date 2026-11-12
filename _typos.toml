@@ -1,0 +1,23 @@
+# The only typos configuration. pyproject.toml carries no [tool.typos]: typos
+# stops at the first configuration file it finds, and finds this one.
+
+[files]
+# Lockfiles carry hashes and names that look like typos; the environment and
+# tool directories hold binaries; .scratch/ is tracked ticket scratch, not this
+# repository's prose.
+extend-exclude = [
+  "Cargo.lock",
+  "fuzz/Cargo.lock",
+  "pixi.lock",
+  ".pixi/",
+  ".tools/",
+  "target/",
+  "ai_tmp/",
+  ".scratch/",
+  "dist/",
+]
+
+[default.extend-words]
+# "mis-" as a hyphenated prefix (mis-wired, mis-asserting) reads as the
+# fragment "mis", which the checker's dictionary mistakes for "miss"/"mist".
+mis = "mis"
