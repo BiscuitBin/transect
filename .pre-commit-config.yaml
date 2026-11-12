@@ -83,14 +83,6 @@ repos:
         pass_filenames: false
         files: ^(AGENTS\.md|CLAUDE\.md|\.agents/|\.claude/|\.codex/|\.github/copilot-instructions\.md|pyproject\.toml$)
 
-      # The UNDECIDED markers and the open-decisions register agree.
-      - id: check-undecided
-        name: UNDECIDED markers match the register
-        entry: just check-undecided
-        language: system
-        pass_filenames: false
-        files: ^(crates/.*\.rs|docs/project/open-decisions\.md|scripts/check_undecided\.py)$
-
   - repo: builtin
     hooks:
       - id: check-added-large-files

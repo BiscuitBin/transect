@@ -1,5 +1,8 @@
 # transect
 
+Transect is an observability tool that captures information about an application, its
+runtime and its state, and publishes it so it can be queried.
+
 `transect` is the Rust client API of Transect's in-application client: the crate a Rust
 host application depends on. It is built on the `libtransect` core and translates the
 core's behaviour; it holds none of its own.

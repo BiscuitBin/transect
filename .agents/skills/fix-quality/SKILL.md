@@ -13,17 +13,17 @@ description: Diagnose and repair a failing quality gate at its root instead of s
    - `lock-check`: run `just lock`, a network recipe needing explicit authorization,
      and read the lockfile diff before accepting it.
    - `lint`: a hook failed. Hooks named after a recipe (`fmt-check`, `toml-check`,
-     `deps-unused`, `py-lint`, `py-typecheck`, `check-undecided`) go to that recipe's
-     line below; `validate-docs` goes to `check-docs`, `validate-agents` to
-     `check-agents`. For the rest (Markdown, typos, links, shell, workflows, secrets,
-     whitespace), run `just fix`, then repair the remainder by hand. Remove a secret
-     ripsecrets found; never allowlist it.
+     `deps-unused`, `py-lint`, `py-typecheck`) go to that recipe's line below;
+     `validate-docs` goes to `check-docs`, `validate-agents` to `check-agents`. For the
+     rest (Markdown, typos, links, shell, workflows, secrets, whitespace), run `just fix`,
+     then repair the remainder by hand. Remove a secret ripsecrets found; never
+     allowlist it.
    - `fmt-check` or `toml-check`: run `just fix`; never hand-format to match.
    - `clippy`: fix the code. A lint wrong for one item gets
      `#[expect(lint, reason = "...")]` there; never `allow`, never an inner `#![allow`.
-     A panic path is fixed by returning an error (decision 0001), not by suppressing.
+     A panic path is fixed by returning an error (decision 0004), not by suppressing.
    - `fuzz-build`: the fuzz target no longer builds; on Apple silicon, check Rosetta.
-   - `metrics`: lower the complexity, cohesion or coupling rustqual reports; never raise
+   - `metrics`: lower the complexity, cohesion or coupling rustqual reports; never loosen
      a threshold in `rustqual.toml`. A version mismatch means `just install-tools`, a
      network recipe needing explicit authorization, has not run here.
    - `features`: fix the `cfg` for the failing combination; keep the whole powerset.
@@ -43,8 +43,6 @@ description: Diagnose and repair a failing quality gate at its root instead of s
      install offline; a missing floor interpreter means `just install-tools`.
    - `version-check`: two copies of the one version disagree; the message names both.
    - `check-docs`: frontmatter must equal the manifest entry, list order included.
-   - `check-undecided`: a marker and the register disagree; change both together, and
-     only as part of a recorded decision.
    - `check-agents`: inventory, required guidance and exact bridge content.
    - `snapshots-check`: if the change is intended, run `just snapshots-accept` and
      explain every resulting diff.

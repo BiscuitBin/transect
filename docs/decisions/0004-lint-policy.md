@@ -1,21 +1,22 @@
 ---
-title: "Decision 0004: The lint policy is the enforcement of never-raise"
+title: "Decision 0004: The lint policy rejects panic paths"
 kind: "decision"
 audience: ["contributor", "maintainer", "agent"]
 canonical_for: ["decision_lint_policy"]
 requires: []
 ---
 
-# Decision 0004: The lint policy is the enforcement of never-raise
+# Decision 0004: The lint policy rejects panic paths
 
 Adapted from the models' Rust quality gate (alliumpy decision 0005, pachinko's lint
 tables), with additions.
 
 ## Context
 
-[Decision 0001](0001-never-raise-never-block.md) forbids raising into the host, and a Rust
-panic becomes an exception at the PyO3 boundary. Review alone does not reliably find
-every panic path, so the panic paths that a tool can find are rejected by the tool.
+A library embedded in a host application should fail through explicit errors, not
+panics, and a Rust panic becomes an exception at the PyO3 boundary. Review alone does
+not reliably find every panic path, so the panic paths that a tool can find are rejected
+by the tool.
 
 ## Decision
 
@@ -53,10 +54,8 @@ shifts and negation is not linted: it panics in debug builds and wraps in releas
 ## What would reopen this
 
 A clippy release that adds a test-scoped exemption for the assertion macros, which would
-replace the `disallowed-macros` arrangement, or a fork-handling design that needs unsafe
-code.
+replace the `disallowed-macros` arrangement.
 
 ## Related pages
 
 - [Quality gates](../reference/quality-gates.md)
-- [Decision 0001: Never raise, never block](0001-never-raise-never-block.md)

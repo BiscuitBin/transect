@@ -21,7 +21,7 @@ worktree, stops the run. On success it prints
 | 3 | `lint` | Every hook in `.pre-commit-config.yaml` passes over every file. | `documents` |
 | 4 | `fmt-check` | Rust is formatted. | `rust`, Linux |
 | 5 | `toml-check` | TOML is formatted and valid. | `rust`, Linux |
-| 6 | `clippy` | The lint policy of [decision 0004](../decisions/0004-lint-policy-enforces-never-raise.md) holds, with no inner `#![allow`. | `rust`, Linux |
+| 6 | `clippy` | The lint policy of [decision 0004](../decisions/0004-lint-policy.md) holds, with no inner `#![allow`. | `rust`, Linux |
 | 7 | `fuzz-build` | The fuzz crate builds under cargo-fuzz. | `rust`, Linux |
 | 8 | `metrics` | Complexity, cohesion and coupling stay within `rustqual.toml`. | `rust`, Linux |
 | 9 | `features` | Every feature combination compiles and passes clippy. | `rust`, Linux |
@@ -39,8 +39,7 @@ worktree, stops the run. On success it prints
 | 21 | `version-check` | One version everywhere ([decision 0006](../decisions/0006-single-version.md)). | `python`, both platforms |
 | 22 | `check-docs` | The documents lint clean and the handbook contract holds. | `documents` |
 | 23 | `check-agents` | `AGENTS.md`, its adapters and every skill's bridges satisfy the agent contract. | `documents` |
-| 24 | `check-undecided` | The `UNDECIDED` markers and the register agree. | `documents` |
-| 25 | `snapshots-check` | Snapshots match and none is orphaned. | `rust`, Linux |
+| 24 | `snapshots-check` | Snapshots match and none is orphaned. | `rust`, Linux |
 
 The `check` job also runs `just check` whole on both platforms. Every CI job ends by
 proving the worktree clean: `just check-clean` where it has `just`, `git status` in
@@ -50,4 +49,4 @@ cancelled or was skipped; it is the one status branch protection should require.
 ## Related pages
 
 - [Commands](commands.md)
-- [Decision 0004: The lint policy](../decisions/0004-lint-policy-enforces-never-raise.md)
+- [Decision 0004: The lint policy](../decisions/0004-lint-policy.md)

@@ -344,12 +344,6 @@ check-docs:
     prek run --all-files markdownlint-cli2 typos lychee
     bg-validate-docs
 
-# Gate: every `//! UNDECIDED:` marker under crates/ is listed under
-# "Undecided areas" in docs/project/open-decisions.md, and every path listed
-# there carries the marker, so the register and the stubs cannot drift apart.
-check-undecided:
-    python -I scripts/check_undecided.py
-
 # The agent contract: AGENTS.md carries the required guidance, the adapters
 # are exact, and every skill's bridges repeat its frontmatter and add nothing.
 check-agents:

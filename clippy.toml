@@ -1,7 +1,7 @@
 # The `-in-tests` keys lift unwrap_used, expect_used, panic, dbg_macro, print_stdout,
 # print_stderr and indexing_slicing in `#[test]` functions and `#[cfg(test)]` code: a
 # failing test should panic loudly, and a test may index and print freely. Outside
-# test code every one of them stays in force: this is the never-raise rule's
+# test code every one of them stays in force: this is decision 0004's
 # enforcement for explicit panics, unwrap, expect and indexing. Clippy has no such
 # key for unreachable, todo or unimplemented, so those stay in force in tests too.
 allow-unwrap-in-tests = true

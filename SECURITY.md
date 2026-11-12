@@ -24,14 +24,14 @@ backports.
 
 ## Out of scope
 
-The collector and any other service maintained outside this repository are outside this
-policy. A vulnerability originating in these crates or their build tooling is still in
-scope when discovered through a consumer.
+Any service maintained outside this repository is outside this policy. A vulnerability
+originating in these crates or their build tooling is still in scope when discovered
+through a consumer.
 
 ## What this project already does
 
 - Every crate forbids unsafe code through its lint table
-  ([decision 0004](docs/decisions/0004-lint-policy-enforces-never-raise.md)).
+  ([decision 0004](docs/decisions/0004-lint-policy.md)).
 - `Cargo.lock`, `fuzz/Cargo.lock` and `pixi.lock` are committed, the cargo gates that
   resolve dependencies pass `--locked` (the snapshot and fuzz recipes check the locks
   first and run offline), and wheel builds use maturin's `locked = true`

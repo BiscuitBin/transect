@@ -1,33 +1,23 @@
 # Transect
 
-Transect captures data from inside running applications as tables, of two kinds: state
-tables and time series tables. Once published, those tables can be queried with SQL.
+Transect is an observability tool that captures information about an application, its
+runtime and its state, and publishes it so it can be queried.
 
 This repository holds Transect's in-application client: the library a host application
-links or imports to record its data. It has three crates:
+links or imports. It has three crates:
 
 - `libtransect`, the core, where every behaviour of the client will live;
 - `transect`, the Rust client API;
 - `transectpy`, the Python client, built as the `transectpy` wheel.
 
-It does not hold the collector, which gathers and publishes the tables and lives
-elsewhere, and it provides no query engine, server or command-line tool.
+It provides no query engine, server or command-line tool.
 
 ## Status
 
 This is a scaffold. Each crate exposes one thing, its version, and nothing is published
-to crates.io or PyPI. The places where the ingest queue, the local database, schema
-evolution and the data writer will live are documentation-only placeholders. The ingest
-queue, the local database format and schema evolution wait on decisions listed in the
-[open-decisions register](docs/project/open-decisions.md). The quality gate, CI, handbook
-and agent contract are in place; the client's behaviour has not started.
-
-Two rules shape everything the client will do:
-
-- it never raises into or blocks the host application
-  ([decision 0001](docs/decisions/0001-never-raise-never-block.md));
-- it behaves correctly when the host forks
-  ([decision 0002](docs/decisions/0002-fork-safety.md)).
+to crates.io or PyPI. The client's design is not decided yet; its open questions are on
+the [open-decisions register](docs/project/open-decisions.md). The quality gate, CI,
+handbook and agent contract are in place; the client's behaviour has not started.
 
 Linux and macOS are supported; Windows is not
 ([decision 0007](docs/decisions/0007-supported-platforms.md)).

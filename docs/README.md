@@ -11,10 +11,12 @@ requires: []
 Every page below is registered in `manifest.yml`, owns at least one topic, and is
 reachable from here; `just check-docs` enforces all three.
 
-Transect captures application data as tables, state and time series, so that it can be
-queried with SQL once published. This repository holds Transect's in-application
-client: a Rust core, a Rust client API and a Python client. It is a scaffold: the client
-has no behaviour yet beyond reporting its version.
+Transect is an observability tool that captures information about an application, its
+runtime and its state, and publishes it so it can be queried.
+
+This repository holds Transect's in-application client: a Rust core, a Rust client API
+and a Python client. It is a scaffold: the client has no behaviour yet beyond reporting
+its version.
 
 ## Start here
 
@@ -32,7 +34,7 @@ has no behaviour yet beyond reporting its version.
 
 ## Understand
 
-- [Architecture](explanation/architecture.md): the crates, and where the client's future parts live.
+- [Architecture](explanation/architecture.md): the three crates and their dependency direction.
 
 ## Look up
 

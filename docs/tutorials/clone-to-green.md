@@ -46,8 +46,7 @@ pub const fn first(value: Option<u8>) -> u8 {
 ```
 
 Run `just clippy`. It fails with `used unwrap() on an Option value`: a panic outside
-test code would raise into the host application, which
-[decision 0001](../decisions/0001-never-raise-never-block.md) forbids. Remove the
+test code is what [decision 0004](../decisions/0004-lint-policy.md) rejects. Remove the
 function and run `just check` again to see it green.
 
 ## 4. See the Python client

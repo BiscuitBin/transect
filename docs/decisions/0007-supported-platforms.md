@@ -11,8 +11,7 @@ requires: []
 ## Context
 
 The hosts this client is for run on Linux servers and are developed on macOS. Windows
-would double the platform work, and the fork-safety rule
-([decision 0002](0002-fork-safety.md)) is about a POSIX process model in the first place.
+would double the platform work.
 
 ## Decision
 
@@ -38,5 +37,4 @@ A host community on Windows large enough to justify it.
 
 ## Related pages
 
-- [Decision 0002: Fork safety](0002-fork-safety.md)
 - [Develop locally](../how-to/develop-locally.md)

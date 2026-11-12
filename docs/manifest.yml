@@ -204,34 +204,6 @@
       "requires": []
     },
     {
-      "path": "decisions/0001-never-raise-never-block.md",
-      "title": "Decision 0001: The client never raises into or blocks the host application",
-      "kind": "decision",
-      "audience": [
-        "contributor",
-        "maintainer",
-        "agent"
-      ],
-      "canonical_for": [
-        "decision_never_raise_never_block"
-      ],
-      "requires": []
-    },
-    {
-      "path": "decisions/0002-fork-safety.md",
-      "title": "Decision 0002: Correct behaviour under fork is a requirement",
-      "kind": "decision",
-      "audience": [
-        "contributor",
-        "maintainer",
-        "agent"
-      ],
-      "canonical_for": [
-        "decision_fork_safety"
-      ],
-      "requires": []
-    },
-    {
       "path": "decisions/0003-crate-layering.md",
       "title": "Decision 0003: Three crates, one dependency direction",
       "kind": "decision",
@@ -246,8 +218,8 @@
       "requires": []
     },
     {
-      "path": "decisions/0004-lint-policy-enforces-never-raise.md",
-      "title": "Decision 0004: The lint policy is the enforcement of never-raise",
+      "path": "decisions/0004-lint-policy.md",
+      "title": "Decision 0004: The lint policy rejects panic paths",
       "kind": "decision",
       "audience": [
         "contributor",

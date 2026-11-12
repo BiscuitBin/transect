@@ -13,10 +13,8 @@ them all. Nothing has been released yet.
 
 - The three-crate foundation: the `libtransect` core, the `transect` Rust client API and
   the `transectpy` PyO3 binding with its Python package, each exposing only its version.
-- Documentation-only placeholders for the ingest queue, the local database, schema
-  evolution and the data writer, with the undecided areas on the open-decisions register.
-- The read-only `just check` gate on pinned tools, the hook gate, CI on Linux and macOS,
-  and a fork test harness for the Python client.
+- The read-only `just check` gate on pinned tools, the hook gate, and CI on Linux and
+  macOS.
 - Weekly advisory, fuzz and mutation-testing workflows, the Pages workflow and Renovate.
 - The handbook with its decision records, and the agent contract with its skills.
 - Release workflows for PyPI and crates.io, both started by one version tag, and run so

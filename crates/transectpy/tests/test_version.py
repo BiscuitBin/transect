@@ -41,7 +41,7 @@ def test_the_distribution_metadata_agrees() -> None:
 
 
 def test_nothing_but_the_version_is_public() -> None:
-    """No table, column or write API has leaked into either module."""
+    """No API beyond the version has leaked into either module."""
     assert transectpy.__all__ == ["__version__"]
     assert [name for name in dir(transectpy) if not name.startswith("_")] == []
     assert [name for name in dir(native) if not name.startswith("_")] == []

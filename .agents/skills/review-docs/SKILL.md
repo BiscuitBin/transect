@@ -18,4 +18,4 @@ description: Add or revise a handbook page so it satisfies the documentation con
    fails the contract.
 6. Describe only what exists. State nothing as decided that the open-decisions register
    lists, and nothing as open that a decision record settles.
-7. Run `just check-docs` and `just check-undecided`, then `just check` before handoff.
+7. Run `just check-docs`, then `just check` before handoff.

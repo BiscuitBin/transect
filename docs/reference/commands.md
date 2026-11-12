@@ -72,7 +72,6 @@ Each of these is described on [Quality gates](quality-gates.md).
 | `version-check` | One version everywhere. |
 | `check-docs` | Markdown lint, typos, the offline link check and the handbook validator. |
 | `check-agents` | `AGENTS.md`, its adapters and every skill's bridges satisfy the agent contract. |
-| `check-undecided` | The `UNDECIDED` markers and the register agree. |
 | `snapshots-check` | Snapshots match and none is orphaned. |
 
 ## Outside the gate
