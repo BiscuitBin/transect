@@ -83,3 +83,8 @@ recipes = [
   "snapshots-check",
 ]
 predicates = {}
+
+[dependency-groups]
+dev = [
+    "alliumpy>=3.6.1",
+]
