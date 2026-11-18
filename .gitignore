@@ -18,9 +18,14 @@ ai_tmp/
 # stay on the machine that wrote them. The bootstrap tickets were committed
 # before this rule and stay tracked, because an ignore rule never untracks a
 # file; the linters exclude .scratch/ explicitly for that reason. The
-# client-spec tickets are tracked on the maintainer's decision, so that a
-# worktree cut from main carries them: a new file there needs `git add -f`.
-.scratch/
+# client-spec folder is the exception, on the maintainer's decision: its
+# tickets, their context and the research files they write are tracked, so a
+# worktree cut from main carries them and a new file there shows in
+# `git status`. The first rule ignores what is inside .scratch/ and not the
+# folder itself, because Git cannot re-include a file whose parent folder is
+# ignored.
+.scratch/*
+!.scratch/client-spec/
 
 # Claude Code writes runtime state into .claude/ mid-session
 # (settings.local.json, scheduled-task locks, checkpoints, nested worktrees).

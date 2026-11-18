@@ -25,6 +25,15 @@ Related open questions, by number and gist. Do not resolve them:
 - 21: how a row's size is measured against the maximum row size.
 - 3: whether keyed state writes coalesce by key in the queue.
 
+**Research file:** `.scratch/client-spec/research/05-one-shared-queue-bound-with-guaranteed-per-table-capacity.md`, written only if the proposal cites another system. "Citing a comparable" in `CONTEXT.md` says what it records.
+
+**Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the conformance and breakage lenses, at two key moments: after the maintainer's answers are recorded verbatim in this ticket's hand-back and before the specification changes; and before hand-back. Questions to put to the reviewers:
+
+1. Is every point the ticket says the proposal must state answered in the maintainer's recorded words, and is anything the agent filled in marked "Derived"?
+2. Is there a sequence of declarations and writes, including a table declared during establish, in which a table is pushed below its guaranteed capacity or the total queued exceeds the shared bound?
+3. Is every row the shared bound refuses counted once against its own table, and do the diagnostics snapshot's per-table fields still tell the truth?
+4. Does the proposal quietly answer open question 3, 16 or 21, or change what a bound per table means as the default?
+
 **External precondition:** None.
 
 **Blocked by:** None in this set. Ticket 04 does not gate it: if 04 has landed, this proposal says how the two compose, and if it has not, it says nothing about eviction.
@@ -41,4 +50,6 @@ Related open questions, by number and gist. Do not resolve them:
 - [ ] The diagnostics snapshot's per-table fields still describe each table's capacity and queued rows truthfully under the shared bound
 - [ ] Handbook text that restates the specification (the glossary, and the count of open questions) is updated in the same change
 - [ ] `just check-specs` and `just analyse-specs` report zero diagnostics and zero findings, and `just check` ends green
+- [ ] Any comparable the proposal cites has its stated why and its fit in the research file, as "Citing a comparable" in `CONTEXT.md` requires; a comparable without both informs the proposal and does not justify it
+- [ ] The maintainer's answers are recorded verbatim in the hand-back before the first review; the adversarial review ran at each key moment as `REVIEW.md` says; and the hand-back lists every finding with its verdict, its resolution and the reviewing model
 - [ ] No code is added

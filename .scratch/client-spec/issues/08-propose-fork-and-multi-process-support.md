@@ -24,6 +24,8 @@ On the local database location being the instance, with one writer process each:
 
 Standing guidance from the same elicitation: prefer coordination-free, or at least low-coordination, solutions. The common host is an ephemeral Kubernetes worker pod.
 
+DuckDB is a leaning, not a decision, and what it allows more than one process to do was never checked. Ticket 17 checks it: if `.scratch/client-spec/research/17-platform-facts.md` exists, read it.
+
 This is the coarsest ticket in the set, on purpose. Any slice would guess the process model, and that model is what open questions 1 and 17 decide. Split it once they are decided.
 
 The proposal must say:
@@ -44,6 +46,15 @@ Related entries, by number and gist. Do not resolve them:
 - Open question 7: which collector confirms positions when more than one reads an instance.
 - The open-decisions register's Product entry on how the client behaves when the host application forks. It leaves the register only when a decision record answers it, and that record is the maintainer's to make.
 
+**Research file:** `.scratch/client-spec/research/08-fork-and-multi-process-support.md`, written only if the proposal cites another system. "Citing a comparable" in `CONTEXT.md` says what it records.
+
+**Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the conformance and breakage lenses, at two key moments: after the maintainer's answers are recorded verbatim in this ticket's hand-back and before the specification changes; and before hand-back. Questions to put to the reviewers:
+
+1. Were open questions 1 and 17 decided by the maintainer, in recorded words, before anything was proposed?
+2. Is there a sequence of forks, second processes and process deaths in which a row is lost uncounted while its process lives, counted twice, or two processes write one location?
+3. Are positions still unique and increasing within a run, and is a repeated row still recognisable, once more than one process is involved?
+4. Is a leaning (DuckDB, a pull) treated as decided, is the register's entry on forking closed, or is open question 7, 15 or 23 quietly answered?
+
 **External precondition:** Open questions 1 and 17, decided by the maintainer.
 
 **Blocked by:** None in this set.
@@ -60,4 +71,6 @@ Related entries, by number and gist. Do not resolve them:
 - [ ] The register's entry on forking is left for a decision record; the proposal does not close it
 - [ ] Handbook text that restates the specification (the glossary, and the count of open questions) is updated in the same change
 - [ ] `just check-specs` and `just analyse-specs` report zero diagnostics and zero findings, and `just check` ends green
+- [ ] Any comparable the proposal cites has its stated why and its fit in the research file, as "Citing a comparable" in `CONTEXT.md` requires; a comparable without both informs the proposal and does not justify it
+- [ ] The maintainer's answers are recorded verbatim in the hand-back before the first review; the adversarial review ran at each key moment as `REVIEW.md` says; and the hand-back lists every finding with its verdict, its resolution and the reviewing model
 - [ ] No code is added

@@ -20,6 +20,15 @@ Related open questions, by number and gist. Do not resolve them:
 - 25: whether a hand-over also carries the stored position, so a collector can tell rows still waiting from rows lost.
 - 16: the default queue capacity and maximum row size, and how a table is given its own.
 
+**Research file:** `.scratch/client-spec/research/04-evict-oldest-as-a-queue-policy.md`, written only if the proposal cites another system. "Citing a comparable" in `CONTEXT.md` says what it records.
+
+**Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the conformance and breakage lenses, at two key moments: after the maintainer's answers are recorded verbatim in this ticket's hand-back and before the specification changes; and before hand-back. Questions to put to the reviewers:
+
+1. No sentence from the maintainer described evict-oldest before this ticket. Is everything the proposal says it promises now in the maintainer's recorded words, or marked "Derived"?
+2. Is there a sequence of writes in which an evicted row is counted twice, not at all, or in the counter for a row refused on arrival, or in which a queue's depth exceeds its capacity?
+3. Does the proposal quietly answer open question 3 for keyed state tables, or open question 25 on what a collector concludes from a gap?
+4. Does a table that states no policy behave exactly as today?
+
 **External precondition:** None.
 
 **Blocked by:** None in this set.
@@ -36,4 +45,6 @@ Related open questions, by number and gist. Do not resolve them:
 - [ ] The proposal says what the policy does for a keyed state table, or records it as an `open question`
 - [ ] Handbook text that restates the specification (the glossary, and the count of open questions) is updated in the same change
 - [ ] `just check-specs` and `just analyse-specs` report zero diagnostics and zero findings, and `just check` ends green
+- [ ] Any comparable the proposal cites has its stated why and its fit in the research file, as "Citing a comparable" in `CONTEXT.md` requires; a comparable without both informs the proposal and does not justify it
+- [ ] The maintainer's answers are recorded verbatim in the hand-back before the first review; the adversarial review ran at each key moment as `REVIEW.md` says; and the hand-back lists every finding with its verdict, its resolution and the reviewing model
 - [ ] No code is added

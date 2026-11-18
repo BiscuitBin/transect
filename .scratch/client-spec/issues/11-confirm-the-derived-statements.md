@@ -21,6 +21,13 @@ The interim behaviours that open questions carry ("Until decided") are a separat
 
 How to run it: put the statements to the maintainer in plain language, a few related ones at a time, each with the consequence of the opposite answer. For each, the maintainer confirms it, corrects it, or says it is undecided.
 
+**Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the conformance and breakage lenses, at two key moments: after the maintainer's answers are recorded verbatim in this ticket's hand-back and before the specification changes; and before hand-back. Questions to put to the reviewers:
+
+1. Was every statement marked "Derived" put to the maintainer? Compare the statements asked against a fresh search of the specification, not against this ticket's summary.
+2. Is each recorded answer the maintainer's own words, and was a marker removed only where they confirmed that statement: not on silence, and not on one "yes" given to several statements with different consequences?
+3. For each corrected statement, is every rule, invariant and guarantee that depended on it brought into line, with no contradiction left?
+4. Was an "Until decided" behaviour confirmed along the way, or an open question resolved?
+
 **External precondition:** The maintainer's time. Nothing else gates it.
 
 **Blocked by:** None (can start immediately).
@@ -34,4 +41,5 @@ How to run it: put the statements to the maintainer in plain language, a few rel
 - [ ] No statement is confirmed by the agent, and no existing open question is resolved
 - [ ] Handbook text that restates the specification (the glossary, the count of open questions, and the meaning of the "Derived" marker) is updated in the same change
 - [ ] `just check-specs` and `just analyse-specs` report zero diagnostics and zero findings, and `just check` ends green
+- [ ] The maintainer's answers are recorded verbatim in the hand-back before the first review; the adversarial review ran at each key moment as `REVIEW.md` says; and the hand-back lists every finding with its verdict, its resolution and the reviewing model
 - [ ] No code is added

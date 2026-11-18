@@ -32,6 +32,15 @@ Related open questions, by number and gist. This ticket exists to put proposals 
 - 16: the default queue capacity and maximum row size.
 - 8: what bounds the local databases when no collection happens.
 
+**Research file:** `.scratch/client-spec/research/10-snapshot-capture.md`, written only if the proposal cites another system. "Citing a comparable" in `CONTEXT.md` says what it records.
+
+**Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the conformance and breakage lenses, at two key moments: after the maintainer's answers are recorded verbatim in this ticket's hand-back and before the specification changes; and before hand-back. Questions to put to the reviewers:
+
+1. Is the choice for open question 4 the maintainer's, in recorded words, and is everything else the proposal must state either answered by them or marked "Derived"?
+2. Is there a way for an incomplete capture to change a table's contents, for a completed capture to remove rows outside the boundary the maintainer chose, or for a capture larger than its bound to block a write or lose rows uncounted?
+3. If reading the application's database directly is proposed, are the promises about load and credentials the maintainer's, and is any other system cited for it given with its stated why and fit?
+4. Does the agent close open question 4 or 5, or quietly answer 3, 8 or 16?
+
 **External precondition:** The implementation details the maintainer wants decided first. The note does not list them. The local databases' on-disk format and the form of the hand-over (open question 15) are the likely ones; confirm with the maintainer which decisions gate this before starting.
 
 **Blocked by:** None in this set.
@@ -49,4 +58,6 @@ Related open questions, by number and gist. This ticket exists to put proposals 
 - [ ] The proposal says whether reading the application's database directly is offered, or records it as an `open question`
 - [ ] Handbook text that restates the specification (the glossary, and the count of open questions) is updated in the same change
 - [ ] `just check-specs` and `just analyse-specs` report zero diagnostics and zero findings, and `just check` ends green
+- [ ] Any comparable the proposal cites has its stated why and its fit in the research file, as "Citing a comparable" in `CONTEXT.md` requires; a comparable without both informs the proposal and does not justify it
+- [ ] The maintainer's answers are recorded verbatim in the hand-back before the first review; the adversarial review ran at each key moment as `REVIEW.md` says; and the hand-back lists every finding with its verdict, its resolution and the reviewing model
 - [ ] No code is added

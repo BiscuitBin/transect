@@ -49,7 +49,7 @@ Where everything lives. Paths are relative to the repository root.
 | `AGENTS.md` | The canonical agent contract. `CLAUDE.md` and `.github/copilot-instructions.md` point to it; `.agents/skills/` holds the canonical skills, bridged by `.claude/skills/` and `.codex/skills/`, and beside them the Allium skills vendored from upstream, which `skills-lock.json` names ([decision 0011](../decisions/0011-vendored-allium-skills.md)). |
 | `README.md`, `CHANGELOG.md`, `SECURITY.md` | The entry files: what the project is, the single changelog, and how to report a vulnerability. |
 | `crates/*/README.md`, `crates/*/LICENSE` | Each crate's README and a copy of the root `LICENSE`, which the crate package and the wheel ship; `crates/transectpy/README.md` is the wheel's PyPI long description. |
-| `.scratch/` | Tracked tickets: the bootstrap tickets, and under `client-spec/` the tickets for what the client specification deferred, with the context they share. Other ticket scratch is gitignored. |
+| `.scratch/` | Tracked tickets: the bootstrap tickets, and under `client-spec/` the tickets for what the client specification deferred or leans on, with the context they share, their review procedure and the research files they write. `.gitignore` ignores everything else under `.scratch/`; a new file under `client-spec/` is tracked like any other. |
 
 ## Generated and local, never committed
 

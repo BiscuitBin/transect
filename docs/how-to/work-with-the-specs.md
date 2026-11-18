@@ -52,6 +52,18 @@ to choose an answer in code or in another rule.
   in the same commit. If the decision also answers an entry on the open-decisions
   register, a decision record closes that entry.
 
+## Lean on another system
+
+A rule may be proposed because another system behaves that way only when two things are
+written down beside the proposal. The first is the reason that system's own authors
+gave, quoted and linked from a primary source. The second is an argument that the
+constraints behind that reason also hold for this client. What the other system does is
+checked from a primary source when it is cited, with the link and the date. A reason
+the writer worked out, and no author stated, is labelled "inferred": it may inform a
+proposal and does not justify one. "No stated reason found", with where was looked, is
+a valid result. Each ticket under `.scratch/client-spec/` writes these findings to a
+research file of its own, and `CONTEXT.md` there gives the rule in full.
+
 ## Tooling
 
 The checker is the `allium` binary from `juxt/allium-tools`, version 3.6.1, pinned and

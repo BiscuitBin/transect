@@ -25,6 +25,15 @@ Related open questions, by number and gist. Do not resolve them:
 - 12: whether a bounded retry comes before a failed batch is dropped.
 - 16: the default queue capacity and maximum row size.
 
+**Research file:** `.scratch/client-spec/research/06-transactional-client-blocks.md`, written only if the proposal cites another system. "Citing a comparable" in `CONTEXT.md` says what it records.
+
+**Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the conformance and breakage lenses, at two key moments: after the maintainer's answers are recorded verbatim in this ticket's hand-back and before the specification changes; and before hand-back. Questions to put to the reviewers:
+
+1. Is what "transactional" promises stated in one sentence that the maintainer's recorded words support, with nothing assumed from what the word usually means?
+2. Is there a way for a group to end (an exception, a block that never ends, the end of establish, a refused row, a group larger than a table's capacity) that leaves it partly applied, or a row uncounted or counted twice?
+3. Can a write now block or fail, or can a block hold rows without a bound?
+4. Does the proposal quietly answer open question 3, 12 or 16, or change what a block that does not ask for the mode does?
+
 **External precondition:** None.
 
 **Blocked by:** None in this set.
@@ -40,4 +49,6 @@ Related open questions, by number and gist. Do not resolve them:
 - [ ] The proposal says how a group spanning several tables behaves, or records it as an `open question`
 - [ ] Handbook text that restates the specification (the glossary, and the count of open questions) is updated in the same change
 - [ ] `just check-specs` and `just analyse-specs` report zero diagnostics and zero findings, and `just check` ends green
+- [ ] Any comparable the proposal cites has its stated why and its fit in the research file, as "Citing a comparable" in `CONTEXT.md` requires; a comparable without both informs the proposal and does not justify it
+- [ ] The maintainer's answers are recorded verbatim in the hand-back before the first review; the adversarial review ran at each key moment as `REVIEW.md` says; and the hand-back lists every finding with its verdict, its resolution and the reviewing model
 - [ ] No code is added
