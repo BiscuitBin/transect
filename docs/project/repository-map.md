@@ -18,7 +18,7 @@ Where everything lives. Paths are relative to the repository root.
 | `crates/transect/` | The Rust client API crate; `src/lib.rs` holds `version()`. |
 | `crates/transectpy/` | The PyO3 binding crate (`src/lib.rs`), its maturin manifest (`pyproject.toml`), the Python package under `python/transectpy/` (with the hand-written stub `_transectpy.pyi` and `py.typed`), and the Python tests under `tests/`. |
 | `fuzz/` | The fuzz crate, outside the workspace, with its own `Cargo.lock` and the `smoke` target. |
-| `scripts/` | `initialize.sh` and `version_check.py`. |
+| `scripts/` | `initialize.sh`, `version_check.py` and `check_agents.py`. |
 | `tests/` | The scripts' tests (`tests/scripts/`), the lint and type-check positive-control fixtures (`tests/fixtures/py-lint-violation/`) and the installed-wheel smoke (`tests/fixtures/smoke/`). |
 
 ## Configuration
@@ -28,7 +28,7 @@ Where everything lives. Paths are relative to the repository root.
 | `Cargo.toml`, `Cargo.lock` | The workspace, its shared version, lint policy and dependency ranges, and the pin. |
 | `rust-toolchain.toml` | The exact Rust release. |
 | `pyproject.toml`, `pixi.lock` | The pixi tool environment and the ordered gate list for `just check`; not a Python package. |
-| `tools.txt`, `tools-source.txt` | Tools conda-forge lacks, installed into `.tools/`. |
+| `tools.txt`, `tools-source.txt` | Tools conda-forge lacks, installed into `.tools/`. The Allium checker lands there too, pinned by the tooling package. |
 | `Justfile` | Every command. |
 | `clippy.toml`, `rustfmt.toml`, `taplo.toml`, `rustqual.toml`, `.config/nextest.toml` | The Rust gates. |
 | `deny.toml` | The dependency policy. |
@@ -45,10 +45,11 @@ Where everything lives. Paths are relative to the repository root.
 | Path | What it is |
 | --- | --- |
 | `docs/` | This handbook; `docs/manifest.yml` registers every page. |
-| `AGENTS.md` | The canonical agent contract. `CLAUDE.md` and `.github/copilot-instructions.md` point to it; `.agents/skills/` holds the canonical skills, bridged by `.claude/skills/` and `.codex/skills/`. |
+| `docs/specs/` | The Allium specifications. `transect-client.allium` is a proposed specification of the client, not an adopted design; see [Work with the specifications](../how-to/work-with-the-specs.md). |
+| `AGENTS.md` | The canonical agent contract. `CLAUDE.md` and `.github/copilot-instructions.md` point to it; `.agents/skills/` holds the canonical skills, bridged by `.claude/skills/` and `.codex/skills/`, and beside them the Allium skills vendored from upstream, which `skills-lock.json` names ([decision 0011](../decisions/0011-vendored-allium-skills.md)). |
 | `README.md`, `CHANGELOG.md`, `SECURITY.md` | The entry files: what the project is, the single changelog, and how to report a vulnerability. |
 | `crates/*/README.md`, `crates/*/LICENSE` | Each crate's README and a copy of the root `LICENSE`, which the crate package and the wheel ship; `crates/transectpy/README.md` is the wheel's PyPI long description. |
-| `.scratch/` | Tracked bootstrap tickets; local ticket scratch is otherwise gitignored. |
+| `.scratch/` | Tracked tickets: the bootstrap tickets, and under `client-spec/` the tickets for what the client specification deferred or leans on, with the context they share, their review procedure and the research files they write. `.gitignore` ignores everything else under `.scratch/`; a new file under `client-spec/` is tracked like any other. |
 
 ## Generated and local, never committed
 

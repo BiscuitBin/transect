@@ -17,6 +17,10 @@ indent_size = 4
 [Justfile]
 indent_size = 4
 
+# The specifications indent by four, like the Allium reference they follow.
+[*.allium]
+indent_size = 4
+
 # List continuations and fenced blocks legitimately indent by other amounts.
 [*.md]
 indent_size = unset

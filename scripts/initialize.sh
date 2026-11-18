@@ -26,6 +26,13 @@ just check-toolchain
 # download in the first-run path that no lockfile accounts for.
 just install-tools
 
+# The Allium checker for docs/specs/, pinned and checksummed in the tooling
+# package pixi.lock pins, into `.tools/bin`: the other download no lockfile
+# accounts for. `just lint` and `just check` run the specification checks, so a
+# worktree without it cannot reach a green gate. Version-checked first, so a
+# present pin downloads nothing.
+just install-allium
+
 # `Cargo.lock` is committed and every gate passes `--locked`; this line exists
 # for a clone whose lockfile was deleted by hand.
 test -f Cargo.lock || cargo generate-lockfile

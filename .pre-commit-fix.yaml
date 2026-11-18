@@ -1,10 +1,13 @@
 # Mutating counterpart to .pre-commit-config.yaml. Never installed as a hook;
-# run it explicitly with `just fix`.
+# run it explicitly with `just fix`. The skills skills-lock.json names are
+# vendored from juxt/allium, reached through .agents/ and through the .claude/
+# links: upstream's text, which no fixer here may rewrite (decision 0011).
 exclude: >-
   (?x)^(
     \.git/|
     \.pixi/|
     \.scratch/|
+    \.(agents|claude)/skills/(allium|distill|elicit|propagate|tend|weed|witness)(/|$)|
     ai_tmp/|
     target/|
     \.tools/|

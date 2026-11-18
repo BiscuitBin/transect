@@ -29,8 +29,9 @@ just check
 ```
 
 `just initialize` installs the pixi environment, the pinned toolchain, the tools pixi
-lacks and the Python 3.11 floor interpreter, fetches the lockfiles' dependencies, and, in
-the primary checkout only, installs the commit hook. It never stages, commits or pushes.
+lacks, the Python 3.11 floor interpreter and the pinned Allium checker, fetches the
+lockfiles' dependencies, and, in the primary checkout only, installs the commit hook. It
+never stages, commits or pushes.
 `just check` must end with `All checks passed and the worktree is unchanged.`
 
 ## While working
@@ -41,6 +42,8 @@ the primary checkout only, installs the commit hook. It never stages, commits or
 - In a secondary git worktree, `just install-hooks` refuses: install hooks once from the
   primary checkout, because every worktree shares one hooks directory.
 - Scratch work goes in `ai_tmp/`, which git ignores.
+- A change under `docs/specs/` is checked by `just check-specs` and `just analyse-specs`
+  ([Work with the specifications](work-with-the-specs.md)).
 
 ## Before handing back
 

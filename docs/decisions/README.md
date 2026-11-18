@@ -27,6 +27,8 @@ decision is made.
 | [0008](0008-tool-manager.md) | pixi, rustup and just as the tool manager |
 | [0009](0009-hooks.md) | A read-only hook gate and a separate fixer |
 | [0010](0010-release-process.md) | One tag releases to PyPI and crates.io, each behind its own approval |
+| [0011](0011-vendored-allium-skills.md) | The vendored Allium skills stand outside the gates |
+| [0012](0012-project-managed-allium-cli.md) | A project-managed Allium binary |
 
 ## Writing a new one
 

@@ -81,5 +81,13 @@ recipes = [
   "check-docs",
   "check-agents",
   "snapshots-check",
+  "check-specs",
+  "analyse-specs",
 ]
 predicates = {}
+
+[dependency-groups]
+# Added with the vendored Allium skills (dd98af2) and pinned by uv.lock. No recipe or
+# script uses it: the gate runs the pinned binary of decision 0012. The maintainer has
+# kept it and has yet to state its reason, which decision 0005 asks for.
+dev = ["alliumpy>=3.6.1"]

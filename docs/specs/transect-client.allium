@@ -1,0 +1,1376 @@
+-- allium: 3
+--
+-- transect-client — the in-application client: tables declared up front,
+-- rows written through a bounded local queue into local databases, and the
+-- hand-over of those rows to a collector
+--
+-- Status
+--   Proposed. This module was elicited from the maintainer between
+--   2026-11-15 and 2026-11-17. Nothing in it is an adopted decision: the
+--   decision records under docs/decisions/ hold what is adopted, and
+--   docs/project/open-decisions.md is the register of what is not. A
+--   statement marked "Derived" follows from the maintainer's answers but was
+--   never put to them directly; an `open question` marks what nobody has
+--   decided, with the behaviour that holds until somebody does.
+--
+-- Scope
+--   One behaviour for the Rust client and the Python client. A developer
+--   declares tables against a confluence. The host establishes a core for
+--   the confluence, and each establish is one run. Application code opens a
+--   client handle for one unit of work and writes rows through it. A write is
+--   checked, given a position and queued; the one data writer stores queued
+--   rows in the run's local databases; a collector is handed the stored rows
+--   and says how far it has safely received them, after which they may be
+--   purged.
+--
+-- Includes
+--   Declaring and redeclaring a table; time series and keyed state tables;
+--   tenant binding and tenant marking; establish with the production core
+--   and with a fake core, the one-writer-per-location claim and the refusal
+--   in a forked child; client handles; every outcome of a write; the bounded
+--   per-table queue; the data writer, its batches and its failures; purging;
+--   the end of establish; the diagnostics snapshot and the host log records;
+--   what a hand-over carries and how it is confirmed.
+--
+-- Excludes
+--   The collector's internals, publishing, projection and object storage.
+--   How a hand-over is carried, and whether it is a push or a pull (open
+--   question 15). The on-disk form of the local databases, which is private
+--   to the client. How a snapshot state table is captured (open questions 4
+--   and 5). More than one process per instance, and fork support (open
+--   questions 1 and 17).
+--
+-- Vocabulary
+--   confluence: the object, created at global scope, that tables are
+--   declared against. core: what establish gives a confluence for its
+--   duration, the production core or a fake core. run: one establish.
+--   client handle: what application code holds for one unit of work, the
+--   object get_client gives it. "The client" alone is the whole library.
+--   position: a row's place in its run, from a counter that only increases.
+--   stored position: the highest position at or below which nothing is
+--   still waiting to be stored. confirmed position: the highest position a
+--   collector has said it safely received. slot: one key of a keyed state
+--   table, within one tenant marking. The names confluence, establish and
+--   core are provisional (open question 18).
+--   docs/project/glossary.md is the glossary.
+--
+-- Black box functions (pure): fits(definition, values) says whether a row
+-- supplies every required column, no unknown column and a value of each
+-- column's type, with nothing converted. size_of(values) is a row's size
+-- (open question 21). same_key(definition, a, b) says whether two rows of a
+-- keyed table carry the same key. settled_through(waiting, last) is the
+-- highest position below every waiting row's, or `last` when none wait.
+-- storage_ready(location) says whether the location can hold a run's local
+-- databases. uuid_v7(time) is a new UUIDv7. oldest_client_time(rows) is the
+-- earliest client time among rows, absent when there are none.
+-- size_on_disk(location) is the size of the local databases there.
+-- max(a, b) is the larger of two integers.
+
+------------------------------------------------------------
+-- Value Types
+------------------------------------------------------------
+
+-- One declared column. A required column must be supplied by every row; an
+-- optional one may be absent.
+value ColumnDefinition {
+    name: String
+    type: ColumnType
+    required: Boolean
+}
+
+-- What a declaration states, and what a hand-over repeats for each table.
+-- Columns are a set: two declarations that list the same columns in a
+-- different order are identical. The key is the list of key column names of
+-- a keyed state table, and is empty for every other kind; it is compared as
+-- written, order included (Derived), until open question 20 says what may
+-- form one. The tenant scope
+-- is absent only in a declaration that omits it, which is refused.
+value TableDefinition {
+    namespace: String
+    name: String
+    kind: TableKind
+    tenant_scope: TenantScope?
+    columns: Set<ColumnDefinition>
+    key: List<String>
+}
+
+-- The values one write supplies, by column name. Only the names are modelled.
+-- The payloads are opaque to this module and are read only through fits,
+-- size_of and same_key, which are taken to see them; nothing here compares
+-- two RowValues.
+value RowValues {
+    columns: Set<String>
+}
+
+------------------------------------------------------------
+-- Enumerations
+------------------------------------------------------------
+
+enum ColumnType { boolean | integer | float | text | bytes | timestamp | json }
+
+-- A time series table appends rows. A keyed state table holds the latest
+-- value per key, with no delete and no tombstones; each stored value records
+-- when it was last written, and time-to-live belongs to the final data
+-- store, not to the client. A snapshot state table
+-- is replaced by a completed capture and unchanged by an incomplete one;
+-- how a capture is made is open questions 4 and 5, and this module gives a
+-- snapshot state table no way to be written.
+enum TableKind { time_series | keyed_state | snapshot_state }
+
+enum TenantScope { tenant_scoped | tenant_free }
+
+enum CoreKind { production | fake }
+
+-- How a row is marked for tenancy. attributed: it carries the tenant that
+-- was bound. unattributed: its table is tenant-scoped and no tenant was
+-- bound. untenanted: its table is tenant-free.
+enum Attribution { attributed | unattributed | untenanted }
+
+-- What became of one write. A fake core records one of these per write.
+enum WriteOutcome {
+    accepted
+    | rejected_invalid
+    | rejected_oversize
+    | rejected_queue_full
+    | discarded_closing
+    | discarded_client_closed
+}
+
+-- The kinds of lost data the host is warned about, per table.
+enum FailureKind { queue_full | oversize | invalid | store_failed | shutdown }
+
+------------------------------------------------------------
+-- Entities and Variants
+------------------------------------------------------------
+
+-- One operating-system process of the host application. The host governs
+-- its life, not this module, so no rule here creates one or ends one.
+entity HostProcess {
+    alive: Boolean
+    -- True in a process made by forking one in which a confluence existed
+    -- (Derived: that is what makes a process a forked child here). Fixed
+    -- for the life of the process.
+    fork_child: Boolean
+}
+
+-- A collector: the party a run's stored rows are handed to. Its internals
+-- are outside this module.
+entity Collector {
+}
+
+-- The object tables are declared against. A declared table lasts as long as
+-- its confluence; nothing removes one (Derived).
+entity Confluence {
+    process: HostProcess
+    -- Set on the copy a forked child inherits: the confluence it was copied
+    -- from. Absent on a confluence a process created for itself.
+    origin: Confluence?
+    -- The most recent run, kept after it ends so its counters can be read.
+    latest_run: Run?
+    -- Writes discarded before they reach a table, since the confluence was
+    -- created.
+    discarded_not_established: Integer
+    discarded_closing: Integer
+    discarded_client_closed: Integer
+
+    tables: Table with confluence = this
+    handles: ClientHandle with confluence = this
+
+    open_handles: handles where status = open
+    -- The tables application code can write to: every kind but snapshot
+    -- state.
+    row_tables: tables where definition.kind != snapshot_state
+
+    has_run: latest_run != null and latest_run.status != ended
+    is_established: latest_run != null and latest_run.status = established
+    is_closing: latest_run != null and latest_run.status = closing
+    is_inherited: origin != null
+}
+
+-- A declared table. Its capacity and maximum row size come from
+-- configuration when it is first declared (open question 16).
+entity Table {
+    confluence: Confluence
+    definition: TableDefinition
+    capacity: Integer               -- rows its queue may hold
+    max_row_size: Integer           -- a row exactly this size is accepted (Derived)
+
+    is_keyed: definition.kind = keyed_state
+    is_tenant_scoped: definition.tenant_scope = tenant_scoped
+}
+
+-- What get_client gives application code for one unit of work: a request, a
+-- job or a task. It scopes a tenant binding and holds no rows. Many are
+-- open at once. It works only inside its block: a write through a handle
+-- whose block has ended is discarded and counted.
+entity ClientHandle {
+    confluence: Confluence
+    tenant: String?                 -- an opaque identifier (open question 2)
+    status: open | closed
+
+    transitions status {
+        open -> closed
+        terminal: closed
+    }
+}
+
+-- One establish. A production run has a location, a data writer and local
+-- databases; a fake run has none of them.
+entity Run {
+    confluence: Confluence
+    id: String                      -- a UUIDv7
+    core: CoreKind
+    location: String?               -- where the local databases live; production only
+    status: established | closing | ended
+    last_position: Integer          -- the highest position assigned; 0 before the first
+    confirmed_position: Integer     -- 0 until a collector confirms one
+    last_store_at: Timestamp?
+
+    transitions status {
+        established -> closing
+        closing -> ended
+        terminal: ended
+    }
+
+    counters: TableCounters with run = this
+    rows: Row with run = this
+    data_writer: DataWriter with run = this
+    recorded_writes: RecordedWrite with run = this
+    episodes: FailureEpisode with run = this
+
+    queued_rows: rows where status = queued
+    in_hand_rows: rows where status = in_hand
+    waiting_rows: rows where status in {queued, in_hand}
+    stored_rows: rows where status = stored
+    -- What a hand-over offers: stored, at or below the stored position, and
+    -- not yet confirmed.
+    offered_rows: rows where status = stored and position <= run.stored_position and position > run.confirmed_position
+    open_episodes: episodes where status = counting
+
+    -- Derived: at or below this position every row is stored, or lost and
+    -- counted; nothing there is still queued or in hand. A hand-over offers
+    -- nothing above it, which is what keeps a row stored later from having a
+    -- position lower than one already handed over.
+    stored_position: settled_through(waiting_rows, last_position)
+    oldest_queued_age: now - oldest_client_time(queued_rows)
+    local_database_size: size_on_disk(location)
+
+    -- The claim on a location. A dead process's claim holds nothing.
+    holds_claim: core = production and status != ended and confluence.process.alive
+    -- Derived: a production run ends only once its data writer has stopped.
+    -- A fake run has no data writer to wait for.
+    writer_has_stopped: core = fake or (data_writer != null and data_writer.status = stopped)
+    ready_to_end: status = closing and waiting_rows.count = 0 and writer_has_stopped
+    is_latest: confluence.latest_run = this
+}
+
+-- The one data writer of a production run. It reports itself as failing
+-- from a failed store until a store succeeds.
+entity DataWriter {
+    run: Run
+    status: running | failing | stopped
+
+    transitions status {
+        running -> failing
+        failing -> running
+        running -> stopped
+        failing -> stopped
+        terminal: stopped
+    }
+}
+
+-- One table's queue and counters within one run (Derived: the counters are
+-- per run, and start at zero with it).
+entity TableCounters {
+    run: Run
+    table: Table
+    accepted: Integer
+    stored: Integer
+    unattributed: Integer
+    rejected_queue_full: Integer
+    rejected_oversize: Integer
+    rejected_invalid: Integer
+    lost_store_failed: Integer
+    lost_shutdown: Integer
+    purged: Integer
+
+    rows: Row with counters = this
+
+    queued_rows: rows where status = queued
+    kept_rows: rows where status in {stored, replaced, purged}
+    purged_rows: rows where status = purged
+    store_failed_rows: rows where status = lost_store_failed
+    shutdown_rows: rows where status = lost_shutdown
+    unattributed_rows: rows where attribution = unattributed
+
+    queued_now: queued_rows.count
+    has_room: queued_now < table.capacity
+}
+
+-- One accepted row of a production run, from acceptance to its end. This is
+-- the specification's record of what became of the row, not something the
+-- client keeps: the client keeps the row while it is queued, in hand or
+-- stored, and after that only the counters.
+--
+-- queued: in its table's queue, in the memory of the process that wrote it.
+-- in_hand: taken by the data writer in the batch it is storing.
+-- stored: in the run's local databases.
+-- replaced: a keyed value that a newer value for its slot took the place of.
+-- purged: removed from the local databases after a collector confirmed it.
+-- lost_store_failed, lost_shutdown: lost, and counted once.
+entity Row {
+    run: Run
+    counters: TableCounters
+    position: Integer
+    client_time: Timestamp          -- the client's clock when the row was written; for a keyed value, when it was last written
+    attribution: Attribution
+    tenant: String?
+    values: RowValues
+    status: queued | in_hand | stored | replaced | purged | lost_store_failed | lost_shutdown
+
+    transitions status {
+        queued -> in_hand
+        queued -> lost_shutdown
+        in_hand -> stored
+        in_hand -> replaced
+        in_hand -> lost_store_failed
+        stored -> replaced
+        stored -> purged
+        terminal: replaced, purged, lost_store_failed, lost_shutdown
+    }
+
+    -- Derived: a tenant-scoped keyed table holds the latest value per tenant
+    -- and key, and its unattributed rows form a group of their own.
+    shares_slot_with(other):
+        counters = other.counters
+        and attribution = other.attribution
+        and (attribution != attributed or tenant = other.tenant)
+        and same_key(counters.table.definition, values, other.values)
+
+    -- A newer value for this row's slot is being stored or is stored.
+    is_superseded:
+        counters.table.is_keyed
+        and counters.rows.any(r => r.position > position and r.status in {in_hand, stored} and shares_slot_with(r))
+
+    -- A newer value for this row's slot exists and has not been lost.
+    has_newer_value:
+        counters.table.is_keyed
+        and counters.rows.any(r => r.position > position and r.status in {queued, in_hand, stored} and shares_slot_with(r))
+
+    is_purgeable: status = stored and position <= run.confirmed_position and not has_newer_value
+}
+
+-- What a fake core keeps for one write made while it is in force. The
+-- attribution and tenant are those the write resolved to when it was
+-- accepted, and absent otherwise.
+entity RecordedWrite {
+    run: Run
+    table: Table
+    values: RowValues
+    outcome: WriteOutcome
+    attribution: Attribution?
+    tenant: String?
+}
+
+-- One kind of lost data for one table within one run: opened by the first
+-- loss, and reported with its total when establish ends (open question 22
+-- asks what else ends one).
+entity FailureEpisode {
+    run: Run
+    counters: TableCounters
+    kind: FailureKind
+    count: Integer
+    status: counting | reported
+
+    transitions status {
+        counting -> reported
+        terminal: reported
+    }
+}
+
+-- One WARNING record in the host's logs.
+entity LogRecord {
+    counters: TableCounters
+    kind: FailureKind
+    phase: onset | total
+    count: Integer                  -- losses of this kind for this table so far in the run
+}
+
+------------------------------------------------------------
+-- Config
+------------------------------------------------------------
+
+-- Neither has a default yet (open question 16), so a deployment must supply
+-- both. Derived: neither is taken to be negative; which values are valid is
+-- part of open question 16. Derived: the local database location is not
+-- configuration here.
+-- Establish names it, so that two establishes can name different ones.
+config {
+    queue_capacity: Integer         -- rows one table's queue may hold
+    max_row_size: Integer           -- in the unit open question 21 settles
+}
+
+------------------------------------------------------------
+-- Rules
+------------------------------------------------------------
+
+-- Declaring -------------------------------------------------
+
+rule CreateConfluence {
+    when: DeveloperCreatesConfluence(developer)
+    ensures: Confluence.created(
+        process: developer, origin: null, latest_run: null,
+        discarded_not_established: 0, discarded_closing: 0, discarded_client_closed: 0
+    )
+}
+
+-- A table may be declared at any time, with or without a run in force.
+-- Within a confluence a table is known by its namespace and name (Derived;
+-- open question 10). A declaration that omits the tenant scope matches
+-- neither rule here, and neither does one that repeats a namespace and name
+-- with any difference: both fail loudly and change nothing.
+rule DeclareTable {
+    when: DeveloperDeclaresTable(developer, confluence, definition)
+    requires: definition.tenant_scope != null
+    requires: not confluence.tables.any(t => t.definition.namespace = definition.namespace and t.definition.name = definition.name)
+    ensures: Table.created(
+        confluence: confluence, definition: definition,
+        capacity: config.queue_capacity, max_row_size: config.max_row_size
+    )
+}
+
+-- Identical means every part of the declaration: the maintainer's answer was
+-- "everything", queue capacity and maximum row size included. Today a
+-- declaration carries neither, so only the definition can differ (open
+-- question 16). The developer is given the table that already exists.
+rule RedeclareIdenticalTable {
+    when: DeveloperDeclaresTable(developer, confluence, definition)
+    requires: confluence.tables.any(t => t.definition = definition)
+    ensures: ExistingTableReturned(confluence: confluence, definition: definition)
+}
+
+-- A table declared while a run is in force is usable at once.
+rule OpenCountersForLateTable {
+    when: table: Table.created
+    requires: table.confluence.has_run
+    ensures: TableCounters.created(
+        run: table.confluence.latest_run, table: table,
+        accepted: 0, stored: 0, unattributed: 0,
+        rejected_queue_full: 0, rejected_oversize: 0, rejected_invalid: 0,
+        lost_store_failed: 0, lost_shutdown: 0, purged: 0
+    )
+}
+
+-- Establishing ----------------------------------------------
+
+-- Each requires is one way establish fails loudly, leaving the confluence
+-- as it was, which is inert if it had no run: an establish nested inside an
+-- open one (Derived; one after another is fine, and each is a new run); a
+-- process that is a forked child, at any location; a location a live
+-- process already holds; a location that cannot hold the local databases.
+-- What establish does with databases a previous run left at the location is
+-- open question 6.
+rule EstablishProductionCore {
+    when: HostEstablishesProduction(host, confluence, location)
+    requires: not confluence.has_run
+    requires: not confluence.process.fork_child
+    requires: not Runs.any(r => r.holds_claim and r.location = location)
+    requires: storage_ready(location)
+    ensures: Run.created(
+        confluence: confluence, id: uuid_v7(now), core: production, location: location,
+        status: established, last_position: 0, confirmed_position: 0, last_store_at: null
+    )
+}
+
+-- Derived: the fake core applies the same declaration, row and tenant rules
+-- as the production core, the maximum row size included. It has no
+-- location, no data writer, no local databases and no queue bound. On a
+-- confluence inherited across a fork it is refused until open question 23
+-- is decided; a confluence a forked child creates for itself may be given
+-- one.
+rule EstablishFakeCore {
+    when: HostEstablishesFake(host, confluence)
+    requires: not confluence.has_run
+    requires: not confluence.is_inherited
+    ensures: Run.created(
+        confluence: confluence, id: uuid_v7(now), core: fake, location: null,
+        status: established, last_position: 0, confirmed_position: 0, last_store_at: null
+    )
+}
+
+rule AttachRun {
+    when: run: Run.created
+    ensures:
+        run.confluence.latest_run = run
+        for table in run.confluence.tables:
+            TableCounters.created(
+                run: run, table: table,
+                accepted: 0, stored: 0, unattributed: 0,
+                rejected_queue_full: 0, rejected_oversize: 0, rejected_invalid: 0,
+                lost_store_failed: 0, lost_shutdown: 0, purged: 0
+            )
+}
+
+rule StartDataWriter {
+    when: run: Run.created
+    requires: run.core = production
+    ensures: DataWriter.created(run: run, status: running)
+}
+
+-- No fork support yet. The child's copy of a confluence is a confluence of
+-- its own: it carries the declarations and the open handles the parent had
+-- at the fork, and no run (Derived). With no run it is inert, and no
+-- production core can be established in the child, so it stays inert.
+rule ForkCopiesConfluence {
+    when: HostForks(host, confluence, child)
+    requires: confluence.process = host
+    requires: child.fork_child
+    ensures: Confluence.created(
+        process: child, origin: confluence, latest_run: null,
+        discarded_not_established: 0, discarded_closing: 0, discarded_client_closed: 0
+    )
+}
+
+rule InheritedConfluenceCarriesState {
+    when: copy: Confluence.created
+    requires: copy.origin != null
+    ensures:
+        for table in copy.origin.tables:
+            Table.created(
+                confluence: copy, definition: table.definition,
+                capacity: table.capacity, max_row_size: table.max_row_size
+            )
+        for handle in copy.origin.open_handles:
+            ClientHandle.created(confluence: copy, tenant: handle.tenant, status: open)
+}
+
+-- Client handles ------------------------------------------
+
+-- Never fails and never blocks, whether or not a run is in force.
+rule OpenClientHandle {
+    when: ApplicationOpensHandle(app, confluence, tenant?)
+    ensures: ClientHandle.created(confluence: confluence, tenant: tenant, status: open)
+}
+
+rule CloseClientHandle {
+    when: ApplicationClosesHandle(app, handle)
+    requires: handle.status = open
+    ensures: handle.status = closed
+}
+
+-- Writing ---------------------------------------------------
+
+-- A write matches exactly one rule below, in this order (Derived: the
+-- order): the handle's block has ended; no run is in force; the run is
+-- closing; the row does not fit; the row is too large; the queue is full;
+-- accepted. Each is counted once. None fails, none blocks and none returns
+-- anything to the caller. A write that names a tenant for a tenant-free
+-- table, and would otherwise be accepted, matches no rule: open question 19.
+
+rule DiscardWriteThroughClosedHandle {
+    when: ApplicationWrites(app, handle, table, values, tenant?)
+    let confluence = handle.confluence
+    requires: handle.status = closed
+    ensures:
+        confluence.discarded_client_closed = confluence.discarded_client_closed + 1
+        if confluence.has_run:
+            WriteDecided(run: confluence.latest_run, table: table, values: values, outcome: discarded_client_closed)
+}
+
+-- No establish in force: never established, a failed establish the host
+-- caught, an establish that has ended, or a forked child's copy.
+rule DiscardWriteWithoutRun {
+    when: ApplicationWrites(app, handle, table, values, tenant?)
+    let confluence = handle.confluence
+    requires: handle.status = open
+    requires: not confluence.has_run
+    ensures: confluence.discarded_not_established = confluence.discarded_not_established + 1
+}
+
+rule DiscardWriteWhileClosing {
+    when: ApplicationWrites(app, handle, table, values, tenant?)
+    let confluence = handle.confluence
+    requires: handle.status = open
+    requires: confluence.is_closing
+    ensures:
+        confluence.discarded_closing = confluence.discarded_closing + 1
+        WriteDecided(run: confluence.latest_run, table: table, values: values, outcome: discarded_closing)
+}
+
+-- A missing required column, an unknown column or a value of the wrong
+-- type: the row is refused whole and nothing is converted.
+rule RefuseInvalidRow {
+    when: ApplicationWrites(app, handle, table, values, tenant?)
+    let run = handle.confluence.latest_run
+    requires: handle.status = open
+    requires: handle.confluence.is_established
+    requires: not fits(table.definition, values)
+    let counters = TableCounters{run, table}
+    ensures:
+        counters.rejected_invalid = counters.rejected_invalid + 1
+        FailureCounted(counters: counters, kind: invalid)
+        WriteDecided(run: run, table: table, values: values, outcome: rejected_invalid)
+}
+
+rule RefuseOversizeRow {
+    when: ApplicationWrites(app, handle, table, values, tenant?)
+    let run = handle.confluence.latest_run
+    requires: handle.status = open
+    requires: handle.confluence.is_established
+    requires: fits(table.definition, values)
+    requires: size_of(values) > table.max_row_size
+    let counters = TableCounters{run, table}
+    ensures:
+        counters.rejected_oversize = counters.rejected_oversize + 1
+        FailureCounted(counters: counters, kind: oversize)
+        WriteDecided(run: run, table: table, values: values, outcome: rejected_oversize)
+}
+
+-- The only queue-full behaviour: the arriving row is refused. Other tables
+-- are unaffected, because each has a queue of its own. A fake core has no
+-- queue bound, so this never happens there.
+rule RefuseRowWhenQueueFull {
+    when: ApplicationWrites(app, handle, table, values, tenant?)
+    let run = handle.confluence.latest_run
+    requires: handle.status = open
+    requires: handle.confluence.is_established
+    requires: run.core = production
+    requires: fits(table.definition, values)
+    requires: size_of(values) <= table.max_row_size
+    let counters = TableCounters{run, table}
+    requires: not counters.has_room
+    ensures:
+        counters.rejected_queue_full = counters.rejected_queue_full + 1
+        FailureCounted(counters: counters, kind: queue_full)
+        WriteDecided(run: run, table: table, values: values, outcome: rejected_queue_full)
+}
+
+-- The tenant is the one the write names, else the one its handle bound. A
+-- tenant-free table stores none, and its handle's tenant is not applied. A
+-- tenant-scoped row with no tenant is kept, marked unattributed and
+-- counted; it is never attributed to any tenant. The row is offered to the
+-- queue at once, given the next position and stamped from the client's
+-- clock (Derived: both happen at acceptance, so a row lost afterwards
+-- leaves a visible gap in the positions).
+rule AcceptRow {
+    when: ApplicationWrites(app, handle, table, values, tenant?)
+    let run = handle.confluence.latest_run
+    let bound = tenant ?? handle.tenant
+    requires: handle.status = open
+    requires: handle.confluence.is_established
+    requires: run.core = production
+    requires: fits(table.definition, values)
+    requires: size_of(values) <= table.max_row_size
+    requires: table.is_tenant_scoped or tenant = null
+    let counters = TableCounters{run, table}
+    requires: counters.has_room
+    ensures:
+        Row.created(
+            run: run, counters: counters, position: run.last_position + 1, client_time: now,
+            attribution:
+                if not table.is_tenant_scoped: untenanted
+                else if bound != null: attributed
+                else: unattributed,
+            tenant: if table.is_tenant_scoped: bound else: null,
+            values: values, status: queued
+        )
+        run.last_position = run.last_position + 1
+        counters.accepted = counters.accepted + 1
+        if table.is_tenant_scoped and bound = null:
+            counters.unattributed = counters.unattributed + 1
+}
+
+-- Derived: under a fake core an accepted row is counted and recorded, and
+-- nothing is queued, given a position or stored.
+rule AcceptRowOnFakeCore {
+    when: ApplicationWrites(app, handle, table, values, tenant?)
+    let run = handle.confluence.latest_run
+    let bound = tenant ?? handle.tenant
+    requires: handle.status = open
+    requires: handle.confluence.is_established
+    requires: run.core = fake
+    requires: fits(table.definition, values)
+    requires: size_of(values) <= table.max_row_size
+    requires: table.is_tenant_scoped or tenant = null
+    let counters = TableCounters{run, table}
+    ensures:
+        counters.accepted = counters.accepted + 1
+        if table.is_tenant_scoped and bound = null:
+            counters.unattributed = counters.unattributed + 1
+        RecordedWrite.created(
+            run: run, table: table, values: values, outcome: accepted,
+            attribution:
+                if not table.is_tenant_scoped: untenanted
+                else if bound != null: attributed
+                else: unattributed,
+            tenant: if table.is_tenant_scoped: bound else: null
+        )
+}
+
+-- A fake core records every write made while it is in force, with its
+-- outcome. Derived: that includes a write discarded because its handle's
+-- block had ended or because establish was ending.
+rule FakeCoreRecordsWrite {
+    when: WriteDecided(run, table, values, outcome)
+    requires: run.core = fake
+    ensures: RecordedWrite.created(
+        run: run, table: table, values: values, outcome: outcome,
+        attribution: null, tenant: null
+    )
+}
+
+-- Storing ---------------------------------------------------
+
+-- The data writer takes queued rows of its run as one batch, whenever it
+-- chooses: there is no promise on how long a row waits. It holds one batch
+-- at a time, and takes none once establish has begun to end (Derived).
+rule TakeBatch {
+    when: DataWriterTakesBatch(writer, batch)
+    requires: writer.status != stopped
+    requires: writer.run.status = established
+    requires: writer.run.in_hand_rows.count = 0
+    requires: batch.count > 0
+    requires: batch.all(r => r.run = writer.run and r.status = queued)
+    ensures:
+        for row in batch:
+            RowTaken(row: row)
+}
+
+rule TakeRow {
+    when: RowTaken(row)
+    requires: row.status = queued
+    ensures: row.status = in_hand
+}
+
+rule StoreBatch {
+    when: DataWriterStoresBatch(writer)
+    requires: writer.status = running
+    requires: writer.run.in_hand_rows.count > 0
+    ensures:
+        writer.run.last_store_at = now
+        for row in writer.run.in_hand_rows:
+            RowStored(row: row)
+}
+
+-- The data writer reports itself as failing until a store succeeds.
+rule StoreBatchAndRecover {
+    when: DataWriterStoresBatch(writer)
+    requires: writer.status = failing
+    requires: writer.run.in_hand_rows.count > 0
+    ensures:
+        writer.status = running
+        writer.run.last_store_at = now
+        for row in writer.run.in_hand_rows:
+            RowStored(row: row)
+}
+
+rule StoreRow {
+    when: RowStored(row)
+    requires: row.status = in_hand
+    requires: not row.is_superseded
+    ensures:
+        row.status = stored
+        row.counters.stored = row.counters.stored + 1
+        for older in row.counters.rows:
+            if row.counters.table.is_keyed and older.status = stored and older.position < row.position and older.shares_slot_with(row):
+                ValueReplaced(row: older)
+}
+
+-- Derived: the latest value is the one with the highest position, whatever
+-- order the rows were stored in. A keyed row stored after a newer value for
+-- its slot never becomes the slot's value.
+rule StoreSupersededKeyedRow {
+    when: RowStored(row)
+    requires: row.status = in_hand
+    requires: row.is_superseded
+    ensures:
+        row.status = replaced
+        row.counters.stored = row.counters.stored + 1
+}
+
+rule ReplaceKeyedValue {
+    when: ValueReplaced(row)
+    requires: row.status = stored
+    ensures: row.status = replaced
+}
+
+-- A failed store costs only its batch: the rows are dropped and counted,
+-- and the data writer carries on. Whether a bounded retry should come first
+-- is open question 12.
+rule FailBatch {
+    when: DataWriterFailsToStore(writer)
+    requires: writer.status = running
+    requires: writer.run.in_hand_rows.count > 0
+    ensures:
+        writer.status = failing
+        for row in writer.run.in_hand_rows:
+            RowLostToStoreFailure(row: row)
+}
+
+rule FailAnotherBatch {
+    when: DataWriterFailsToStore(writer)
+    requires: writer.status = failing
+    requires: writer.run.in_hand_rows.count > 0
+    ensures:
+        for row in writer.run.in_hand_rows:
+            RowLostToStoreFailure(row: row)
+}
+
+rule LoseRowToStoreFailure {
+    when: RowLostToStoreFailure(row)
+    requires: row.status = in_hand
+    ensures:
+        row.status = lost_store_failed
+        row.counters.lost_store_failed = row.counters.lost_store_failed + 1
+        FailureCounted(counters: row.counters, kind: store_failed)
+}
+
+-- A failure that escapes the handling of one batch stops the data writer.
+-- Until open question 14 is decided it stays stopped for the rest of the
+-- run: the batch in hand is lost and counted as a failed store, nothing
+-- more is stored, and rows are accepted until their queues fill (Derived).
+rule DataWriterDiesUnexpectedly {
+    when: DataWriterDies(writer)
+    requires: writer.status = running or writer.status = failing
+    ensures:
+        writer.status = stopped
+        for row in writer.run.in_hand_rows:
+            RowLostToStoreFailure(row: row)
+}
+
+-- Hand-over and purging --------------------------------------
+
+-- The collector states the highest position it has safely received. A
+-- position above the stored position was never offered, so that statement
+-- is refused and changes nothing; a position at or below the one already
+-- confirmed changes nothing either (Derived: both). Which collector
+-- confirms when more than one reads an instance is open question 7.
+rule ConfirmPosition {
+    when: CollectorConfirms(collector, run, position)
+    requires: run.core = production
+    requires: position <= run.stored_position
+    ensures: run.confirmed_position = max(run.confirmed_position, position)
+}
+
+-- Off the hot path, and never required: a confirmed row may be purged. A
+-- keyed value is purged only while no newer value for its key exists.
+-- Derived: purging is the data writer's work, so nothing is purged once it
+-- has stopped. What bounds the local databases when no collection confirms
+-- anything is open question 8.
+rule PurgeRow {
+    when: DataWriterPurges(writer, row)
+    requires: writer.status != stopped
+    requires: row.run = writer.run
+    requires: row.is_purgeable
+    ensures:
+        row.status = purged
+        row.counters.purged = row.counters.purged + 1
+}
+
+-- The end of establish ---------------------------------------
+
+-- Nothing waits for the queues. Writes stop being accepted, everything still
+-- queued is discarded and counted, the batch in hand is finished and the data
+-- writer stops. What bounds the batch in hand is open question 26.
+rule BeginClosing {
+    when: HostEndsEstablish(host, run)
+    requires: run.status = established
+    ensures:
+        run.status = closing
+        for row in run.queued_rows:
+            RowDiscardedAtShutdown(row: row)
+}
+
+rule DiscardQueuedRow {
+    when: RowDiscardedAtShutdown(row)
+    requires: row.status = queued
+    ensures:
+        row.status = lost_shutdown
+        row.counters.lost_shutdown = row.counters.lost_shutdown + 1
+        FailureCounted(counters: row.counters, kind: shutdown)
+}
+
+-- Once establish is ending and nothing is queued or in hand, the data
+-- writer stops, leaving the local databases consistent. Derived: the stop
+-- is the data writer's own act, and the run ends after it.
+rule DataWriterStopsAtTheEnd {
+    when: DataWriterStops(writer)
+    requires: writer.status = running or writer.status = failing
+    requires: writer.run.status = closing
+    requires: writer.run.waiting_rows.count = 0
+    ensures: writer.status = stopped
+}
+
+rule FinishClosing {
+    when: run: Run.ready_to_end
+    requires: run.status = closing
+    ensures: run.status = ended
+}
+
+-- Host log records -------------------------------------------
+
+-- The first loss of a kind for a table is logged at once. After that
+-- nothing is logged for that kind and table until it stops or establish
+-- ends, when one record gives the total. What counts as stopped is open
+-- question 22, so the only total these rules give is the one at the end
+-- of establish. Derived: a loss at shutdown follows the same rule, so it
+-- has an onset record when establish begins to end and a total when it
+-- has ended. One loss is answered by one of the two rules that count it,
+-- never both: the first loss of a kind opens its episode at one, and
+-- every later loss adds one.
+rule OpenFailureEpisode {
+    when: FailureCounted(counters, kind)
+    requires: not exists FailureEpisode{counters, kind}
+    ensures: FailureEpisode.created(run: counters.run, counters: counters, kind: kind, count: 1, status: counting)
+}
+
+rule LogOnset {
+    when: episode: FailureEpisode.created
+    ensures: LogRecord.created(counters: episode.counters, kind: episode.kind, phase: onset, count: 1)
+}
+
+rule CountIntoEpisode {
+    when: FailureCounted(counters, kind)
+    let episode = FailureEpisode{counters, kind}
+    requires: exists episode
+    ensures: episode.count = episode.count + 1
+}
+
+rule ReportEpisodesAtEnd {
+    when: run: Run.status transitions_to ended
+    ensures:
+        for episode in run.open_episodes:
+            EpisodeEnded(episode: episode)
+}
+
+rule LogTotal {
+    when: EpisodeEnded(episode)
+    requires: episode.status = counting
+    ensures:
+        episode.status = reported
+        LogRecord.created(counters: episode.counters, kind: episode.kind, phase: total, count: episode.count)
+}
+
+------------------------------------------------------------
+-- Invariants
+------------------------------------------------------------
+
+-- Only what can be read from the state at one moment is an invariant here.
+-- What compares two moments (a position that only increases, a write that
+-- never blocks) is a guarantee on a surface below.
+
+invariant QueueDepthWithinCapacity {
+    for c in TableCounters:
+        c.queued_now <= c.table.capacity
+}
+
+invariant PositionsAreUniqueWithinARun {
+    for a in Rows:
+        for b in Rows:
+            a != b and a.run = b.run implies a.position != b.position
+}
+
+invariant PositionsWereAssigned {
+    for row in Rows:
+        row.position >= 1 and row.position <= row.run.last_position
+}
+
+-- No row is purged before a collection confirms it. The local database
+-- bound of open question 8 will be the one exception, and what it removes
+-- will be counted.
+invariant PurgedRowsWereConfirmed {
+    for row in Rows:
+        row.status = purged implies row.position <= row.run.confirmed_position
+}
+
+invariant NothingWaitingIsConfirmed {
+    for row in Rows:
+        row.status in {queued, in_hand} implies row.position > row.run.confirmed_position
+}
+
+invariant OneStoredValuePerSlot {
+    for a in Rows:
+        for b in Rows:
+            a != b and a.counters.table.is_keyed and a.status = stored and b.status = stored
+                implies not a.shares_slot_with(b)
+}
+
+-- No row is attributed to a tenant that was not explicitly bound.
+invariant OnlyAttributedRowsCarryATenant {
+    for row in Rows:
+        (row.attribution = attributed implies row.tenant != null)
+        and (row.attribution != attributed implies row.tenant = null)
+}
+
+invariant TenantFreeTablesStoreNoTenant {
+    for row in Rows:
+        (row.attribution = untenanted implies not row.counters.table.is_tenant_scoped)
+        and (not row.counters.table.is_tenant_scoped implies row.attribution = untenanted)
+}
+
+-- While the process lives, every row it loses is counted exactly once.
+invariant EveryLossIsCountedOnce {
+    for c in TableCounters:
+        c.lost_store_failed = c.store_failed_rows.count
+        and c.lost_shutdown = c.shutdown_rows.count
+}
+
+invariant CountersMatchTheRows {
+    for c in TableCounters:
+        c.run.core = production implies
+            c.accepted = c.rows.count
+            and c.stored = c.kept_rows.count
+            and c.purged = c.purged_rows.count
+            and c.unattributed = c.unattributed_rows.count
+}
+
+invariant TheRunInForceIsTheLatest {
+    for run in Runs:
+        run.status != ended implies run.is_latest
+}
+
+invariant OneRunInForcePerConfluence {
+    for a in Runs:
+        for b in Runs:
+            a != b and a.confluence = b.confluence implies a.status = ended or b.status = ended
+}
+
+-- One writer process per instance: the location is the instance.
+invariant OneClaimPerLocation {
+    for a in Runs:
+        for b in Runs:
+            a != b and a.holds_claim and b.holds_claim implies a.location != b.location
+}
+
+invariant NoProductionRunInAForkedChild {
+    for run in Runs:
+        run.core = production implies not run.confluence.process.fork_child
+}
+
+invariant InheritedConfluencesStayInert {
+    for confluence in Confluences:
+        confluence.is_inherited implies confluence.latest_run = null
+}
+
+invariant OnlyProductionRunsHoldRows {
+    for row in Rows:
+        row.run.core = production and row.counters.run = row.run
+}
+
+invariant OnlyProductionRunsHaveADataWriter {
+    for writer in DataWriters:
+        writer.run.core = production
+}
+
+invariant DeclaredTablesStateTheirTenantScope {
+    for table in Tables:
+        table.definition.tenant_scope != null
+}
+
+------------------------------------------------------------
+-- Surfaces
+------------------------------------------------------------
+
+-- The developer, at global scope.
+surface Declaring {
+    facing developer: HostProcess
+
+    provides:
+        DeveloperCreatesConfluence(developer)
+        DeveloperDeclaresTable(developer, confluence, definition)
+
+    @guarantee LoudFailure
+        -- A declaration that is refused fails loudly and changes nothing:
+        -- an exception in Python, an error result in Rust, never a panic.
+
+    @guarantee RedeclarationReturnsTheSameTable
+        -- Redeclaring a namespace and name with an identical definition
+        -- gives back the table that already exists. Any difference fails
+        -- loudly.
+
+    @guarantee NothingAcrossRuns
+        -- The client enforces nothing about a definition that changed
+        -- between runs. Each run's local databases carry the definitions
+        -- they were written with.
+
+    @guidance
+        -- Declaring fails loudly because it runs at start-up, where the
+        -- developer can see it. Whether a declaration should carry a
+        -- version or a definition hash is open question 13.
+}
+
+-- The host application's start-up and shutdown code.
+surface Establishing {
+    facing host: HostProcess
+
+    provides:
+        HostEstablishesProduction(host, confluence, location)
+        HostEstablishesFake(host, confluence)
+        HostEndsEstablish(host, run)
+        HostForks(host, confluence, child)
+
+    @guarantee LoudFailure
+        -- An establish that is refused fails loudly and creates no run: an
+        -- exception in Python, an error result in Rust, never a panic. If
+        -- the host catches it, the confluence is as it was: inert if it had
+        -- no run, and still in its run if the refused establish was nested
+        -- inside an open one.
+
+    @guarantee OneWriterProcessPerInstance
+        -- While a live process holds a location, another establish on it
+        -- fails loudly. A dead process's claim never blocks the next start.
+
+    @guarantee NothingWaitsAtTheEnd
+        -- The end of establish does not wait for the queues to drain. The
+        -- batch in hand is finished. Derived: the end of establish waits
+        -- for that batch, and nothing here bounds how long it takes (open
+        -- question 26).
+
+    @guarantee KilledProcessLosesUncounted
+        -- An accepted row lives in the memory of the process that wrote it
+        -- until it is stored. A kill, a restart or power loss before then
+        -- loses it, and nothing counts it.
+
+    @guidance
+        -- establish is a block: a `with` statement in Python, a guard or a
+        -- closure scope in Rust. It is meant to be the top-level block of
+        -- the process. A configurable wait at the end is deferred.
+}
+
+-- Application code, in one unit of work.
+surface Writing {
+    facing app: HostProcess
+    context confluence: Confluence where process = app
+
+    provides:
+        ApplicationOpensHandle(app, confluence, tenant?)
+        for handle in confluence.handles:
+            ApplicationClosesHandle(app, handle) when handle.status = open
+            for table in confluence.row_tables:
+                ApplicationWrites(app, handle, table, values, tenant?)
+
+    @guarantee NeverFailsNeverBlocks
+        -- Opening a handle, closing one and writing never fail and never
+        -- block, whatever the state of the confluence, the run, the queue
+        -- or the data writer. A write returns nothing.
+
+    @guarantee EveryWriteIsCountedOnce
+        -- A write that is not accepted is counted once, in the counter its
+        -- outcome names. A write that is accepted is counted as accepted.
+        -- The exceptions are the two writes open questions 19 and 24 leave
+        -- without an outcome: until those are decided, this module does
+        -- not count them.
+
+    @guarantee ClockNeverMovesBackwards
+        -- Within one process the client's clock never moves backwards.
+        -- There is no ordering promise across processes.
+
+    @guarantee SharedHandle
+        -- Derived: a handle may be used from several threads or tasks at
+        -- once.
+
+    @guidance
+        -- A handle is a block: a `with` statement in Python, a guard or a
+        -- closure scope in Rust. A typed row in Rust can rule out most
+        -- misfits at compile time; the refusal still exists for the rest.
+        -- Whether application code may supply a row's time is open
+        -- question 11.
+}
+
+-- The data writer: the client's own thread, written as a party because
+-- when it takes a batch and what it purges are its own to choose.
+surface Storing {
+    facing writer: DataWriter
+
+    provides:
+        DataWriterTakesBatch(writer, batch)
+        DataWriterStoresBatch(writer)
+        DataWriterFailsToStore(writer)
+        DataWriterDies(writer)
+        DataWriterStops(writer) when writer.run.status = closing
+        for row in writer.run.stored_rows:
+            DataWriterPurges(writer, row) when row.is_purgeable
+
+    @guarantee OneDataWriter
+        -- The establish block owns the one data writer and the local
+        -- databases. No other thread or process writes them.
+
+    @guarantee FailureCostsOneBatch
+        -- A failure handling one batch costs only that batch.
+
+    @guarantee PrivateOnDiskForm
+        -- The on-disk form of the local databases is private to the client.
+        -- What a hand-over transmits is a separate concern.
+
+    @guidance
+        -- In Rust the handling of one batch must contain panics as well as
+        -- errors, or one bad batch stops the data writer for the run.
+}
+
+-- The collector. Whether it pulls or is pushed to is open question 15.
+surface HandOver {
+    facing collector: Collector
+    context run: Run where core = production
+
+    exposes:
+        run.id
+        run.last_position
+        for c in run.counters:
+            c.table.definition.namespace
+            c.table.definition.name
+            c.table.definition.kind
+            c.table.definition.tenant_scope
+            c.table.definition.columns
+            c.table.definition.key
+        for row in run.offered_rows:
+            row.counters.table.definition.namespace
+            row.counters.table.definition.name
+            row.position
+            row.client_time
+            row.attribution
+            row.tenant
+            row.values
+
+    provides:
+        CollectorConfirms(collector, run, position)
+
+    @guarantee AtLeastOnce
+        -- A row may be handed over more than once. Every time it carries
+        -- the same position, so a repeat is recognisable.
+
+    @guarantee NoLowerPositionLater
+        -- A row stored later never has a position lower than one already
+        -- handed over.
+
+    @guarantee PositionsOnlyIncrease
+        -- Positions come from a counter that only increases within the
+        -- run. last_position is the highest assigned, so a gap at the end
+        -- is as visible as one in the middle. Whether a collector can tell
+        -- such a gap from rows still waiting is open question 25.
+
+    @guarantee LatestValuePerKey
+        -- A keyed state table is handed over in the same row shape: one
+        -- row per key, its latest value that is not yet confirmed. Earlier
+        -- values it replaced are not sent.
+
+    @guarantee ValuesPerDeclaredColumn
+        -- A row's values are one per declared column, or absent for an
+        -- optional column the write did not supply.
+}
+
+-- The host, reading the in-process snapshot.
+surface Diagnostics {
+    facing host: HostProcess
+    context confluence: Confluence where process = host
+
+    exposes:
+        confluence.discarded_not_established
+        confluence.discarded_closing
+        confluence.discarded_client_closed
+
+    related:
+        RunDiagnostics(confluence.latest_run) when confluence.latest_run != null
+
+    @guarantee TwoChannels
+        -- The client reports on itself through this snapshot and through
+        -- the host's logs, and through nothing else.
+}
+
+-- Derived: the run-wide and per-table parts describe the most recent run,
+-- and keep describing it after it has ended.
+surface RunDiagnostics {
+    facing host: HostProcess
+    context run: Run where is_latest
+
+    exposes:
+        run.id
+        run.last_position
+        run.stored_position
+        run.confirmed_position
+        run.oldest_queued_age
+        run.last_store_at
+        run.data_writer.status when run.core = production
+        run.local_database_size when run.core = production
+        for c in run.counters:
+            c.accepted
+            c.stored
+            c.unattributed
+            c.rejected_queue_full
+            c.rejected_oversize
+            c.rejected_invalid
+            c.lost_store_failed
+            c.lost_shutdown
+            c.purged
+            c.queued_now
+            c.table.capacity
+}
+
+-- The host's logs.
+surface HostLog {
+    facing host: HostProcess
+    context record: LogRecord where counters.run.confluence.process = host
+
+    exposes:
+        record.counters.table.definition.namespace
+        record.counters.table.definition.name
+        record.kind
+        record.phase
+        record.count
+
+    @guarantee StandardFacade
+        -- Records go through the language's standard logging facade, under
+        -- the client's own logger name. The client installs no handlers.
+        -- Records are structured, and lost data is logged at WARNING.
+
+    @guarantee OnsetThenTotal
+        -- The first occurrence of a kind of failure for a table is logged
+        -- at once. Nothing more is logged for that kind and table until it
+        -- stops or establish ends, when one record gives the total. What
+        -- counts as stopped is open question 22.
+}
+
+-- Test code, reading what a fake core recorded.
+surface FakeCoreRecords {
+    facing test: HostProcess
+    context run: Run where core = fake
+
+    exposes:
+        for write in run.recorded_writes:
+            write.table.definition.namespace
+            write.table.definition.name
+            write.values
+            write.outcome
+            write.attribution
+            write.tenant
+}
+
+------------------------------------------------------------
+-- Open Questions
+------------------------------------------------------------
+
+open question "1. Who keeps the one data writer alive once more than one process is supported?"
+open question "2. Does the client accept any non-empty tenant identifier or check a host-supplied set, and does an empty identifier count as no tenant? Until decided, a tenant is an opaque identifier and only an absent one is no tenant."
+open question "3. Do keyed state writes coalesce by key in the queue, and if not, what stops a full queue from refusing the latest value for a key? Until decided, every keyed write takes a place in the queue and a full queue refuses the arriving value."
+open question "4. For a tenant-scoped snapshot state table, does one capture replace one tenant's rows or every tenant's?"
+open question "5. How is a snapshot capture expressed and bounded, including the option of reading the application's database directly? Until decided, this module gives a snapshot state table no way to be written."
+open question "6. What does establish do with local databases a previous run left in the same location?"
+open question "7. Which collector confirms positions when more than one reads an instance?"
+open question "8. What bounds the local databases when no collection happens, and what is lost at the bound? Settled: they are bounded, and anything removed uncollected is counted. Until decided, no rule removes a stored row that has not been confirmed."
+open question "9. Should a namespace promise anything beyond a name? Until decided, it is a name only."
+open question "10. Does every table belong to exactly one namespace, and is there a default namespace? Until decided, every declaration names one, and a table is known by its namespace and name."
+open question "11. Is a row's time stamped by the client only, or may application code supply it, and what are its name and precision? Until decided, the client stamps every accepted row."
+open question "12. Should a bounded retry come before a failed batch is dropped? Until decided, a failed store drops its batch at once."
+open question "13. Should a declaration carry a version or a definition hash, and stable column ids?"
+open question "14. Does a data writer that has died stay stopped, or is it restarted? Settled: a failure handling one batch costs only that batch. Until decided, it stays stopped for the rest of the run."
+open question "15. How is the hand-over carried, as a push or a pull, and in what form?"
+open question "16. What are the default queue capacity and maximum row size, and how is a table given its own? Which values are valid, and what refuses one that is not: a negative capacity would break QueueDepthWithinCapacity. Settled: an identical redeclaration matches in everything, so once a declaration can carry its own capacity and maximum row size, those must match too. Until decided, both come from configuration with no default, every table takes the configured values, and neither is taken to be negative."
+open question "17. Must the one-process rule hold per container if collection is a pull?"
+open question "18. Are confluence, establish and core the final names? Confluence is a well-known product, and core already names the libtransect crate here."
+open question "19. What happens to a write that names a tenant for a tenant-free table: stored without a tenant and counted, or refused? Until decided, this module gives that write no outcome: it is not counted, it does not fail, it does not block, and no tenant is stored for a tenant-free table."
+open question "20. What makes a declaration valid: which table, namespace and column names are allowed, which columns may form a keyed table's key and whether their order matters, and what happens to a column name that collides with a field the client adds? Until decided, the only declarations refused are one that omits the tenant scope and one that conflicts with an earlier declaration."
+open question "21. How is a row's size measured against the maximum row size?"
+open question "22. When does a kind of failure for a table count as stopped, so that its total is logged before establish ends, and are unattributed rows and the confluence-wide discards logged? Until decided, a total is logged only when establish ends, and those two are counted and not logged."
+open question "23. In a forked child, may a fake core be established on an inherited confluence? Until decided, it is refused loudly like every other establish there."
+open question "24. What happens to a write that names a table declared against a different confluence from its handle's? Until decided, this module gives it no outcome."
+open question "25. Should a hand-over also carry the stored position? Without it a collector that is given last_position 9 and rows up to 6 cannot tell rows still waiting to be stored from rows lost, and a confirmation above the stored position is refused. Until decided, a hand-over carries only the run id and last_position once per run, as the maintainer confirmed."
+open question "26. Does the end of establish wait for the batch in hand, and what bounds that wait when a store never returns? Settled: nothing waits for the queues, and the batch in hand is finished. Until decided, the run ends only once the data writer has stopped, and nothing bounds the batch in hand."

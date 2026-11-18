@@ -14,6 +14,30 @@
     "MD041": false
   },
   "globs": ["**/*.md"],
-  // .scratch/ is tracked ticket scratch, not this repository's prose.
-  "ignores": ["target", ".tools", ".pixi", "ai_tmp", ".scratch", "dist"]
+  // .scratch/ is tracked ticket scratch, not this repository's prose. The
+  // skills skills-lock.json names are vendored from juxt/allium: upstream's
+  // text, reached twice, through .agents/ and through the .claude/ links
+  // (decision 0011).
+  "ignores": [
+    "target",
+    ".tools",
+    ".pixi",
+    "ai_tmp",
+    ".scratch",
+    "dist",
+    ".agents/skills/allium",
+    ".agents/skills/distill",
+    ".agents/skills/elicit",
+    ".agents/skills/propagate",
+    ".agents/skills/tend",
+    ".agents/skills/weed",
+    ".agents/skills/witness",
+    ".claude/skills/allium",
+    ".claude/skills/distill",
+    ".claude/skills/elicit",
+    ".claude/skills/propagate",
+    ".claude/skills/tend",
+    ".claude/skills/weed",
+    ".claude/skills/witness"
+  ]
 }

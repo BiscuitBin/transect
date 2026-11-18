@@ -2,7 +2,30 @@
 # load-bearing: the pixi environment's site-packages and the installed tools hold
 # TOML that is not this repository's to format.
 include = ["**/*.toml"]
-exclude = ["target/**", ".tools/**", ".pixi/**", "ai_tmp/**", ".scratch/**"]
+# The skills skills-lock.json names are vendored from upstream: neither the
+# formatter nor the linter may touch them (decision 0011). Both roots are listed
+# because the second is links to the first.
+exclude = [
+  "target/**",
+  ".tools/**",
+  ".pixi/**",
+  "ai_tmp/**",
+  ".scratch/**",
+  ".agents/skills/allium/**",
+  ".agents/skills/distill/**",
+  ".agents/skills/elicit/**",
+  ".agents/skills/propagate/**",
+  ".agents/skills/tend/**",
+  ".agents/skills/weed/**",
+  ".agents/skills/witness/**",
+  ".claude/skills/allium/**",
+  ".claude/skills/distill/**",
+  ".claude/skills/elicit/**",
+  ".claude/skills/propagate/**",
+  ".claude/skills/tend/**",
+  ".claude/skills/weed/**",
+  ".claude/skills/witness/**",
+]
 
 [formatting]
 # The same width rustfmt.toml gives Rust.

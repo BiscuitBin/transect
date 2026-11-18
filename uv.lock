@@ -1,0 +1,40 @@
+version = 1
+revision = 5
+requires-python = ">=3.14"
+
+[[package]]
+name = "alliumpy"
+version = "3.6.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/d7/05/53475eb8801a83a70364cfdd2c4fe163f4757414caed086b300133bb94b1/alliumpy-3.6.1.tar.gz", hash = "sha256:90b7463501c7af70431758991f9616a0153959ae458848286210c4bcb770e200", size = 59977, upload-time = "2026-11-05T06:43:50.308Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/fa/df/a810ea7726b53bb749312e8570e2c23cd31a768ed5397fe5f11570f16ea3/alliumpy-3.6.1-cp311-abi3-macosx_10_12_x86_64.whl", hash = "sha256:2571f4e6a76b810e44d15d80823e418245c65314fbcd5f368da7ca9295a6671d", size = 703216, upload-time = "2026-11-05T06:43:32.852Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/59/7ebac84a34c89b564bee309b6be887a3a8eb08030a86e80a385cd054066e/alliumpy-3.6.1-cp311-abi3-macosx_11_0_arm64.whl", hash = "sha256:a60f7b3456d25f971c395c9f0400f3123b11b7e34c714ecbfc42cadb682a8e31", size = 648758, upload-time = "2026-11-05T06:43:34.08Z" },
+    { url = "https://files.pythonhosted.org/packages/7d/b3/5e34c9e6f265768110112611a283d7208b614feebac02a81fa619e4a9da7/alliumpy-3.6.1-cp311-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:78f3025cc302e0ede69559eef8c9275ea3fb09bf16170832be007a4e8b2bdbf3", size = 679988, upload-time = "2026-11-05T06:43:35.213Z" },
+    { url = "https://files.pythonhosted.org/packages/67/e8/bb406ff62b33e4c48b5f37fae9265e2b04a7c457eefaa58dce67e3d518e9/alliumpy-3.6.1-cp311-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:cb735986f6acbd1506d1641028695b77ade589f255b141eb13afcf31d8a28d9e", size = 731797, upload-time = "2026-11-05T06:43:36.561Z" },
+    { url = "https://files.pythonhosted.org/packages/c0/81/63b86a9fd74567a439c32c55123695caa4d05700bb43ea7ca0bd594290db/alliumpy-3.6.1-cp311-abi3-musllinux_1_2_aarch64.whl", hash = "sha256:b63078991c9be70ea5ce6706b58823ff320a086e12271feec4251dc8b08d52f6", size = 858415, upload-time = "2026-11-05T06:43:37.951Z" },
+    { url = "https://files.pythonhosted.org/packages/8e/67/d4d35bbf30e4d5df8021b7c3d7b3964c3cb884a4ba0943ab8e698f49c27b/alliumpy-3.6.1-cp311-abi3-musllinux_1_2_x86_64.whl", hash = "sha256:1fa7e30070b6494ffcf0c3bb3f692e531b96992bfe761c12b0050011eb9089a5", size = 941048, upload-time = "2026-11-05T06:43:39.311Z" },
+    { url = "https://files.pythonhosted.org/packages/5d/21/452a9828a6cbd84d4e99c1c545045c7b84867215f8423a2107e36e0ed945/alliumpy-3.6.1-cp311-abi3-win_amd64.whl", hash = "sha256:3193eae06ff304a1f6460c33604fedc1b7dab377d0abd117b852732bd2f9566c", size = 643160, upload-time = "2026-11-05T06:43:40.879Z" },
+    { url = "https://files.pythonhosted.org/packages/d2/b3/11dbd9be44fcf67f7ae5bdad9d79fc7600477ba73d6c06723073141ab9f3/alliumpy-3.6.1-cp314-cp314t-macosx_10_12_x86_64.whl", hash = "sha256:88d7864dd6591e1a4dba686876cdb0ee1fc090026f0dfdcd3cc5afa4221c1a28", size = 703029, upload-time = "2026-11-05T06:43:42.216Z" },
+    { url = "https://files.pythonhosted.org/packages/ce/ab/ce9a2beb208e0ad14e76887e51607f8fdc16b4f9fdf7c7ba439914408e13/alliumpy-3.6.1-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:8d957342a773444e75326b15460c483d9f935eff6e195ed162af7d09b0ab6425", size = 646644, upload-time = "2026-11-05T06:43:43.289Z" },
+    { url = "https://files.pythonhosted.org/packages/cf/f1/68570a16a2bb3a73f1ccaf715e4e2314099c9e9b8b0d10f7d783844f48e2/alliumpy-3.6.1-cp314-cp314t-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:64b6919986a555be504e186eb4c99d969298c2e73ffb7f41ae14adf4c90c7bbb", size = 677803, upload-time = "2026-11-05T06:43:44.367Z" },
+    { url = "https://files.pythonhosted.org/packages/89/ff/5d2987cb6806b07e0ec1750c9213a4d2535d0fabe252e22e803ee7886131/alliumpy-3.6.1-cp314-cp314t-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:27f18d078283dadb788d86fdf2a58f0b706ae4c83955a05c90685f81acee9db3", size = 730280, upload-time = "2026-11-05T06:43:45.662Z" },
+    { url = "https://files.pythonhosted.org/packages/4a/5e/2b0b96458da444e0bff2e5f54d91fee84d8b2d33a789dc615ffe4fe17fe6/alliumpy-3.6.1-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:0a231720738afba5040077c7dcbcb1a75dcb0c5efed41565a63aeaec42b5b2c2", size = 856650, upload-time = "2026-11-05T06:43:46.801Z" },
+    { url = "https://files.pythonhosted.org/packages/04/bd/4458d7fd605b675cab6fd8cdcac9b27a987544823da245a5e93f2d7531bc/alliumpy-3.6.1-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:c412579793b9f45080a61928502a5d4846d83b86533b0112d25f192769d1a7df", size = 939589, upload-time = "2026-11-05T06:43:47.928Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/17/b19a889ffe98ff50333919b48594a5efa9d0f51c2a4ed318ec101797f005/alliumpy-3.6.1-cp314-cp314t-win_amd64.whl", hash = "sha256:50d18f03569b5ac0866e87da348b8b83426eb6136f9a1645352bd6677177c26d", size = 641140, upload-time = "2026-11-05T06:43:49.101Z" },
+]
+
+[[package]]
+name = "transect-tooling"
+version = "0.1.0"
+source = { virtual = "." }
+
+[package.dev-dependencies]
+dev = [
+    { name = "alliumpy" },
+]
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+dev = [{ name = "alliumpy", specifier = ">=3.6.1" }]

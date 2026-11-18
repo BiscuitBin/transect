@@ -45,6 +45,11 @@ recipe.
 
 The floor interpreter lives in `.tools/python`. Run `just install-tools`.
 
+## `check-specs`, `analyse-specs` or `lint` cannot find `allium`
+
+The pinned checker lives in `.tools/bin`, which git ignores, so each worktree needs its
+own. Run `just install-allium`.
+
 ## Related pages
 
 - [Develop locally](../how-to/develop-locally.md)
