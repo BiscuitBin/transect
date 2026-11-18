@@ -17,7 +17,9 @@ ai_tmp/
 # Local ticket scratch: notes and drafts for tickets live under .scratch/ and
 # stay on the machine that wrote them. The bootstrap tickets were committed
 # before this rule and stay tracked, because an ignore rule never untracks a
-# file; the linters exclude .scratch/ explicitly for that reason.
+# file; the linters exclude .scratch/ explicitly for that reason. The
+# client-spec tickets are tracked on the maintainer's decision, so that a
+# worktree cut from main carries them: a new file there needs `git add -f`.
 .scratch/
 
 # Claude Code writes runtime state into .claude/ mid-session
