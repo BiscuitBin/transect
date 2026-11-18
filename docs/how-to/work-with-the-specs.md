@@ -43,7 +43,7 @@ before editing it. A behaviour listed under Excludes belongs outside it.
 
 ## Handle an open question
 
-The module carries 24 open questions, numbered in its last section. None is permission
+The module carries 25 open questions, numbered in its last section. None is permission
 to choose an answer in code or in another rule.
 
 - If a change depends on an unanswered question, raise it with the maintainer.

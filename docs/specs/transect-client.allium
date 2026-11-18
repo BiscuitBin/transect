@@ -82,7 +82,8 @@ value ColumnDefinition {
 -- Columns are a set: two declarations that list the same columns in a
 -- different order are identical. The key is the list of key column names of
 -- a keyed state table, and is empty for every other kind; it is compared as
--- written until open question 20 says what may form one. The tenant scope
+-- written, order included (Derived), until open question 20 says what may
+-- form one. The tenant scope
 -- is absent only in a declaration that omits it, which is refused.
 value TableDefinition {
     namespace: String
@@ -144,8 +145,9 @@ enum FailureKind { queue_full | oversize | invalid | store_failed | shutdown }
 -- its life, not this module, so no rule here creates one or ends one.
 entity HostProcess {
     alive: Boolean
-    -- True in a process made by forking one in which a confluence existed.
-    -- Fixed for the life of the process.
+    -- True in a process made by forking one in which a confluence existed
+    -- (Derived: that is what makes a process a forked child here). Fixed
+    -- for the life of the process.
     fork_child: Boolean
 }
 
@@ -253,6 +255,7 @@ entity Run {
 
     -- The claim on a location. A dead process's claim holds nothing.
     holds_claim: core = production and status != ended and confluence.process.alive
+    -- Derived: a production run ends only once its data writer has stopped.
     -- A fake run has no data writer to wait for.
     writer_has_stopped: core = fake or (data_writer != null and data_writer.status = stopped)
     ready_to_end: status = closing and waiting_rows.count = 0 and writer_has_stopped
@@ -368,7 +371,8 @@ entity RecordedWrite {
 }
 
 -- One kind of lost data for one table within one run: opened by the first
--- loss, and reported with its total when establish ends.
+-- loss, and reported with its total when establish ends (open question 22
+-- asks what else ends one).
 entity FailureEpisode {
     run: Run
     counters: TableCounters
@@ -395,8 +399,8 @@ entity LogRecord {
 ------------------------------------------------------------
 
 -- Neither has a default yet (open question 16), so a deployment must supply
--- both. The local database location is not configuration here: establish
--- names it.
+-- both. Derived: the local database location is not configuration here.
+-- Establish names it, so that two establishes can name different ones.
 config {
     queue_capacity: Integer         -- rows one table's queue may hold
     max_row_size: Integer           -- in the unit open question 21 settles
@@ -473,9 +477,11 @@ rule EstablishProductionCore {
 }
 
 -- Derived: the fake core applies the same declaration, row and tenant rules
--- as the production core. It has no location, no data writer, no local
--- databases and no queue bound. On a confluence inherited across a fork it
--- is refused until open question 23 is decided.
+-- as the production core, the maximum row size included. It has no
+-- location, no data writer, no local databases and no queue bound. On a
+-- confluence inherited across a fork it is refused until open question 23
+-- is decided; a confluence a forked child creates for itself may be given
+-- one.
 rule EstablishFakeCore {
     when: HostEstablishesFake(host, confluence)
     requires: not confluence.has_run
@@ -696,7 +702,8 @@ rule AcceptRowOnFakeCore {
 }
 
 -- A fake core records every write made while it is in force, with its
--- outcome.
+-- outcome. Derived: that includes a write discarded because its handle's
+-- block had ended or because establish was ending.
 rule FakeCoreRecordsWrite {
     when: WriteDecided(run, table, values, outcome)
     requires: run.core = fake
@@ -840,9 +847,10 @@ rule ConfirmPosition {
 }
 
 -- Off the hot path, and never required: a confirmed row may be purged. A
--- keyed value is purged only while no newer value for its key exists. What
--- bounds the local databases when no collection confirms anything is open
--- question 8.
+-- keyed value is purged only while no newer value for its key exists.
+-- Derived: purging is the data writer's work, so nothing is purged once it
+-- has stopped. What bounds the local databases when no collection confirms
+-- anything is open question 8.
 rule PurgeRow {
     when: DataWriterPurges(writer, row)
     requires: writer.status != stopped
@@ -877,7 +885,8 @@ rule DiscardQueuedRow {
 }
 
 -- Once establish is ending and nothing is queued or in hand, the data
--- writer stops, leaving the local databases consistent.
+-- writer stops, leaving the local databases consistent. Derived: the stop
+-- is the data writer's own act, and the run ends after it.
 rule DataWriterStopsAtTheEnd {
     when: DataWriterStops(writer)
     requires: writer.status = running or writer.status = failing
@@ -895,11 +904,14 @@ rule FinishClosing {
 -- Host log records -------------------------------------------
 
 -- The first loss of a kind for a table is logged at once. After that
--- nothing is logged for that kind and table until establish ends, when one
--- record gives the total. When a kind of failure counts as stopped before
--- then is open question 22. One loss is answered by one of the two rules
--- that count it, never both: the first loss of a kind opens its episode at
--- one, and every later loss adds one.
+-- nothing is logged for that kind and table until it stops or establish
+-- ends, when one record gives the total. What counts as stopped is open
+-- question 22, so the only total these rules give is the one at the end
+-- of establish. Derived: a loss at shutdown follows the same rule, so it
+-- has an onset record when establish begins to end and a total when it
+-- has ended. One loss is answered by one of the two rules that count it,
+-- never both: the first loss of a kind opens its episode at one, and
+-- every later loss adds one.
 rule OpenFailureEpisode {
     when: FailureCounted(counters, kind)
     requires: not exists FailureEpisode{counters, kind}
@@ -1220,7 +1232,8 @@ surface HandOver {
     @guarantee PositionsOnlyIncrease
         -- Positions come from a counter that only increases within the
         -- run. last_position is the highest assigned, so a gap at the end
-        -- is as visible as one in the middle.
+        -- is as visible as one in the middle. Whether a collector can tell
+        -- such a gap from rows still waiting is open question 25.
 
     @guarantee LatestValuePerKey
         -- A keyed state table is handed over in the same row shape: one
@@ -1298,8 +1311,9 @@ surface HostLog {
 
     @guarantee OnsetThenTotal
         -- The first occurrence of a kind of failure for a table is logged
-        -- at once. Nothing more is logged for that kind and table until
-        -- establish ends, when one record gives the total.
+        -- at once. Nothing more is logged for that kind and table until it
+        -- stops or establish ends, when one record gives the total. What
+        -- counts as stopped is open question 22.
 }
 
 -- Test code, reading what a fake core recorded.
@@ -1345,3 +1359,4 @@ open question "21. How is a row's size measured against the maximum row size?"
 open question "22. When does a kind of failure for a table count as stopped, so that its total is logged before establish ends, and are unattributed rows and the confluence-wide discards logged? Until decided, a total is logged only when establish ends, and those two are counted and not logged."
 open question "23. In a forked child, may a fake core be established on an inherited confluence? Until decided, it is refused loudly like every other establish there."
 open question "24. What happens to a write that names a table declared against a different confluence from its handle's? Until decided, this module gives it no outcome."
+open question "25. Should a hand-over also carry the stored position? Without it a collector that is given last_position 9 and rows up to 6 cannot tell rows still waiting to be stored from rows lost, and a confirmation above the stored position is refused. Until decided, a hand-over carries only the run id and last_position once per run, as the maintainer confirmed."
