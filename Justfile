@@ -72,6 +72,13 @@ install-tools:
     pins=$(sed -e '/^#/d' -e '/^$/d' tools.txt); [ -z "$pins" ] || cargo binstall --root .tools --no-confirm --locked --disable-strategies compile $pins
     pins=$(sed -e '/^#/d' -e '/^$/d' tools-source.txt); [ -z "$pins" ] || env -u GITHUB_TOKEN -u GH_TOKEN cargo binstall --root .tools --no-confirm --locked --disable-strategies crate-meta-data --only-signed --no-discover-github-token $pins
 
+# The Allium checker for docs/specs/, pinned and checksummed in the tooling
+# package (network). pixi.lock cannot name a binary, so the pin rides the
+# package's tag. Into .tools/bin, which Git ignores; version-checks first, so
+# a present pin downloads nothing (decision 0012).
+install-allium:
+    bg-install-allium
+
 # All three lockfiles, exactly as committed. Never rewrites any.
 sync:
     cargo fetch --locked
@@ -351,6 +358,17 @@ check-docs:
 # validator has no ignore list of its own (decision 0011).
 check-agents:
     python -I scripts/check_agents.py
+
+# The specifications, checked mechanically: every module under docs/specs/
+# must report an empty `diagnostics` array (check) and an empty `findings`
+# array too (analyse). The wrapper asserts that, because neither subcommand's
+# exit code does, and it runs the pinned binary from .tools/bin by path.
+# Waiver terms: docs/how-to/work-with-the-specs.md.
+check-specs:
+    bg-run-allium check
+
+analyse-specs:
+    bg-run-allium analyse
 
 # Every link, external ones included (network); outside `just check`.
 check-links-online:

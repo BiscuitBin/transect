@@ -40,6 +40,15 @@ worktree, stops the run. On success it prints
 | 22 | `check-docs` | The documents lint clean and the handbook contract holds. | `documents` |
 | 23 | `check-agents` | `AGENTS.md`, its adapters and the bridges of every skill this repository authors satisfy the agent contract; the vendored skills are left out ([decision 0011](../decisions/0011-vendored-allium-skills.md)). | `documents` |
 | 24 | `snapshots-check` | Snapshots match and none is orphaned. | `rust`, Linux |
+| 25 | `check-specs` | Every module under `docs/specs/` reports an empty `diagnostics` array to `allium check`. | `documents` |
+| 26 | `analyse-specs` | Every module reports an empty `findings` array to `allium analyse` too. | `documents` |
+
+Gates 25 and 26 run the pinned `allium` binary from the gitignored `.tools/bin`, and so
+does `lint`, through two hooks. A worktree without the binary fails all three until
+`just install-allium` installs it
+([decision 0012](../decisions/0012-project-managed-allium-cli.md)). Neither exit code is
+the verdict: the recipes read the JSON the tool prints. The waiver terms are on
+[Work with the specifications](../how-to/work-with-the-specs.md).
 
 The `check` job also runs `just check` whole on both platforms. Every CI job ends by
 proving the worktree clean: `just check-clean` where it has `just`, `git status` in
@@ -49,4 +58,5 @@ cancelled or was skipped; it is the one status branch protection should require.
 ## Related pages
 
 - [Commands](commands.md)
+- [Work with the specifications](../how-to/work-with-the-specs.md)
 - [Decision 0004: The lint policy](../decisions/0004-lint-policy.md)

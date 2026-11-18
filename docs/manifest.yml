@@ -330,6 +330,33 @@
       "requires": []
     },
     {
+      "path": "decisions/0012-project-managed-allium-cli.md",
+      "title": "Decision 0012: A project-managed Allium binary",
+      "kind": "decision",
+      "audience": [
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "decision_allium_cli"
+      ],
+      "requires": []
+    },
+    {
+      "path": "how-to/work-with-the-specs.md",
+      "title": "Work with the specifications",
+      "kind": "how-to",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "specification_workflow"
+      ],
+      "requires": []
+    },
+    {
       "path": "how-to/release.md",
       "title": "Cut a release",
       "kind": "how-to",

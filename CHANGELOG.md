@@ -19,3 +19,6 @@ them all. Nothing has been released yet.
 - The handbook with its decision records, and the agent contract with its skills.
 - Release workflows for PyPI and crates.io, both started by one version tag, and run so
   far only as dry runs.
+- A proposed Allium specification of the client, `docs/specs/transect-client.allium`,
+  with its open questions, checked by two new gates. It is a proposal: no behaviour is
+  adopted or implemented.

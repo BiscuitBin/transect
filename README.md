@@ -16,7 +16,8 @@ It provides no query engine, server or command-line tool.
 
 This is a scaffold. Each crate exposes one thing, its version, and nothing is published
 to crates.io or PyPI. The client's design is not decided yet; its open questions are on
-the [open-decisions register](docs/project/open-decisions.md). The quality gate, CI,
+the [open-decisions register](docs/project/open-decisions.md), and a proposed
+specification, not yet adopted, is under `docs/specs/`. The quality gate, CI,
 handbook and agent contract are in place; the client's behaviour has not started.
 
 Linux and macOS are supported; Windows is not

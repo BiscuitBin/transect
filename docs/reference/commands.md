@@ -16,10 +16,11 @@ every other recipe runs offline once `just initialize` has run.
 
 | Recipe | What it does |
 | --- | --- |
-| `initialize` | The first-run command: pixi environment, toolchain, tools, lockfile sync and, in the primary checkout, hooks. **Network.** |
+| `initialize` | The first-run command: pixi environment, toolchain, tools, the Allium checker, lockfile sync and, in the primary checkout, hooks. **Network.** |
 | `install-toolchain` | Installs the toolchain `rust-toolchain.toml` pins. **Network.** |
 | `check-toolchain` | Refuses a cargo that is not rustup's proxy for the pin, an override that outranks the pin file, and a set `RUSTC`. |
 | `install-tools` | Installs `tools.txt` and `tools-source.txt` into `.tools/bin`, and the Python floor interpreter into `.tools/python`. **Network.** |
+| `install-allium` | Installs the pinned, checksummed `allium` checker into `.tools/bin`; a present pin downloads nothing ([decision 0012](../decisions/0012-project-managed-allium-cli.md)). **Network.** |
 | `install-hooks` | Installs the commit hook and prepares every hook environment; refuses in a secondary worktree. **Network.** |
 | `sync` | Fetches and installs exactly what the three lockfiles say. **Network.** |
 | `lock` | Updates the lockfiles within the manifests' constraints. **Network.** |
@@ -73,6 +74,8 @@ Each of these is described on [Quality gates](quality-gates.md).
 | `check-docs` | Markdown lint, typos, the offline link check and the handbook validator. |
 | `check-agents` | `AGENTS.md`, its adapters and the bridges of every skill this repository authors satisfy the agent contract. |
 | `snapshots-check` | Snapshots match and none is orphaned. |
+| `check-specs` | `allium check` over `docs/specs/`; every module must report no diagnostics. |
+| `analyse-specs` | `allium analyse` over `docs/specs/`; every module must report no diagnostics and no findings. |
 
 ## Outside the gate
 

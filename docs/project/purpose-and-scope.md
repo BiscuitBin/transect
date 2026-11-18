@@ -23,7 +23,10 @@ links or imports. It has three parts, one per crate:
 - `transectpy`, the Python client, published as the `transectpy` package.
 
 Today it is a scaffold. Each part exposes one thing, its version. Its quality gate, CI,
-handbook and agent contract are complete; the client's behaviour has not started.
+handbook and agent contract are complete; the client's behaviour has not started. A
+proposed specification of that behaviour is under `docs/specs/`
+([Work with the specifications](../how-to/work-with-the-specs.md)); it is a proposal with
+open questions, and none of it is adopted.
 
 ## What this repository does not do
 

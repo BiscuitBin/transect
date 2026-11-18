@@ -3,8 +3,8 @@ description: >-
   pixi and the environment pixi.lock pins (every tool binary, Python, prek and
   the tooling package's checkers), the toolchain rust-toolchain.toml pins through
   the runner's rustup, the cargo caches, the binaries in .tools/bin that
-  conda-forge lacks, the lockfile sync, and every hook environment. Runs after
-  the checkout.
+  conda-forge lacks, the Allium checker, the lockfile sync, and every hook
+  environment. Runs after the checkout.
 
 inputs:
   cache-key:
@@ -72,6 +72,14 @@ runs:
       shell: bash
       env:
         GITHUB_TOKEN: ${{ github.token }}
+    # The Allium checker, pinned and checksummed in the tooling package, into
+    # .tools/bin: `just lint` runs the specification hooks, so every job that
+    # lints needs it. It rides in the .tools cache above, whose key does not
+    # name its pin; bg-install-allium version-checks first, so a stale binary
+    # is replaced, never trusted, at the cost of one small download per run
+    # until a tool list next moves the key.
+    - run: just install-allium
+      shell: bash
     # Exactly what the lockfiles say: both Cargo.locks fetched, pixi.lock
     # installed, none rewritten.
     - run: just sync

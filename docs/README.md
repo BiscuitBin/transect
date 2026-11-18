@@ -16,7 +16,8 @@ runtime and its state, and publishes it so it can be queried.
 
 This repository holds Transect's in-application client: a Rust core, a Rust client API
 and a Python client. It is a scaffold: the client has no behaviour yet beyond reporting
-its version.
+its version. A proposed specification of that behaviour is under `docs/specs/`; none of
+it is adopted or built.
 
 ## Start here
 
@@ -30,6 +31,7 @@ its version.
 
 - [Develop locally](how-to/develop-locally.md)
 - [Maintain dependencies](how-to/maintain-dependencies.md)
+- [Work with the specifications](how-to/work-with-the-specs.md): the proposed client specification, its open questions and its two gates.
 - [Cut a release](how-to/release.md)
 
 ## Understand

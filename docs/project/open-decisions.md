@@ -18,6 +18,12 @@ decision.
 - How the client reports its own failures to the host application.
 - How the client behaves when the host application forks.
 
+A proposed specification of the client is in `docs/specs/transect-client.allium`, with
+open questions of its own
+([Work with the specifications](../how-to/work-with-the-specs.md)). It proposes behaviour
+for both entries above and adopts none: an entry leaves this register only when a
+decision record answers it.
+
 ## Development and CI
 
 Open points about the toolchain, the gates and the release.
@@ -41,3 +47,4 @@ Open points about the toolchain, the gates and the release.
 
 - [Architecture decisions](../decisions/README.md)
 - [Glossary](glossary.md)
+- [Work with the specifications](../how-to/work-with-the-specs.md)

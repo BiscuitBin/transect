@@ -22,7 +22,7 @@ Renovate proposes every version bump in this repository; nothing merges automati
 | cargo-nextest | `pyproject.toml` and `.config/nextest.toml` together | Held for dashboard approval. |
 | Tool lists | `tools.txt`, `tools-source.txt` | Held for dashboard approval. |
 | Python floor | `python_floor` in the `Justfile`, 3.11 only | Held for dashboard approval. |
-| biscuit-games-tooling | its tag in `pyproject.toml` | Held for dashboard approval. |
+| biscuit-games-tooling | its tag in `pyproject.toml` | Held for dashboard approval. The Allium checker's pin rides this tag. |
 | pixi itself | `requires-pixi` and the setup action's `pixi-version` together | Held for dashboard approval. |
 | Hook revisions | both prek configurations | Held for dashboard approval. |
 | Lockfile maintenance | all three lockfiles | Held for dashboard approval. |
@@ -37,6 +37,15 @@ The `setup-python` floor input moves by hand; the tooling interpreter moves only
 3. Read the lockfile diff. A new transitive dependency is a dependency added: it needs
    the review [decision 0005](../decisions/0005-dependency-policy.md) asks for.
 4. Merge one release at a time.
+
+## Moving the Allium checker
+
+The `allium` binary is pinned inside the tooling package, not in a lockfile
+([decision 0012](../decisions/0012-project-managed-allium-cli.md)). It moves only when the
+package's tag moves. After taking that update, run `just install-allium`, then
+`just check-specs` and `just analyse-specs`: a new checker may report what the old one
+missed. Verify again every waiver and every workaround listed on
+[Work with the specifications](work-with-the-specs.md).
 
 ## Related pages
 
