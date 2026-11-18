@@ -1,6 +1,6 @@
 # 02: Research: a tenant named for a tenant-free table
 
-**What to build:** The maintainer can decide open question 19 of the proposed client specification from evidence. The question reads: "What happens to a write that names a tenant for a tenant-free table: stored without a tenant and counted, or refused? Until decided, this module gives that write no outcome beyond the promises every write has: it does not fail, it does not block, and no tenant is stored for a tenant-free table." This ticket delivers a survey from primary sources, the options it supports with their trade-offs, a recommendation, and proposed wording for the specification. It decides nothing: question 19 stays open until the maintainer closes it.
+**What to build:** The maintainer can decide open question 19 of the proposed client specification from evidence. The question reads: "What happens to a write that names a tenant for a tenant-free table: stored without a tenant and counted, or refused? Until decided, this module gives that write no outcome: it is not counted, it does not fail, it does not block, and no tenant is stored for a tenant-free table." This ticket delivers a survey from primary sources, the options it supports with their trade-offs, a recommendation, and proposed wording for the specification. It decides nothing: question 19 stays open until the maintainer closes it.
 
 The case is narrow. A client handle's bound tenant is simply not applied to a tenant-free table, and that is ordinary: a unit of work for one tenant may also record a platform row. The question is only about a single write that names a tenant itself, for a table declared tenant-free.
 
@@ -21,6 +21,7 @@ The survey looks at what comparable systems do when a write carries a scope its 
 What is already settled, and is not reopened here:
 
 - Every write never fails and never blocks.
+- Every write is counted exactly once. This one write is the exception today: with no outcome, it is not counted. Whatever is recommended must end that.
 - A tenant-free table never stores a tenant.
 - No row is attributed to a tenant that was not explicitly bound.
 - Every row the client loses while its process lives is counted exactly once.
@@ -41,4 +42,4 @@ Standing guidance from the same elicitation: where practice exists, follow it ra
 - [ ] The options are listed with trade-offs, including where each would be counted in the diagnostics, and one is recommended with its reasons
 - [ ] Proposed wording for the specification is given for the recommended option, as text for the maintainer to accept or change
 - [ ] The findings, options, recommendation and proposed wording are appended to this ticket under a "Hand-back" heading
-- [ ] Question 19 is still open in the specification, no tracked file is changed, and no code is added
+- [ ] Question 19 is still open in the specification, no tracked file other than this ticket is changed, and no code is added

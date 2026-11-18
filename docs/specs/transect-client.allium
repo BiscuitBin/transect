@@ -94,8 +94,10 @@ value TableDefinition {
     key: List<String>
 }
 
--- The values one write supplies, by column name. The values themselves are
--- opaque to this module: fits, size_of and same_key read them.
+-- The values one write supplies, by column name. Only the names are modelled.
+-- The payloads are opaque to this module and are read only through fits,
+-- size_of and same_key, which are taken to see them; nothing here compares
+-- two RowValues.
 value RowValues {
     columns: Set<String>
 }
@@ -399,7 +401,9 @@ entity LogRecord {
 ------------------------------------------------------------
 
 -- Neither has a default yet (open question 16), so a deployment must supply
--- both. Derived: the local database location is not configuration here.
+-- both. Derived: neither is taken to be negative; which values are valid is
+-- part of open question 16. Derived: the local database location is not
+-- configuration here.
 -- Establish names it, so that two establishes can name different ones.
 config {
     queue_capacity: Integer         -- rows one table's queue may hold
@@ -435,8 +439,10 @@ rule DeclareTable {
     )
 }
 
--- Identical means every part of the definition. The developer is given the
--- table that already exists.
+-- Identical means every part of the declaration: the maintainer's answer was
+-- "everything", queue capacity and maximum row size included. Today a
+-- declaration carries neither, so only the definition can differ (open
+-- question 16). The developer is given the table that already exists.
 rule RedeclareIdenticalTable {
     when: DeveloperDeclaresTable(developer, confluence, definition)
     requires: confluence.tables.any(t => t.definition = definition)
@@ -863,9 +869,9 @@ rule PurgeRow {
 
 -- The end of establish ---------------------------------------
 
--- Nothing waits. Writes stop being accepted, everything still queued is
--- discarded and counted, the batch in hand is finished and the data writer
--- stops.
+-- Nothing waits for the queues. Writes stop being accepted, everything still
+-- queued is discarded and counted, the batch in hand is finished and the data
+-- writer stops. What bounds the batch in hand is open question 26.
 rule BeginClosing {
     when: HostEndsEstablish(host, run)
     requires: run.status = established
@@ -1106,15 +1112,19 @@ surface Establishing {
     @guarantee LoudFailure
         -- An establish that is refused fails loudly and creates no run: an
         -- exception in Python, an error result in Rust, never a panic. If
-        -- the host catches it, the confluence is inert.
+        -- the host catches it, the confluence is as it was: inert if it had
+        -- no run, and still in its run if the refused establish was nested
+        -- inside an open one.
 
     @guarantee OneWriterProcessPerInstance
         -- While a live process holds a location, another establish on it
         -- fails loudly. A dead process's claim never blocks the next start.
 
     @guarantee NothingWaitsAtTheEnd
-        -- The end of establish does not wait for the queues to drain. It
-        -- waits only for the batch in hand.
+        -- The end of establish does not wait for the queues to drain. The
+        -- batch in hand is finished. Derived: the end of establish waits
+        -- for that batch, and nothing here bounds how long it takes (open
+        -- question 26).
 
     @guarantee KilledProcessLosesUncounted
         -- An accepted row lives in the memory of the process that wrote it
@@ -1147,6 +1157,9 @@ surface Writing {
     @guarantee EveryWriteIsCountedOnce
         -- A write that is not accepted is counted once, in the counter its
         -- outcome names. A write that is accepted is counted as accepted.
+        -- The exceptions are the two writes open questions 19 and 24 leave
+        -- without an outcome: until those are decided, this module does
+        -- not count them.
 
     @guarantee ClockNeverMovesBackwards
         -- Within one process the client's clock never moves backwards.
@@ -1350,13 +1363,14 @@ open question "12. Should a bounded retry come before a failed batch is dropped?
 open question "13. Should a declaration carry a version or a definition hash, and stable column ids?"
 open question "14. Does a data writer that has died stay stopped, or is it restarted? Settled: a failure handling one batch costs only that batch. Until decided, it stays stopped for the rest of the run."
 open question "15. How is the hand-over carried, as a push or a pull, and in what form?"
-open question "16. What are the default queue capacity and maximum row size, and how is a table given its own? Until decided, both come from configuration with no default, and every table takes the configured values."
+open question "16. What are the default queue capacity and maximum row size, and how is a table given its own? Which values are valid, and what refuses one that is not: a negative capacity would break QueueDepthWithinCapacity. Settled: an identical redeclaration matches in everything, so once a declaration can carry its own capacity and maximum row size, those must match too. Until decided, both come from configuration with no default, every table takes the configured values, and neither is taken to be negative."
 open question "17. Must the one-process rule hold per container if collection is a pull?"
 open question "18. Are confluence, establish and core the final names? Confluence is a well-known product, and core already names the libtransect crate here."
-open question "19. What happens to a write that names a tenant for a tenant-free table: stored without a tenant and counted, or refused? Until decided, this module gives that write no outcome beyond the promises every write has: it does not fail, it does not block, and no tenant is stored for a tenant-free table."
+open question "19. What happens to a write that names a tenant for a tenant-free table: stored without a tenant and counted, or refused? Until decided, this module gives that write no outcome: it is not counted, it does not fail, it does not block, and no tenant is stored for a tenant-free table."
 open question "20. What makes a declaration valid: which table, namespace and column names are allowed, which columns may form a keyed table's key and whether their order matters, and what happens to a column name that collides with a field the client adds? Until decided, the only declarations refused are one that omits the tenant scope and one that conflicts with an earlier declaration."
 open question "21. How is a row's size measured against the maximum row size?"
 open question "22. When does a kind of failure for a table count as stopped, so that its total is logged before establish ends, and are unattributed rows and the confluence-wide discards logged? Until decided, a total is logged only when establish ends, and those two are counted and not logged."
 open question "23. In a forked child, may a fake core be established on an inherited confluence? Until decided, it is refused loudly like every other establish there."
 open question "24. What happens to a write that names a table declared against a different confluence from its handle's? Until decided, this module gives it no outcome."
 open question "25. Should a hand-over also carry the stored position? Without it a collector that is given last_position 9 and rows up to 6 cannot tell rows still waiting to be stored from rows lost, and a confirmation above the stored position is refused. Until decided, a hand-over carries only the run id and last_position once per run, as the maintainer confirmed."
+open question "26. Does the end of establish wait for the batch in hand, and what bounds that wait when a store never returns? Settled: nothing waits for the queues, and the batch in hand is finished. Until decided, the run ends only once the data writer has stopped, and nothing bounds the batch in hand."

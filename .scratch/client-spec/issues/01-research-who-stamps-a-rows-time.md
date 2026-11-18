@@ -42,4 +42,4 @@ Standing guidance from the same elicitation: where practice exists, follow it ra
 - [ ] The options are listed with trade-offs, and one is recommended with its reasons, for time series tables and keyed state tables separately where they differ
 - [ ] Proposed wording for the specification is given for the recommended option, as text for the maintainer to accept or change
 - [ ] The findings, options, recommendation and proposed wording are appended to this ticket under a "Hand-back" heading
-- [ ] Question 11 is still open in the specification, no tracked file is changed, and no code is added
+- [ ] Question 11 is still open in the specification, no tracked file other than this ticket is changed, and no code is added

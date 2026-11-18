@@ -2,7 +2,7 @@
 
 **What to build:** Every statement the client specification marks "Derived" has been put to the maintainer and is either confirmed or corrected. Afterwards a reader can trust that an unmarked statement is something the maintainer answered, and nothing is built on a guess.
 
-A "Derived" statement follows from the maintainer's answers during the elicitation but was never put to them directly. The specification carries 27 lines that say "Derived"; some hold more than one statement. The handbook's page on working with the specifications says to confirm a Derived statement before building on it.
+A "Derived" statement follows from the maintainer's answers during the elicitation but was never put to them directly. Search the specification for "Derived" to find them: there were 29 such lines when this ticket was last revised, and some hold more than one statement. The handbook's page on working with the specifications says to confirm a Derived statement before building on it.
 
 Eight were listed in the plan the maintainer approved before the specification was written, and were not corrected then. They are still marked, because not correcting a list is weaker than confirming each item:
 

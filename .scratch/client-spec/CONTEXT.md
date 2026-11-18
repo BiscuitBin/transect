@@ -6,7 +6,7 @@ Nothing here is a decision. The specification is a proposal, its open questions 
 
 ## How to work a ticket
 
-- Every ticket delivers a proposal or findings. None adds code, and none closes an open question: the maintainer does that.
+- Every ticket but one delivers a proposal or findings. Ticket 09 retires a piece of repository tooling. None adds product code, and none closes an open question: the maintainer does that.
 - Read the handbook page on working with the specifications first. It says what an unmarked statement, a "Derived" statement and an `open question` each mean, and which recipes gate the specification.
 - A ticket names open questions by number and gist. Numbers shift when a question is removed, so trust the gist.
 - Tickets 03 to 08 and 10 are deferred until after the MVP, and each names what must be decided first. Tickets 01 and 02 can start once web research is authorised. Tickets 09 and 11 wait on the maintainer.
@@ -129,7 +129,8 @@ run 0192f3a1-7c2e-7b10-9a41-5d2f8e6c0b17, last_position 9
 Rows 1 to 6 are stored. Row 7 is still queued. Rows 8 and 9 are stored.
 This hand-over carries rows 1 to 6 only: the stored position is 6, because 7 is waiting.
 The collector answers "have up to 4". The next hand-over re-sends 5 and 6 with the
-same positions, and adds 7, 8 and 9 once 7 is stored or lost.
+same positions. Once 7 is stored or lost it adds 8 and 9, and 7 as well if it
+was stored. A lost row is counted and never sent.
 ```
 
 The third example is where open question 25 comes from. The collector sees `last_position` 9 and rows up to 6, and cannot tell rows still waiting from rows lost, because the confirmed hand-over carries no stored position.

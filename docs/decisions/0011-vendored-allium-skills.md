@@ -32,6 +32,7 @@ these checks leave them out:
 
 - markdownlint, through `ignores` in `.markdownlint-cli2.jsonc`;
 - ruff, through `extend-exclude` in `ruff.toml`;
+- taplo, through `exclude` in `taplo.toml`, although upstream ships no TOML today;
 - every fixer `just fix` runs, through `exclude` in `.pre-commit-fix.yaml`, so that no
   repair rewrites upstream's text;
 - the agent contract, through `scripts/check_agents.py`.
@@ -50,8 +51,8 @@ the secret scan is worth having over any text that enters the repository.
 ## Consequences
 
 A finding in a vendored skill is fixed upstream and arrives with the next vendoring. The
-seven names are written in three configuration files as well as in the lock, because
-those tools cannot read it: a skill added to or removed from the lock changes all three
+seven names are written in four configuration files as well as in the lock, because
+those tools cannot read it: a skill added to or removed from the lock changes all four
 in the same commit. The script reaches two private functions of the tooling package, so
 moving that package's tag means re-running its tests. One of the hooks that still read
 the files may fail after an upstream update; the answer then is an exclude for that

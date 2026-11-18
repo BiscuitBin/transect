@@ -16,6 +16,8 @@ from pathlib import Path
 from biscuit_games_tooling import _project, validate_agents
 
 LOCK = "skills-lock.json"
+# Said when the lock is not the shape the skills CLI writes: stop, never guess.
+MALFORMED_LOCK = f'{LOCK}: "skills" must be an object keyed by skill name'
 # Where a skill, or a provider's bridge to it, can live.
 SKILL_ROOTS = (Path(".agents/skills"), Path(".claude/skills"), Path(".codex/skills"))
 
@@ -25,7 +27,9 @@ def vendored_skills(root: Path) -> frozenset[str]:
     lock = root / LOCK
     if not lock.is_file():
         return frozenset()
-    skills: dict[str, object] = json.loads(lock.read_text(encoding="utf-8"))["skills"]
+    skills: object = json.loads(lock.read_text(encoding="utf-8"))["skills"]
+    if not isinstance(skills, dict):
+        raise SystemExit(MALFORMED_LOCK)
     return frozenset(skills)
 
 

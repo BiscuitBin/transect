@@ -116,6 +116,17 @@ def test_no_lock_means_no_vendored_skill(repository: Repository) -> None:
     assert f".agents/skills/{VENDORED}/SKILL.md" in result.stderr
 
 
+def test_a_lock_whose_skills_are_not_an_object_fails(repository: Repository) -> None:
+    """A list of names is not a lock: the script stops rather than guess what to leave out."""
+    root = repository()
+    (root / "skills-lock.json").write_text(json.dumps({"version": 2, "skills": [VENDORED]}))
+    result = run(root)
+    assert result.returncode == 1
+    assert result.stderr.splitlines() == [
+        'skills-lock.json: "skills" must be an object keyed by skill name'
+    ]
+
+
 def test_an_authored_skill_is_still_checked(repository: Repository) -> None:
     """Leaving the vendored skill out does not loosen the contract for the rest."""
     root = repository()

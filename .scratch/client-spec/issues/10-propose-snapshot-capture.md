@@ -20,7 +20,7 @@ The proposal must say:
 - How application code expresses a capture: where it begins, how rows join it, and what completes it.
 - What makes a capture incomplete (an exception, a capture that never completes, the end of establish while it is open) and how its rows are counted.
 - What bounds a capture, given that the local ingest queue is bounded per table and a capture may be larger than a table's capacity.
-- What one capture covers for a tenant-scoped table, so that one tenant's capture never removes another tenant's rows.
+- What one capture covers for a tenant-scoped table: one tenant's rows or every tenant's. This is open question 4, so elicit the choice and do not assume it. Then, which rows a completed capture can remove.
 - How a completed capture appears in a hand-over, and what a collector can conclude about rows absent from it.
 - Whether reading the application's database directly is offered, and what the client then promises about load on that database and about credentials.
 
@@ -43,7 +43,7 @@ Related open questions, by number and gist. This ticket exists to put proposals 
 - [ ] The specification states it as a proposal; anything unconfirmed is marked "Derived" or recorded as an `open question`; no existing open question is resolved by the agent
 - [ ] Time series tables and keyed state tables behave as proposed today, so nothing already proposed changes meaning
 - [ ] A completed capture replaces the contents and an incomplete one changes nothing, with one scenario of each traced through the proposal
-- [ ] A capture for one tenant never removes another tenant's rows
+- [ ] For the boundary the maintainer chooses (open question 4), the proposal says which rows a completed capture removes, with one scenario traced for a tenant-scoped table
 - [ ] The proposal says what bounds a capture and what happens to one larger than the bound
 - [ ] Every row of an incomplete or refused capture is counted exactly once, and no write blocks or fails
 - [ ] The proposal says whether reading the application's database directly is offered, or records it as an `open question`

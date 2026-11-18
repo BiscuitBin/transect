@@ -20,6 +20,7 @@ Related open questions, by number and gist. Do not resolve them:
 
 - 15: whether the hand-over is a push or a pull, and in what form.
 - 14: whether a data writer that has died stays stopped or is restarted.
+- 26: whether the end of establish waits for the batch in hand, and what bounds that wait when a store never returns. This is about the default behaviour, so it is not deferred with this ticket.
 
 **External precondition:** Open question 15 (push or pull). The maintainer asked for this to be revisited if collection becomes a push. If it is decided as a pull, raise with the maintainer whether the ticket is still wanted before doing anything else.
 
