@@ -85,6 +85,4 @@ recipes = [
 predicates = {}
 
 [dependency-groups]
-dev = [
-    "alliumpy>=3.6.1",
-]
+dev = ["alliumpy>=3.6.1"]

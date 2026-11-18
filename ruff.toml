@@ -4,8 +4,27 @@ target-version = "py311"
 line-length = 100
 # Normal discovery skips deliberately broken controls; generated paths are
 # gitignored. The tracked ticket scratch under .scratch/ is not this project's
-# Python.
-extend-exclude = ["tests/fixtures/py-lint-violation", ".scratch"]
+# Python. The skills skills-lock.json names are vendored from juxt/allium, and
+# the formatter would otherwise reformat the Python in their Markdown examples
+# (decision 0011).
+extend-exclude = [
+  "tests/fixtures/py-lint-violation",
+  ".scratch",
+  ".agents/skills/allium",
+  ".agents/skills/distill",
+  ".agents/skills/elicit",
+  ".agents/skills/propagate",
+  ".agents/skills/tend",
+  ".agents/skills/weed",
+  ".agents/skills/witness",
+  ".claude/skills/allium",
+  ".claude/skills/distill",
+  ".claude/skills/elicit",
+  ".claude/skills/propagate",
+  ".claude/skills/tend",
+  ".claude/skills/weed",
+  ".claude/skills/witness",
+]
 # Leave force-exclude at its false default: explicitly named positive controls must run.
 
 [lint]

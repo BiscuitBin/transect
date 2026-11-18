@@ -316,6 +316,20 @@
       "requires": []
     },
     {
+      "path": "decisions/0011-vendored-allium-skills.md",
+      "title": "Decision 0011: The vendored Allium skills stand outside the gates",
+      "kind": "decision",
+      "audience": [
+        "contributor",
+        "maintainer",
+        "agent"
+      ],
+      "canonical_for": [
+        "decision_vendored_skills"
+      ],
+      "requires": []
+    },
+    {
       "path": "how-to/release.md",
       "title": "Cut a release",
       "kind": "how-to",

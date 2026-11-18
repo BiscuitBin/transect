@@ -346,8 +346,11 @@ check-docs:
 
 # The agent contract: AGENTS.md carries the required guidance, the adapters
 # are exact, and every skill's bridges repeat its frontmatter and add nothing.
+# Through the script, which runs bg-validate-agents with the skills
+# skills-lock.json names left out: those are vendored from upstream, and the
+# validator has no ignore list of its own (decision 0011).
 check-agents:
-    bg-validate-agents
+    python -I scripts/check_agents.py
 
 # Every link, external ones included (network); outside `just check`.
 check-links-online:
