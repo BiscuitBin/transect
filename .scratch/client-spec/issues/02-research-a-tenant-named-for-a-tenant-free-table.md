@@ -107,7 +107,7 @@ Each is given with its effect on `WriteOutcome`, `FailureKind`, the host log, `C
 
 **A2**, resting on three claims:
 
-1. **The mismatch must not be silent, and must reach the host log.** This rests on acts_as_tenant (F7), Micrometer (F3), the ClickHouse maintainer (S6) and OpenTelemetry's error-handling principle (F4), each with a stated why and a fit argument.
+1. **The mismatch must not be silent, and should be logged.** The host log is the one channel that can reach a developer who is not looking, though nothing guarantees a record is read. This rests on acts_as_tenant (F7), Micrometer (F3), the ClickHouse maintainer (S6) and OpenTelemetry's error-handling principle (F4), each with a stated why and a fit argument.
 2. **Keep the row rather than refuse it.** This is the weakest step, and it is the researcher's own argument: no comparable both states a reason for it and fits.
 3. **Never store the tenant.** This is settled, and Hibernate's stated reason (F8) agrees.
 
