@@ -61,10 +61,14 @@
 -- keyed table carry the same key. settled_through(waiting, last) is the
 -- highest position below every waiting row's, or `last` when none wait.
 -- storage_ready(location) says whether the location can hold a run's local
--- databases. uuid_v7(time) is a new UUIDv7. oldest_client_time(rows) is the
--- earliest client time among rows, absent when there are none.
+-- databases. uuid_v7(time) is a new UUIDv7. oldest_observed_time(rows) is
+-- the earliest observed time among rows, absent when there are none.
 -- size_on_disk(location) is the size of the local databases there.
 -- max(a, b) is the larger of two integers.
+--
+-- Every `now` in this module is the client's clock
+-- (ClockNeverMovesBackwards): a row's stamp, the queue's age,
+-- last_store_at and the run id all read it.
 
 ------------------------------------------------------------
 -- Value Types
@@ -253,7 +257,7 @@ entity Run {
     -- nothing above it, which is what keeps a row stored later from having a
     -- position lower than one already handed over.
     stored_position: settled_through(waiting_rows, last_position)
-    oldest_queued_age: now - oldest_client_time(queued_rows)
+    oldest_queued_age: now - oldest_observed_time(queued_rows)
     local_database_size: size_on_disk(location)
 
     -- The claim on a location. A dead process's claim holds nothing.
@@ -325,7 +329,7 @@ entity Row {
     run: Run
     counters: TableCounters
     position: Integer
-    client_time: Timestamp          -- the client's clock when the row was written; for a keyed value, when it was last written
+    observed_time: Timestamp        -- the client's clock when the row was accepted; for a keyed value, when its latest write was accepted
     attribution: Attribution
     tenant: String?
     tenant_dropped: Boolean         -- Derived: the write named a tenant and none was stored; not handed over
@@ -674,7 +678,7 @@ rule AcceptRow {
     requires: counters.has_room
     ensures:
         Row.created(
-            run: run, counters: counters, position: run.last_position + 1, client_time: now,
+            run: run, counters: counters, position: run.last_position + 1, observed_time: now,
             attribution:
                 if not table.is_tenant_scoped: untenanted
                 else if bound != null: attributed
@@ -1180,8 +1184,12 @@ surface Writing {
         -- outcome: until it is decided, this module does not count it.
 
     @guarantee ClockNeverMovesBackwards
-        -- Within one process the client's clock never moves backwards.
-        -- There is no ordering promise across processes.
+        -- The client's clock is the wall clock in UTC, in microseconds
+        -- since the Unix epoch. Within one process it never moves
+        -- backwards, whatever a reading is taken for: a reading earlier
+        -- than the last one the process used is not used, and the last
+        -- one is used again. A reading used again is neither counted nor
+        -- logged. There is no ordering promise across processes.
 
     @guarantee SharedHandle
         -- Derived: a handle may be used from several threads or tasks at
@@ -1191,8 +1199,9 @@ surface Writing {
         -- A handle is a block: a `with` statement in Python, a guard or a
         -- closure scope in Rust. A typed row in Rust can rule out most
         -- misfits at compile time; the refusal still exists for the rest.
-        -- Whether application code may supply a row's time is open
-        -- question 11.
+        -- Application code does not supply a row's time. A time of the
+        -- application's own, such as when an event happened, is a column
+        -- the table declares.
 }
 
 -- The data writer: the client's own thread, written as a party because
@@ -1244,7 +1253,7 @@ surface HandOver {
             row.counters.table.definition.namespace
             row.counters.table.definition.name
             row.position
-            row.client_time
+            row.observed_time
             row.attribution
             row.tenant
             row.values
@@ -1379,7 +1388,6 @@ open question "7. Which collector confirms positions when more than one reads an
 open question "8. What bounds the local databases when no collection happens, and what is lost at the bound? Settled: they are bounded, and anything removed uncollected is counted. Until decided, no rule removes a stored row that has not been confirmed."
 open question "9. Should a namespace promise anything beyond a name? Until decided, it is a name only."
 open question "10. Does every table belong to exactly one namespace, and is there a default namespace? Until decided, every declaration names one, and a table is known by its namespace and name."
-open question "11. Is a row's time stamped by the client only, or may application code supply it, and what are its name and precision? Until decided, the client stamps every accepted row."
 open question "12. Should a bounded retry come before a failed batch is dropped? Until decided, a failed store drops its batch at once."
 open question "13. Should a declaration carry a version or a definition hash, and stable column ids?"
 open question "14. Does a data writer that has died stay stopped, or is it restarted? Settled: a failure handling one batch costs only that batch. Until decided, it stays stopped for the rest of the run."

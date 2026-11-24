@@ -43,7 +43,7 @@ before editing it. A behaviour listed under Excludes belongs outside it.
 
 ## Handle an open question
 
-The module carries 25 open questions, numbered in its last section. A decided
+The module carries 24 open questions, numbered in its last section. A decided
 question's number is not reused, so the numbers have gaps. None is permission to choose
 an answer in code or in another rule.
 

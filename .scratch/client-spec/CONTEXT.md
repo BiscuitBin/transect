@@ -157,10 +157,10 @@ run 0192f3a1-7c2e-7b10-9a41-5d2f8e6c0b17, last_position 5
 ops.request_log   time series, tenant-scoped   (path text, status integer, ms float?)
 ops.job_state     keyed state, tenant-scoped   key (job)   (job integer, status text)
 
-position  table            client_time  tenant          values
-1         ops.request_log  10:00:00.10  acme            /a, 200, 12.5
-2         ops.request_log  10:00:00.31  <unattributed>  /b, 500, (absent)
-5         ops.job_state    10:00:01.02  acme            7, done
+position  table            observed_time  tenant          values
+1         ops.request_log  10:00:00.10    acme            /a, 200, 12.5
+2         ops.request_log  10:00:00.31    <unattributed>  /b, 500, (absent)
+5         ops.job_state    10:00:01.02    acme            7, done
 
 Positions 3 and 4 were earlier values for job 7 and are not sent: 5 replaced them.
 The collector answers "have up to 5"; rows 1, 2 and 5 may then be purged.
@@ -174,11 +174,11 @@ run 0192f3a1-7c2e-7b10-9a41-5d2f8e6c0b17, last_position 6
 ops.build_info    time series, tenant-free     (version text, commit text?)
 ops.request_log   time series, tenant-scoped   (path text, status integer, ms float?)
 
-position  table            client_time  tenant   values
-1         ops.build_info   09:59:58.00  (none)   1.4.2, (absent)
-2         ops.request_log  10:00:00.10  acme     /a, 200, 12.5
-5         ops.request_log  10:00:00.52  acme     /c, 200, 3.1
-6         ops.request_log  10:00:00.60  globex   /d, 404, 1.0
+position  table            observed_time  tenant   values
+1         ops.build_info   09:59:58.00    (none)   1.4.2, (absent)
+2         ops.request_log  10:00:00.10    acme     /a, 200, 12.5
+5         ops.request_log  10:00:00.52    acme     /c, 200, 3.1
+6         ops.request_log  10:00:00.60    globex   /d, 404, 1.0
 
 Positions 3 and 4 were in a batch whose store failed. They are lost, counted
 under lost.store_failed for ops.request_log, and never sent.
