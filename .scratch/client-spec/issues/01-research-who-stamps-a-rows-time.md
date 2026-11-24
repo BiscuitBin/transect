@@ -77,7 +77,7 @@ The survey covers thirteen time series comparables (T1 to T13: logging framework
 Every quotation was checked as a substring of source text the researcher fetched again: 396 quotations at the last check, 383 exactly and 13 once whitespace is collapsed.
 
 - **The elicitation's lead is corrected.** OpenTelemetry's name is `ObservedTimestamp` (`observed_time_unix_nano`), not "observed at". It is the time OpenTelemetry's own code first saw the event, so the in-process SDK sets it too, usually equal to the source `Timestamp`; it is not only the collecting side's time (T1).
-- **Most comparables accept a supplied time.** Log4j, Fluentd's clients, InfluxDB, Kafka under `CreateTime`, Cassandra and HBase stamp the same field when none is given; OpenTelemetry stamps a separate field; Loki expects a time in every entry.
+- **Several comparables accept a supplied time.** Log4j, Fluentd's clients, InfluxDB, Kafka under `CreateTime`, Cassandra and HBase stamp the same field when none is given; OpenTelemetry stamps a separate field; Loki expects a time in every entry.
 - **Chose otherwise, with a stated why:** Rust `tracing` (no time in the event), Prometheus (the server stamps), Kafka's `LogAppendTime`, OpenTelemetry gauges, and Kubernetes' node controller, which trusts its own clock for liveness.
 - **The default stamper moved both ways.** Cassandra moved it from the server to the client library, to keep one client thread's writes in order; HBase proposed the reverse and met users who supply their own times.
 - **Server-owned write times exist without a stated reason:** ZooKeeper's `mtime`, Firestore's `update_time`, Kubernetes' `creationTimestamp`.
@@ -178,6 +178,10 @@ Every review ran on Codex (codex-cli 0.169.1) with `gpt-6-astra`, the preferred 
 ### Gates and files
 
 - **Baseline**, at `9dfe6d6`, the untouched branch:
+
+  > All checks passed and the worktree is unchanged.
+
+- **Final**, at `270c50c`, the research file and this hand-back as reviewed and fixed. The commit that records this line changes only this section's lines.
 
   > All checks passed and the worktree is unchanged.
 
