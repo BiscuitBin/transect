@@ -123,19 +123,42 @@ Source: https://github.com/kubernetes/kubernetes/issues/111248#issuecomment-2977
 
   > so we did.  weird.
 
-- A downstream tool's maintainers called the silent acceptance a flaw, and said it should be an error. This is a Pulumi maintainer's view, not a Kubernetes author's.
+- A downstream tool asked for an error, then closed the request without one. These are Pulumi contributors' views, not a Kubernetes author's.
+  - The request, issue #515, was opened by lblackstone, a member of the Pulumi organisation. Its stated cost is an unnecessary replacement. An earlier comment on issue #415 had said silent acceptance "leads to all sorts of annoying problems".
 
-  Source: https://github.com/pulumi/pulumi-kubernetes/issues/515
+    Source: https://github.com/pulumi/pulumi-kubernetes/issues/515
 
-  > Overly broad transformations can erroneously set the namespace for non-namespaceable resource Kinds. While this doesn't prevent the resource from being created, it can force an unnecessary replacement if this ignored field is changed later.
+    > Overly broad transformations can erroneously set the namespace for non-namespaceable resource Kinds. While this doesn't prevent the resource from being created, it can force an unnecessary replacement if this ignored field is changed later.
 
-  Source: https://github.com/pulumi/pulumi-kubernetes/issues/515#issuecomment-511088289
+    > It would be better to catch this condition at the Check stage, and report an error rather than silently accepting an invalid configuration.
 
-  > I think we should _not_ do this for Q3, since this is a flaw the underlying k8s API has as well (_i.e._, k8s will happily accept resources with `.metadata.namespace` set, but which are not namespaced).
+    Source: https://github.com/pulumi/pulumi-kubernetes/issues/415#issuecomment-478166619
 
-  Source: https://github.com/pulumi/pulumi-kubernetes/issues/415#issuecomment-478166619
+    > When we solve this problem, we should make consider erroring out when people try to set the namespace of a resource that is not namespaced. This leads to all sorts of annoying problems if it is silently accepted.
 
-  > When we solve this problem, we should make consider erroring out when people try to set the namespace of a resource that is not namespaced. This leads to all sorts of annoying problems if it is silently accepted.
+  - The same author then removed that cost in the provider, and left a warning as only possibly worthwhile. The fix, pull request #538, silently clears a cluster-scoped kind's namespace before comparing old and new inputs. That was read at the merge commit, the 2019 state, and shows nothing about what is sent to the server on create.
+
+    Source: https://github.com/pulumi/pulumi-kubernetes/issues/515#issuecomment-485535255
+
+    > The provider logic correctly handles these cases now [1] to prevent unnecessary resource replacement.
+
+    > It may still be worth printing a warning message during Check for non-CR resources to avoid confusing the user, but it won't affect update functionality.
+
+    Source: https://github.com/pulumi/pulumi-kubernetes/blob/e1beb1e355980c6bd102815594022b45632fb977/pkg/provider/provider.go
+
+    > 		// Clear the namespace if it was set erroneously.
+
+  - A contributor argued against doing the error that quarter, calling the silent acceptance a flaw Kubernetes has as well.
+
+    Source: https://github.com/pulumi/pulumi-kubernetes/issues/515#issuecomment-511088289
+
+    > I think we should _not_ do this for Q3, since this is a flaw the underlying k8s API has as well (_i.e._, k8s will happily accept resources with `.metadata.namespace` set, but which are not namespaced).
+
+  - In 2023 the issue was closed with the label `resolution/wont-fix`. Whether the current provider errors or warns was not read: the provider was read only at the 2019 merge commit.
+
+    Source: https://github.com/pulumi/pulumi-kubernetes/issues/515#issuecomment-1636170445
+
+    > The provider handles this case gracefully, so nothing to do here.
 
 - controller-runtime made its cache ignore a namespace on a cluster-scoped read, for consistency with the direct client. This is a read path, so the analogy is looser.
 
@@ -235,7 +258,7 @@ No stated rationale was found for ignoring a header that is *present* in this mo
 **Constraints.**
 
 - The tenant travels in a header, not in the payload. An authenticating reverse proxy is expected to set it.
-- Single-tenant mode removes the requirement for the header. A Cortex maintainer offered it to a user who did not care about the tenant value, as the alternative to a front door that sets the header. No author was found saying it exists for small installs. A proxy is not what multi-tenant mode requires either: in a trusted environment the client can set the header itself, and Loki requires an authenticating proxy in either mode.
+- Single-tenant mode removes the requirement for the header. A Cortex maintainer offered it to a user who did not care about the tenant value, as the alternative to a front door that sets the header. No author was found saying it exists for small installs. A proxy is not what multi-tenant mode requires either: in a trusted environment the client can set the header itself. Loki's authentication page opens by saying an authenticating reverse proxy must be run. Its section on mutual TLS, though, calls that client authentication Loki supports natively, without a proxy. Mutual TLS does not set the tenant header, which in multi-tenant mode a proxy, the log shipping agent or the client must set. So in Loki, authenticating a client and supplying its tenant are separate matters.
 
   Source: https://github.com/cortexproject/cortex/blob/v1.22.0/docs/configuration/single-process-config-blocks.yaml
 
@@ -253,6 +276,11 @@ No stated rationale was found for ignoring a header that is *present* in this mo
   Source: https://github.com/grafana/loki/blob/v3.7.10/docs/sources/operations/authentication.md
 
   > Grafana Loki does not come with any included authentication layer. You must run an authenticating reverse proxy in front of your services.
+
+  > This is a form of client authentication that Loki supports natively, without a reverse proxy.
+
+  > It does not populate `X-Scope-OrgID`, so you still need a reverse proxy, your log shipping agent, or your client to set that header when `auth_enabled: true`.
+
 - The authors themselves describe the setting as a tenancy switch, not an authentication switch.
 
   Source: https://github.com/grafana/mimir/issues/276
@@ -515,7 +543,7 @@ Source: https://github.com/elastic/elasticsearch/pull/105180
 
 > This reduces the risk of document loss if too many fields are added.
 
-**Constraints.** Several services share one data stream, so a refused document is lost for its sender and the stream keeps working for the rest.
+**Constraints.** Several services share one data stream. The stated risk is that one service affects the others: "a single misbehaving service can cause data loss for all services".
 
 **Costs and dissent.** The field-limit change added an option and did not change the index default.
 
@@ -917,6 +945,16 @@ Source: https://github.com/micrometer-metrics/micrometer/blob/v1.18.0/implementa
 
   > Think of it this way, if you suddenly pull in a library that has a clashing metric name rather than having an obvious failure at startup indicating that the name clash needs fixing instead your graphs/alerts will silently break.
 
+- A maintainer (shakuzen) first argued against logging by default, and proposed the once-then-quieter log as a compromise.
+
+  Source: https://github.com/micrometer-metrics/micrometer/pull/5228#issuecomment-2212811290
+
+  > I think this includes avoiding logging too much.
+
+  > I believe that's essentially why we changed the default to doing nothing in Prometheus on meter registration failure due to the known limitation
+
+  > Perhaps as a compromise, we could use a WarnThenDebugLogger.
+
 - Prometheus later relaxed the rule itself from MUST NOT to SHOULD NOT, in prometheus/docs commit `3a44f48946` ("relax stance on metrics with same name but different labels (#2782)").
 
   Source: https://github.com/prometheus/docs/commit/3a44f48946fe459e4d2ef97c314d1a3f326d9324
@@ -933,7 +971,7 @@ Source: https://github.com/micrometer-metrics/micrometer/blob/v1.18.0/implementa
 
 **What it does.** Read in the specification at `v1.63.0`.
 
-- Attributes outside the allow-list are **dropped silently** when aggregating. No error is raised and nothing is counted.
+- Attributes outside the allow-list are **dropped** when aggregating: the specification says they "MUST be ignored". That page requires no error, count or log record for the drop, and forbids none. What SDKs do beyond that was not read.
 - They may still be exported on exemplars, as "filtered attributes".
 - The `Attributes` advisory parameter is marked Development, not Stable, in this version.
 
@@ -1299,7 +1337,7 @@ Source: https://github.com/laravel/framework/pull/43893#issuecomment-1238723630
 
 **Shape.** Named and unknown-field-like. This is what happens when a tenant attribute is named on a model that has no such attribute.
 
-**What it does.** Rails raises `UnknownAttributeError`, and Django's model constructor raises `TypeError`.
+**What it does.** By default, Rails raises `UnknownAttributeError`, and Django's model constructor raises `TypeError`.
 
 Source: https://github.com/rails/rails/blob/v8.1.4.1/activemodel/lib/active_model/attribute_assignment.rb
 
@@ -1309,11 +1347,43 @@ Source: https://github.com/django/django/blob/5.2.19/django/db/models/base.py
 
 > f"{cls.__name__}() got unexpected keyword arguments: "
 
-**Stated why.** Not looked for.
+**Rails has a documented override.** Since Rails 8.0, a model class can override `attribute_writer_missing`, which mass assignment calls for each name the model has no setter for. The documented example logs a warning and does nothing else, so the unknown attribute is dropped and the rest are assigned.
 
-**Constraints.** A failed assignment is an exception in application code that the caller is expected to handle or fix.
+- It is opt-in, per class, and only for mass assignment (`assign_attributes`, or `new` with a hash).
+- Active Record models reach it too: `ActiveRecord::Base` includes `ActiveModel::API`, and Active Record's `_assign_attributes` calls the shared `_assign_attribute`.
+- Nothing in Rails counts the dropped names.
+- All of this was traced in the source at `v8.1.4.1`, not executed.
 
-**Costs and dissent.** Not looked for.
+Source: https://github.com/rails/rails/blob/v8.1.4.1/activemodel/lib/active_model/attribute_assignment.rb
+
+>     #     def attribute_writer_missing(name, value)
+>     #       Rails.logger.warn "Tried to assign to unknown attribute #{name}"
+>     #     end
+
+>           attribute_writer_missing(k.to_s, v)
+
+Source: https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/base.rb
+
+>     include ActiveModel::API
+
+Source: https://github.com/rails/rails/blob/v8.1.4.1/activerecord/lib/active_record/attribute_assignment.rb
+
+>             _assign_attribute(key, v)
+
+**Stated why.**
+
+- **For raising by default:** no stated rationale found. Pull request #52417 keeps the raise as the default and gives no reason for it. Django's reason was not looked for.
+- **For the override:** yes, by its author (seanpdoyle, a contributor), in pull request #52417, merged 2024-07-26 by rafaelfranca. The reason is schema drift in data that comes from outside the application and is passed straight to a model.
+
+  Source: https://github.com/rails/rails/pull/52417
+
+  > Over time, Active Model instances built with data from external sources (like API calls) has the potential to become out of synchronization with older versions of that data. For example, an API might add or remove a field from a JSON response, and applications might be passing that parsed JSON directly to model constructors for mass assignment.
+
+  > In the best cases, they might be able to take corrective or coercive measures. In the worst cases, they might track or log the mismatch.
+
+**Constraints.** A failed assignment is an exception in application code that the caller is expected to handle or fix. The override is for input whose shape the application does not control.
+
+**Costs and dissent.** Only the pull request's thread was read. It has one comment in support and a discussion of the method's name, and no argument about the default.
 
 ### F13. django-tenants and Apartment: shared models (ambient only)
 
@@ -1384,7 +1454,7 @@ There is no single majority to stand against, so this section records the split 
 - **Prometheus client_golang (F2) refuses at compile time on a plain `Counter`. On a `CounterVec`, including one built with no labels, it refuses at run time: `With` panics and `GetMetricWith` returns an error.**
   - Its maintainer's stated reason is that the compiler should catch "incorrect calls of label-less metrics with labels", and that covers the plain `Counter` only.
   - client_python (F1) raises, with no stated reason of its own.
-- **OpenTelemetry Views (F4) and `tracing` (F6) drop silently.**
+- **OpenTelemetry Views (F4) drop, with no signal the metrics SDK specification requires, and `tracing` (F6) drops silently.**
   - OpenTelemetry states two reasons. The project-wide one is "users would prefer to lose telemetry data rather than have the library significantly change the behavior of the instrumented application". The one specific to Views is that an operator "wishes to constrain the cardinality of labels" (OTEP 0126). So a View's drop is configured by an operator, not an error the library tolerates.
   - `tracing` states only its mechanism.
 - **Micrometer (F3), in its current registry, went from raising, to dropping silently, to logging, to accepting.**
@@ -1400,8 +1470,8 @@ There is no single majority to stand against, so this section records the split 
 
 **Among the unknown-field comparables:**
 
-- **Rejection is the default** for BigQuery (S8), PostgreSQL (S10), and Rails and Django (F12).
-- **Rejection is configured**, and is not the default, in Elasticsearch `dynamic: strict` (S7) and InfluxDB Cloud explicit bucket schemas (S9). InfluxDB rejects and counts per field value, not per line, and may report a rejection only after the write is acknowledged.
+- **Rejection is the default** for BigQuery (S8), PostgreSQL (S10), and Rails and Django (F12). Since 8.0, Rails lets a model class override that, and its documented override logs the unknown attribute and assigns the rest. The stated reason is data from external sources that drifts out of sync with the model.
+- **Rejection is configured**, and is not the default, in Elasticsearch `dynamic: strict` (S7) and InfluxDB Cloud explicit bucket schemas (S9). InfluxDB rejects and counts per field value, not per line. Its documentation says points may be rejected after a write is acknowledged, and whether that applies to an explicit-schema rejection is Unverified (S9).
   - Elasticsearch's default, `dynamic: true`, adds the new field to the mapping, and `dynamic: false` keeps it in `_source` without indexing it.
   - InfluxDB's default bucket schema type is `implicit` (S9).
   - Both have a stated reason for the stricter mode: the Definitive Guide's "alert you to the problem" where Elasticsearch is the primary store, and InfluxData's protection against schemas "muddled up with junk".
@@ -1441,13 +1511,13 @@ What follows is taken from the ticket, from the specification (`docs/specs/trans
 
 | § | Behaviour | Stated why | Holds here | Does not hold | Use |
 | --- | --- | --- | --- | --- | --- |
-| S1 Kubernetes | Body namespace cleared silently; URL path 404; `kubectl` drops it | None for the clear | The target's scope is declared and known to the receiver (K5) | A server API that could answer with an error or a warning, unlike K1; the clear is a historical accident, not a design | Informs. Its costs (a reviewer's surprise, Pulumi's "flaw", the Capsule advisory) inform the case against silence |
+| S1 Kubernetes | Body namespace cleared silently; URL path 404; `kubectl` drops it | None for the clear | The target's scope is declared and known to the receiver (K5) | A server API that could answer with an error or a warning, unlike K1. No stated rationale was found for the clear, so there is no reason to hold or not hold here; the only reason offered, mixed manifests applied with `-n`, is Inferred | Informs. Its costs (a reviewer's surprise, Pulumi's request for an error, the Capsule advisory) inform the case against silence. Pulumi closing that request as won't-fix, once its own provider removed the cost it named, informs the other way |
 | S2 Grafana family | Header replaced by a substitute tenant | For the substitute tenant only: internals stay multi-tenant | None of the reason: storage here is not tenant-scoped underneath | The scope-free declaration is deployment-wide, and the tenant is replaced, not dropped | Informs |
 | S3 Elasticsearch TSDS | Rejected with an error | What routing is for; nothing on refusing rather than ignoring | A declaration of how the target is scoped (K5) | Routing is derived from the data, so a named value conflicts with it; here nothing is derived from a tenant on a tenant-free table. A server API that can return an error, unlike K1 | Informs |
 | S4 Spark | Rejected at analysis | None for the SQL clause; the adjacent DataFrame reason is about an already partitioned table | A declared target (K5) | A statement that fails whole to its caller, unlike K1 | Informs |
 | S5 Cosmos DB | A conflicting key rejected | None | None | The key is derived from the document, and no container is truly scope-free | Informs |
 | S6 ClickHouse | Unknown column dropped silently; a warning proposed | Default: a side effect of a read-side change. Dissent: the drop is data loss, and an explicit name that does not match "is nearly always a mistake" | The names in a write through a client library are explicit, as a tenant named on a write here is (K5). The remedy chosen keeps the behaviour and adds a server-log warning, which this client can match through K2 | The thing dropped is a column's data. Here it is the tenant | **Justifies** claim 1 of the recommendation: the mismatch must not be silent |
-| S7 Elasticsearch `dynamic` and field limit | Configured: add, keep unindexed, or reject. The limit gained an option to accept and list the surplus | `strict`: "alert you to the problem" where Elasticsearch is the primary store (historical guide). Field limit: rejection causes data loss in shared streams | A refused write loses data (K8). Telemetry, where losing a row is a cost | The alert in `strict` is an exception to the caller, unlike K1. The field-limit reason rests on many services sharing one stream, which a per-table queue here does not have. The option is not the default | Informs. The field limit leans towards keeping the row, without justifying it |
+| S7 Elasticsearch `dynamic` and field limit | Configured: add, keep unindexed, or reject. The limit gained an option to accept and list the surplus | `strict`: "alert you to the problem" where Elasticsearch is the primary store (historical guide). Field limit: rejection causes data loss in shared streams | A refused write loses data (K8). Telemetry, where losing a row is a cost | The alert in `strict` is an exception to the caller, unlike K1. The field-limit reason rests on many services sharing one stream, which a per-table queue here does not have. The option is off for a plain index, though the built-in logs and metrics templates turn it on at `v9.5.7`, so Elastic's own defaults for telemetry keep the document | Informs. The field limit leans towards keeping the row, without justifying it |
 | S8 BigQuery | Rejected by default; ignore is opt-in per request | None | None | A request that fails to its caller, unlike K1 | Informs |
 | S9 InfluxDB explicit schemas | Rejected per field value and recorded in `rejected_points` | Protection from schemas "muddled up with junk" | A declared schema (K5) | Opt-in. The unit rejected is a field value, not a row. The caller sees an error | Informs |
 | S10 PostgreSQL | Rejected | Not looked for | None | A statement in a transaction the caller controls, unlike K1 | Informs |
@@ -1455,15 +1525,15 @@ What follows is taken from the ticket, from the specification (`docs/specs/trans
 | F1 Prometheus client_python | Raises `ValueError` | Only the guideline that label names are fixed at creation | A target declared up front (K5) | Raising at the call site, which K1 forbids | Informs |
 | F2 Prometheus client_golang | Compile-time on a plain `Counter`; run time on a `CounterVec` | The compiler should catch "incorrect calls of label-less metrics with labels" | In Rust, a tenant-free table's type could have no way to name a tenant (K9 for Rust only) | Python has no such check (K9). A zero-label vector still needs the run-time check, as the specification's guidance on typed rows already says | **Justifies** the Rust complement, not the run-time behaviour |
 | F3 Micrometer | Current registry: raised, dropped silently, logged, then accepted. Legacy: dropped, callbacks only | Each stage stated; stage 3: users could not "be aware of the failure unless they register a callback"; "better to lose some observability info than cause issues for the application" | A library in someone else's process, often fed by code the host does not control (K4). Silence went unnoticed, and the remedy was a log (K2) | The mismatch is between registrations, not one write and a declaration. Stage 4 accepted the mismatch because the back end could then represent it | **Justifies** claim 1: not silent, and logged |
-| F4 OpenTelemetry Views | Dropped silently, as configured | Views: separation of concerns and cardinality. Project-wide: "users would prefer to lose telemetry data rather than have the library significantly change the behavior of the instrumented application", and a suppressed error "SHOULD" be logged | The error-handling principle holds fully: an in-process telemetry library (K1, K4). Its rule to log a suppressed error fits K2 | A View's drop is configured by an operator, so it is not a mistake; a tenant named here for a tenant-free table is a mistake or a habit | **Justifies** claim 1: log the suppressed mismatch. The View's own silence informs only |
+| F4 OpenTelemetry Views | Dropped as configured; the metrics SDK specification requires no signal for it | Views: separation of concerns and cardinality. Project-wide: "users would prefer to lose telemetry data rather than have the library significantly change the behavior of the instrumented application", and a suppressed error "SHOULD" be logged | The error-handling principle holds fully: an in-process telemetry library (K1, K4). Its rule to log a suppressed error fits K2 | A View's drop is configured by an operator, so it is not a mistake; a tenant named here for a tenant-free table is a mistake or a habit | **Justifies** claim 1: log the suppressed mismatch. That the metrics SDK specification requires no signal for a View's drop informs only |
 | F5 OpenTelemetry attribute limits | Dropped and counted (`dropped_attributes_count`), logged at most once per record | Memory safety | Counting what was dropped, next to what was kept (K2) | Memory safety is not the reason here | Informs the shape of a counter |
 | F6 `tracing` | Silent no-op | The mechanism only | A field set declared up front (K5) | No reason for the silence; its users ask for a warning | Informs, and its open issues inform the case against silence |
-| F7 acts_as_tenant | Before 2.0: named tenant overwritten silently. Since: validation fails | The overwrite "was confusing and hid bugs" | A named tenant handled silently hid bugs, and a write to a tenant-free table here would be just as invisible without a counter or log (K1) | The overwrite gave the row another tenant, a cross-tenant risk. Dropping a tenant here puts the row where every row of a tenant-free table goes (K7). Its remedy, a failed validation, is visible to the caller; K1 forbids that here | **Justifies** claim 1: not silent. Its remedy, refusal, informs only |
+| F7 acts_as_tenant | Before 2.0: named tenant overwritten silently. Since: validation fails | The overwrite "was confusing and hid bugs" | A named tenant handled silently hid bugs, and a write to a tenant-free table here would be just as invisible without a counter or log (K1) | The overwrite saved the row to the current tenant instead of the one named; the cross-tenant risk its pull request names came from polymorphic tenants, which never overwrote. Dropping a tenant here puts the row where every row of a tenant-free table goes (K7). In a keyed state table that place is its key's slot, so the row can replace a value another write put there; that costs data, though it is not a cross-tenant exposure. Its remedy, a failed validation, is visible to the caller; K1 forbids that here | **Justifies** claim 1: not silent. Its remedy, refusal, informs only |
 | F8 Hibernate | Throws on a mismatched tenant | Honouring it "would let the user set up cross-tenant associations"; an error rather than the first draft's overwrite is only "better, probably" | Honouring a named tenant against the declaration is ruled out here too (K7) | An exception to the caller, which K1 forbids. The conflict is between two tenants, not a tenant and a tenant-free table | **Justifies** not storing the named tenant, which is settled anyway |
 | F9 django-multitenant | The named tenant wins | None | None | A tenant-scoped model; Citus routing | Informs |
 | F10 stancl/tenancy | The named tenant wins, unchecked | None | None | A tenant-scoped model | Informs |
 | F11 Laravel | Dropped silently by default; strict opt-in, recommended outside production | Security for mass assignment; silence "expected" in production and confusing in development | Strictness where the developer is looking, at development time: K3, the fake core | Mass assignment from untrusted input is not this client's case | **Justifies** making the mismatch visible to tests through the fake core. Its production silence informs only |
-| F12 Rails, Django | Raise | Not looked for | None | An exception to the caller (K1) | Informs |
+| F12 Rails, Django | Raise by default. Since Rails 8.0 a class may override the hook; the documented override logs a warning, drops the unknown attribute and assigns the rest | Default: none found. Override: data from external sources drifts out of sync with the model, and "In the worst cases, they might track or log the mismatch" | The override's shape, keep the rest and log the unknown name, is A2's shape (K2) | The override's reason, input from an external API whose shape drifts, is not this client's case: the tenant is named by the application's own code. The unknown thing is a field of the input, which the specification already settles as refused whole (K6), not a tenant parameter. The override is opt-in per class, and the default raises to the caller, unlike K1 | Informs. The override leans towards keeping the row and logging, without justifying it |
 | F13 django-tenants, Apartment | Ambient only; the ambient tenant does not apply to a shared model | Partly | The ambient case, which the ticket already settles | No write can name a tenant | Informs the settled ambient rule only |
 
 ## Which behaviour surprises a developer least
@@ -1472,7 +1542,7 @@ What follows is taken from the ticket, from the specification (`docs/specs/trans
 
 **Complaints about silence**, every one from a source quoted above:
 
-- Kubernetes (S1): a reviewer found the clear "weird", Pulumi's maintainers called it a "flaw", and Capsule's security advisory turns on it.
+- Kubernetes (S1): a reviewer found the clear "weird". A Pulumi issue asked for an error, after an earlier comment had said silent acceptance "leads to all sorts of annoying problems", and was closed as won't-fix once Pulumi's provider cleared the field itself. Capsule's security advisory turns on the clear.
 - ClickHouse (S6): a maintainer called the silent drop data loss.
 - Micrometer (F3): a user lost hours to metrics that silently did not appear.
 - `tracing` (F6): users ask for an opt-in warning.
@@ -1487,19 +1557,45 @@ What follows is taken from the ticket, from the specification (`docs/specs/trans
 - Hibernate (F8): a project member argued that a value the user gives should be kept.
 - Weaviate (S11): the strict rule broke Weaviate's own reference paths, where the tenant was inherited rather than named.
 
-**What the evidence supports.** The complaints are consistent on one point: **a mismatch handled silently surprises developers.** Every reversal recorded here added a signal: a validation failure, a log line, a warning, a counter or a callback. None removed one. On keeping the row against refusing it, the complaints point both ways, and they do not settle the question.
+**What the evidence supports.** The complaints are consistent on one point: **a mismatch handled silently, so that data is lost or misplaced unseen, surprises developers.** The reversals recorded here moved both ways, though.
 
-**Two mistakes, worked through each option.** This is the researcher's view, not a finding. The options are defined under "Options" below.
+- **Signals added after a silent default:** acts_as_tenant 2.0, a validation failure (F7); Micrometer's stage 3, a log line (F3); ClickHouse's proposed server warning (S6); Laravel's opt-in strict mode (F11).
+- **Signals removed or weakened:**
+  - Micrometer replaced its default exception with silence and opt-in callbacks, because Prometheus' rule placed a "significant burden" on users (stage 2, F3). A maintainer later put it as "we changed the default to doing nothing".
+  - ClickHouse 22.6 turned on skipping unknown fields, so an unknown column that had raised an exception was dropped silently, as a side effect of a read-side change (S6).
+  - Elasticsearch's field-limit option, on in the logs and metrics templates, accepts a document that would have been rejected and lists its surplus fields in `_ignored`, to stop data loss (S7).
+  - Micrometer's current registry stopped treating different tag keys as a mismatch, and so stopped logging it, once the back end could represent them (stage 4, F3).
+  - Prometheus relaxed what it asks of client libraries on differing label names, from MUST NOT to SHOULD NOT (F3). That loosened a rule rather than removed a signal from a system.
+- **A signal asked for and declined:** Pulumi closed a request for an error as won't-fix, once its provider cleared the field itself and the cost the request named was gone (S1).
+- In the researcher's reading, every signal removed was an exception or a refusal, which stops the caller or loses data, or was removed because the mismatch no longer lost anything. No reversal recorded here went back to silence after silence had drawn complaints. No source states that pattern. So the evidence is against silence that loses data, not for ever more signalling.
 
-| | 1. The table was declared tenant-free by mistake | 2. A helper passes a tenant on every write, and the table is rightly tenant-free |
-| --- | --- | --- |
-| **A1** keep, counted only | Rows kept without the tenant. A counter rises, and nothing is logged. Found only by reading the diagnostics | Rows correct. A counter rises, and nothing is logged |
-| **A2** keep, counted and logged | Rows kept without the tenant. One WARNING onset names the table and the kind, then a total. The tenants of the rows written so far are lost | Rows correct. One onset and one total per table per run: noise, and no loss |
-| **B** refuse as invalid | Every row refused and lost. One WARNING onset with the kind `invalid`, although the columns fit. The log carries no detail beyond table, kind and count, so the developer looks for a column that does not fit and finds none | Every row of the table refused and lost, for a harmless habit |
-| **C** refuse with its own kind | Every row refused and lost. One WARNING onset with a kind that names the cause | As B, but the log names the cause |
-| **D** keep, counted only as accepted | Rows kept without the tenant. Nothing shows anywhere | Rows correct. Nothing shows |
+On keeping the row against refusing it, the complaints point both ways, and they do not settle the question.
 
-In the researcher's view, A2 surprises least: it keeps the most data in both mistakes, and its signal names the cause. C is as clear and loses the rows. B's signal points at the wrong cause. A1 and D are the silent handling that the complaints above are about.
+**Three mistakes, worked through each option.** This is the researcher's view, not a finding. The options are defined under "Options" below. A keyed state table is described under the proposed specification's slots: every row of a tenant-free keyed table with the same key shares one slot (`shares_slot_with`, which the specification marks "Derived"), and a value that a newer one replaces is neither sent (`LatestValuePerKey`) nor counted as lost.
+
+| | 1. The table was declared tenant-free by mistake | 2. A helper passes a tenant on every write, and the table is rightly tenant-free | 3. One write meant for a tenant reaches a rightly tenant-free table |
+| --- | --- | --- | --- |
+| **A1** keep, counted only | Rows kept without the tenant. A counter rises, and the fake core flags each write, so a test that asserts no write named a tenant fails. Nothing is logged | Rows correct. A counter rises and the fake core flags each write. Nothing is logged | The row is kept as a global row. Signals as in mistake 1 |
+| **A2** keep, counted and logged | As A1, and one WARNING onset names the table and the kind, then a total. The tenants of the rows written so far are lost | Rows correct. As A1, and one onset and one total per table per run: noise, and no loss | The row is kept as a global row. Signals as in mistake 1 |
+| **B** refuse as invalid | Every row that named a tenant refused and lost. One WARNING onset with the kind `invalid`, although the columns fit. The log carries no detail beyond table, kind and count, so the developer looks for a column that does not fit and finds none | Every row of the table refused and lost, for a harmless habit | The row is refused and lost, with the misleading signal of mistake 1 |
+| **C** refuse with its own kind | Every row that named a tenant refused and lost. One WARNING onset with a kind that names the cause | As B, but the log names the cause | The row is refused and lost, and the log names the cause |
+| **D** keep, counted only as accepted | Rows kept without the tenant. Nothing shows in the counters or the log | Rows correct. Nothing shows | The row is kept as a global row. Nothing shows |
+
+**For a keyed state table**, the rows that A1, A2 and D keep also take their key's slot:
+
+- Mistake 1: every tenant's value for a key collapses into one, whichever tenant wrote last, and is handed over with no tenant. Under B and C the writes that named a tenant are lost instead. Writes that named none collapse the same way under every option, because a handle's bound tenant is not applied to a tenant-free table, which is settled. No option keeps correct data here.
+- Mistake 2: A1, A2 and D keep the table correct. Under B and C every update is refused, and each key keeps whatever was last written without a named tenant, or nothing.
+- Mistake 3: under A1, A2 and D the wrong value replaces the correct global value for its key. If the correct value was not yet confirmed it is never sent; if it was, the collector's latest value becomes the wrong one. A2's log says that a tenant was dropped, not that a value was replaced. Under B and C the wrong write is refused and the correct value stays.
+
+In mistake 1, a test that asserts the tenant its write named sees none under every option: the fake core records no tenant for a tenant-free table (`AcceptRowOnFakeCore`) and none for a refusal (`FakeCoreRecordsWrite`). The flag in A1 and A2 adds a check that needs no expected tenant.
+
+In the researcher's view, A2 surprises least:
+
+- It keeps the most rows in mistakes 1 and 2, and its signal names the cause. Keeping the most rows is not keeping the most correct data, though: in a keyed state table, mistake 3 lets one wrong write replace a value that C would have kept.
+- No option is best in all three mistakes, and no source says how often each happens.
+- C is as clear as A2, and loses the rows. B's signal points at the wrong cause.
+- A1 has the same counter and fake-core flag as A2, so a test or a reading of the diagnostics finds the mismatch. It differs from A2 only in that nothing reaches the host log.
+- D shows nothing in either channel, and is the silent handling the complaints above are about.
 
 ## Options the settled promises rule out
 
@@ -1539,7 +1635,8 @@ Two variants:
 - The tenant the write named is lost, though the row is kept.
 - A2 logs a kind that loses no row, beside kinds that do. `FailureKind` is commented as "the kinds of lost data", so the comment changes.
 - A2 is logged while `unattributed` is counted and not logged, an asymmetry open question 22 already asks about for `unattributed`. Choosing A2 does not answer question 22.
-- A's core act, dropping a named tenant and keeping the row, resembles what acts_as_tenant did before 2.0 and what Hibernate's first draft did, and both authors moved away from it (F7, F8). What differs is set out under "Recommendation".
+- In a keyed state table the kept row takes its key's slot like any other write to the table. One wrong write can then replace a correct value (mistake 3), and in mistake 1 every tenant's value for a key collapses into one. A replaced value is neither sent nor counted as lost. Refusing, under B or C, keeps the correct value in mistake 3. This rests on the proposed specification's slots, which are marked "Derived".
+- A's core act, dropping a named tenant and keeping the row, resembles what acts_as_tenant did before 2.0 and what Hibernate's first draft did, and both authors moved away from it (F7, F8). Only acts_as_tenant states why: the overwrite "was confusing and hid bugs". Hibernate's stated reason is against honouring the tenant, not against the overwrite. What differs in A is set out under "Recommendation".
 
 ### B. Refuse the row and count it as invalid
 
@@ -1550,7 +1647,29 @@ The tenant mismatch joins `RefuseInvalidRow`: the row is refused whole, as a row
 - **`FailureKind`:** `invalid`, so the existing onset and total are logged.
 - **`CountersMatchTheRows`:** unchanged, since no row exists.
 - **`RecordedWrite`:** records the refusal through `WriteDecided`, with no attribution and no tenant.
-- **Rule order:** the invalid rule comes before the oversize and queue-full rules, so the mismatch wins over both. The guard on both accept rules stays.
+- **Rule order:** the rules are kept apart by their guards, not by their order, because rules that share a trigger and could both match are an ambiguity in Allium. `RefuseOversizeRow` and `RefuseRowWhenQueueFull` gain the guard both accept rules already have, so a fitting write that names a tenant for a tenant-free table is refused as invalid, whatever its size and whatever room its queue has. The guard on both accept rules stays. `fits` is not changed, so it still never sees the tenant (K6).
+
+**Wording for B**, not run through the pinned checker, for the reason given under "Proposed wording":
+
+```text
+-- A missing required column, an unknown column, a value of the wrong
+-- type, or a tenant named for a tenant-free table: the row is refused
+-- whole and nothing is converted.
+rule RefuseInvalidRow {
+    when: ApplicationWrites(app, handle, table, values, tenant?)
+    let run = handle.confluence.latest_run
+    requires: handle.status = open
+    requires: handle.confluence.is_established
+    requires: not fits(table.definition, values) or (not table.is_tenant_scoped and tenant != null)
+    ...
+}
+```
+
+`RefuseOversizeRow` and `RefuseRowWhenQueueFull` each gain, after their size guard:
+
+```text
+    requires: table.is_tenant_scoped or tenant = null
+```
 
 **Costs.**
 
@@ -1562,7 +1681,7 @@ The tenant mismatch joins `RefuseInvalidRow`: the row is refused whole, as a row
 
 As B, but with its own counter (for example `rejected_tenant_named`), its own `WriteOutcome` and its own `FailureKind`, and so its own onset and total.
 
-- **Rule order:** its place must be chosen. Right after the invalid rule would let a misfit row count as `invalid` and a fitting row with a named tenant win over oversize and queue-full.
+- **Rule order:** the rules are kept apart by their guards, not by their order. The new rule requires a fitting row, so a misfit row counts as `invalid`. `RefuseOversizeRow` and `RefuseRowWhenQueueFull` gain the guard both accept rules already have, so a fitting row with a named tenant is refused under the new outcome, whatever its size and whatever room its queue has. The new rule has no guard on the core, so a fake core records the refusal too.
 
 **Costs.**
 
@@ -1590,18 +1709,25 @@ It rests on three claims. Each names the comparables it rests on, and only compa
 
 1. **The mismatch must not be silent, and the host log is where it should show.** This rests on:
    - acts_as_tenant (F7): a silent treatment of a named tenant "was confusing and hid bugs";
-   - Micrometer (F3): users could not be aware of a failure without a callback, so it was logged;
+   - Micrometer (F3): users could not be aware of a failure without a callback, so it was logged, once at WARN and afterwards at DEBUG. That was a maintainer's compromise against "avoiding logging too much". In the researcher's view, not a stated reason, A2's onset and total are the same kind of compromise;
    - the ClickHouse maintainer (S6): an explicit name that does not match is nearly always a mistake, and a warning comes first;
    - the OpenTelemetry error-handling principle (F4): a suppressed error "SHOULD" be logged.
 
-   The fit is K1 and K2. The write itself can carry no signal, so a counter that someone must go and read is not enough on its own, and the host log is the channel that reaches a developer. This rules out D and A1, and puts A2 beside C.
+   The fit is K1 and K2. The write itself can carry no signal. A counter must be read, and A's fake-core flag reaches only a test that asserts on it. Like the callbacks Micrometer users had to register (F3), both are signals a developer must go looking for. The host log is the channel that reaches a developer unprompted. This rules out D, which has no signal at all, weighs against A1, which has the counter and the flag but no log, and puts A2 beside C.
 2. **Keep the row rather than refuse it.** No comparable both states a reason for keeping and fits here, so **this step is the weakest, and rests on the researcher's own argument**:
-   - Within the specification, the tenant dimension already keeps a mismatched row and counts it (`unattributed`, K7), while refusal is settled for the column dimension (K6).
-   - A2 and C are equally visible, so refusing adds only the loss of the row. In mistake 2 that loss is every row of a correctly declared table.
-   - What made acts_as_tenant and Hibernate leave the silent overwrite was a row given to *another tenant*, and the silence. Neither holds for A2: the row goes where every row of a tenant-free table goes, and the mismatch is logged and counted.
-   - Elasticsearch's field limit (S7) leans the same way and only informs: its reason, data loss, holds here, but its shared-stream constraint does not, and the option is not a default.
+   - Within the specification, the tenant dimension already keeps a mismatched row and counts it (`unattributed`, K7), while refusal is settled for the column dimension (K6). The precedent holds fully for a time series table only. Under the proposed specification an unattributed row of a keyed state table is in a slot group of its own, so it never replaces an attributed value. A row kept under A is untenanted like every other row of its table, and does share its key's slot with correct values.
+   - A2 and C are equally visible. For a time series table, refusing adds only the loss of the row, and in mistake 2 that loss is every row of a correctly declared table. For a keyed state table, refusing also protects: in mistake 3, C keeps a correct value that A2 lets a wrong write replace, while in mistake 2, C leaves each key's value stale or empty.
+   - Only acts_as_tenant states why it left its overwrite: it "was confusing and hid bugs" (F7). Its overwrite saved the row to the current tenant when the write named another. The cross-tenant creation its pull request also describes came from polymorphic tenants, which never overwrote. Hibernate's author first found the overwrite "fine". The author's stated reason, "cross-tenant associations", answers a colleague's proposal to keep the tenant the user gave, not the overwrite. For an error rather than the overwrite, the author said only that it "would be better, probably" (F8).
+   - A2 differs from the acts_as_tenant overwrite in two ways: the mismatch is counted and logged rather than hidden, and the row is stored with no tenant, where every row of a tenant-free table goes, rather than under a tenant the write did not name. Whether that answers "confusing and hid bugs" is the researcher's argument, not acts_as_tenant's. In a keyed state table that place is its key's slot, so the cost of keeping is a value replaced, not a tenant crossed.
+   - Elasticsearch's field limit (S7) leans the same way and only informs: its reason, data loss, holds here, but its shared-stream constraint does not. The option is off for a plain index and on in Elastic's built-in logs and metrics templates, so for telemetry Elastic's own default keeps the document.
+   - Rails' `attribute_writer_missing` (F12) also leans this way and only informs. Its documented override keeps the rest of the assignment and logs the unknown name, but it is opt-in, raising stays the default, and its reason, drifting external input, is not this client's case.
 
-   If the maintainer reads a named tenant as part of the row, the settled rule for a row that does not fit points the other way, and **C** is the answer rather than B, because B's signal names the wrong cause.
+   **What would turn the choice to C.** Two things would, and both are the maintainer's to weigh:
+
+   - if the maintainer reads a named tenant as part of the row, the settled rule for a row that does not fit points the other way;
+   - if the tenant-free tables the maintainer expects are mostly keyed state, or a wrong value replacing a right one is worse to them than a lost row (mistake 3 against mistake 2).
+
+   In either case **C** is the answer rather than B, because B's signal names the wrong cause.
 3. **Never store the named tenant.** This is settled. Hibernate's stated reason (F8) agrees.
 
 **Complement.** For Rust, a tenant-free table's type that cannot name a tenant, resting on client_golang (F2) for Rust only.
@@ -1613,6 +1739,7 @@ It rests on three claims. Each names the comparables it rests on, and only compa
 - Question 22 still decides whether `unattributed` is logged.
 - Question 2 still decides whether an empty identifier names a tenant.
 - The counter's name is a placeholder for the maintainer.
+- A question for the maintainer: in a tenant-free keyed state table, is a value replaced by a write that named a tenant (mistake 3) worse than every update refused (mistake 2)? If it is, the recommendation turns to C.
 
 ## Proposed wording
 
@@ -1706,7 +1833,28 @@ enum FailureKind { queue_full | oversize | invalid | store_failed | shutdown | t
 - `WriteOutcome` gains a value.
 - `TableCounters` gains a `rejected_` counter, and both initialisers set it to zero.
 - `FailureKind` gains a kind.
-- A rule refuses the write, placed right after `RefuseInvalidRow`, with `requires: fits(table.definition, values)` and `requires: not table.is_tenant_scoped and tenant != null`.
+- A rule refuses the write. The names are placeholders:
+
+  ```text
+  -- A fitting write that names a tenant for a tenant-free table is refused
+  -- whole and counted, whatever its size and whatever room its queue has.
+  rule RefuseTenantNamedForTenantFreeTable {
+      when: ApplicationWrites(app, handle, table, values, tenant?)
+      let run = handle.confluence.latest_run
+      requires: handle.status = open
+      requires: handle.confluence.is_established
+      requires: fits(table.definition, values)
+      requires: not table.is_tenant_scoped and tenant != null
+      let counters = TableCounters{run, table}
+      ensures:
+          counters.rejected_tenant_named = counters.rejected_tenant_named + 1
+          FailureCounted(counters: counters, kind: tenant_named)
+          WriteDecided(run: run, table: table, values: values, outcome: rejected_tenant_named)
+  }
+  ```
+
+- `RefuseOversizeRow` and `RefuseRowWhenQueueFull` each gain `requires: table.is_tenant_scoped or tenant = null`, so that no write matches two rules.
+- The comment above the write rules names the new outcome between "the row does not fit" and "the row is too large", and drops the sentence on question 19.
 - Both accept rules keep their guard, and the guarantee narrows to question 24 as above.
 
 ## What the findings bear on in the specification
