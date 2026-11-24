@@ -193,6 +193,9 @@ Before the first review, a preflight confirmed that Codex ran `gpt-6-astra` and 
 
   > All checks passed and the worktree is unchanged.
 
+- **Final**, at `c35976d`, the research file and this hand-back as reviewed and fixed. The commit that records this line changes only the line itself.
+
+  > All checks passed and the worktree is unchanged.
 
 - **Changed files:** `git diff main --stat` shows only this ticket and its research file. The specification is unchanged, and open question 19 is still in it. No code was added.
 - **`git status --short`** shows only `?? notes_2.md`, the user's own file, which this ticket did not touch.
