@@ -8,7 +8,7 @@
 ## How the sources were checked
 
 - Each comparable was read from its official documentation, a specification, or source code at a named tag or commit. GitHub links are pinned to a tag or a commit, except issue and pull request threads, which have no version. Apache JIRA issues are linked by their browse URL, Confluence pages (Kafka KIPs) by page id, and Apache mailing-list messages by their thread URL. The AWS documentation is unversioned; its pages were read as the Markdown rendition the site serves. The Redis `RESTORE` command page on redis.io, the Firebase pages on firebase.google.com, the systemd journal's design document (a published Google Doc) and the 0pointer.net post that links it are unversioned too, and were read as HTML; the systemd man pages are the HTML that freedesktop.org serves for version 260. QOS.ch JIRA issues are linked by their browse URL, except two quotations found only in an issue's REST rendition (a comment, and a description in JIRA wiki markup), which are linked by that REST URL.
-- Every blockquote sits under the `Source:` line it was copied from. Each was checked as a substring of raw source text the researcher fetched again: GitHub files from `raw.githubusercontent.com`, GitHub threads through the GitHub API, Apache JIRA issues through the JIRA REST API, Confluence pages through the Confluence REST API, mailing-list messages through the Apache mail archive's API, and the HTML pages above, including the QOS.ch JIRA's browse pages, with their tags stripped. 384 quotations were checked; 371 match exactly, and 13 match only once whitespace is collapsed (two issue bodies with different line endings, three code comments whose indentation differs, and eight passages of the systemd man pages, whose HTML wraps lines).
+- Every blockquote sits under the `Source:` line it was copied from. Each was checked as a substring of raw source text the researcher fetched again: GitHub files from `raw.githubusercontent.com`, GitHub threads through the GitHub API, Apache JIRA issues through the JIRA REST API, Confluence pages through the Confluence REST API, mailing-list messages through the Apache mail archive's API, and the HTML pages above, including the QOS.ch JIRA's browse pages, with their tags stripped. 396 quotations were checked; 383 match exactly, and 13 match only once whitespace is collapsed (two issue bodies with different line endings, three code comments whose indentation differs, and eight passages of the systemd man pages, whose HTML wraps lines).
 - A quotation inside a sentence was checked the same way.
 - What no primary source confirmed is marked "Unverified". A reason the researcher worked out, and no author stated, is marked "Inferred".
 
@@ -277,6 +277,16 @@ Source: https://github.com/open-telemetry/opentelemetry-java/blob/v1.68.0/sdk/tr
 >  * <p>This is needed because Java has lower granularity for epoch times and tracing events are
 >  * recorded more often. There is also a performance improvement in avoiding referencing the system's
 > * wall time where possible.
+
+The method that returns the time says its result can be used for durations; it adds
+monotonic elapsed time to the anchor and never reads the wall clock again.
+
+Source: https://github.com/open-telemetry/opentelemetry-java/blob/v1.68.0/sdk/trace/src/main/java/io/opentelemetry/sdk/trace/AnchoredClock.java
+
+>    * Returns the current epoch timestamp in nanos calculated using {@link System#nanoTime()} since
+>    * the reference time read in the constructor. This time can be used for computing durations.
+
+>     return epochNanos + deltaNanos;
 
 **Stated why** for the start-timestamp rule: none found beyond the quoted text.
 
@@ -1339,6 +1349,10 @@ Source: https://docs.google.com/document/pub?id=1IC9yOXj7j6cdLLxWEBAGRL6wl97tFxg
 
 > This service will augment the entry with a number of meta fields. The values of these trusted fields are determined by the journal service itself and cannot be faked by the client side.
 
+> The fields the journal daemon adds are prefixed with an underscore (“_”) as an indication that this field is trusted and not supplied by a potentially rogue client.
+
+> The message data is generally not authenticated, every local process can claim to be Apache under PID 4711, and syslog will believe that and store it on disk.
+
 > All entries are implicitly timestamped with the realtime (i.e. wallclock) and monotonic clock. To make the monotonic timestamps useful all messages also carry the boot ID of the running Linux kernel (i.e. /proc/sys/kernel/random/boot_id). The accuracy is 1usec, and the wallclock is stored in usec since the epoch UTC in order to avoid the timezone problems syslog is suffering by.
 
 The trusted-fields passage covers the `_`-prefixed fields. The reception timestamps
@@ -1464,6 +1478,11 @@ Source: https://github.com/apache/cassandra-java-driver/blob/4.19.4/manual/core/
 > more likely in the event of a system clock skew. When this happens, the generator logs a warning
 > message in the category `com.datastax.oss.driver.internal.core.time.MonotonicTimestampGenerator`:
 
+The warning it logs ends:
+
+Source: https://github.com/apache/cassandra-java-driver/blob/4.19.4/manual/core/query_timestamps/README.md
+> returned timestamps will be artificially incremented to guarantee monotonicity.
+
 Source: https://github.com/apache/cassandra-java-driver/blob/4.19.4/manual/core/query_timestamps/README.md
 > This generator strives to achieve microsecond resolution on a best-effort basis. But in practice,
 > the real accuracy of generated timestamps is largely dependent on the granularity of the operating
@@ -1554,14 +1573,19 @@ stamper moved to the client, which then owns precision (CASSANDRA-6106).
 Source: https://issues.apache.org/jira/browse/CASSANDRA-6106?focusedCommentId=13976949&page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-13976949
 > As far as conflict resolution goes, microsecond resolution is imo rather useless. Given the accuracy of ntp, network latencies and whatnot, no application should ever rely on sub-milliseconds resolution for conflicts, and any application that rely on fine-grained ordering of updates to a cell should really provide client-side timestamp.
 
+> It doesn't mean we can't use microsecond resolution if it's easy of course, but does mean that imo the bar on what complexity is worth it is rather low.
+
 Source: https://issues.apache.org/jira/browse/CASSANDRA-6106?focusedCommentId=13800513&page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-13800513
 > Though on the longer run, I'm starting to be convinced that we should slowly move back to client side timestamps by default (CASSANDRA-6178) so it's unclear to me how much effort is worth putting into this (given that, at the end of the day, this won't ensure timestamp uniqueness anyway and you'd still have to be aware that on timestamp tie, the resolution is based on the value).
 
 Source: https://issues.apache.org/jira/browse/CASSANDRA-6106?focusedCommentId=14307723&page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-14307723
 > It was decided that v3 protocol implementors should ensure their timestamps are high precision, since this is the default source of timestamps going forwards.
 
-Why not use a monotonic clock for the stamp (Jonathan Ellis, comment 13779492, quoting the
-`nanoTime` Javadoc):
+Why not use a monotonic clock for the stamp (Jonathan Ellis, comment 13779492). He quotes
+the `nanoTime` Javadoc, then gives his own warning:
+
+Source: https://issues.apache.org/jira/browse/CASSANDRA-6106?focusedCommentId=13779492&page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-13779492
+> This method can only be used to measure elapsed time and is not related to any other notion of system or wall-clock time.
 
 Source: https://issues.apache.org/jira/browse/CASSANDRA-6106?focusedCommentId=13779492&page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-13779492
 > It is NOT time since any particular epoch and you WILL have problems if you treat it like that.  (We've actually had a bug where that slipped past code review: CASSANDRA-4432.)
@@ -1824,14 +1848,54 @@ Source: https://lists.apache.org/thread/ftdrgq6crrlvfgr8sq885jo4m2r7lhm0
 > organisation received the data (i.e. the wall-clock ingestion time of the
 > data), and not the "event time" of the data.
 
+Zagrebin's wrap-up of the thread (2019-04-15) names event time of the record being
+processed as the trend for the last-access time, and leaves out-of-order records to a
+caveat in the documentation:
+
+Source: https://lists.apache.org/thread/chs2b6y4818rmyx428obdxmvc49ybrnc
+> As far as I see we have the following trends:
+>
+> *Last access timestamp: **Event timestamp of currently being processed
+> record*
+
+Source: https://lists.apache.org/thread/chs2b6y4818rmyx428obdxmvc49ybrnc
+> The biggest concern is out-of-orderness problem. In general, from Flink
+> side it does not look that we can do a lot about it except putting again a
+> caveat into the user docs about it. It depends on the use case whether the
+> out-of-orderness can be tolerated or not and whether an additional stream
+> ordering operator needs to be put before TTL state access.
+
+Source: https://lists.apache.org/thread/chs2b6y4818rmyx428obdxmvc49ybrnc
+> I would still consider TTL event time feature to be implemented as we have
+> some user requests for it.
+
+Yu Li replied the next day, asking to confirm that conclusion and offering to build it:
+
+Source: https://lists.apache.org/thread/cf9hrx6bwnylmw083rdzz6dmtj2og418
+> Just to confirm, that for the out-of-order case, the conclusion is to
+> update the data and timestamp with the currently-being-processed record w/o
+> checking whether it's an old data, right?
+
+Source: https://lists.apache.org/thread/cf9hrx6bwnylmw083rdzz6dmtj2og418
+> Will start/continue the development/implementation following the conclusion
+> if no objections.
+
 Outcome as recorded on the JIRA (Andrey Zagrebin, comment 17123421, 2020):
 
 Source: https://issues.apache.org/jira/browse/FLINK-12005?focusedCommentId=17123421&page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-17123421
 > I have attached the full mailing list discussion. It looks we have an agreement there.
 
-No event-time TTL has shipped since. There is no stated rejection: the feature was
-proposed, discussed and left unimplemented. Yu Li (comment 17121272) had said the
-discussion had no explicit conclusion; Zagrebin's next comment, above, disagreed.
+The agreement Zagrebin's comment points to is the wrap-up above (Inferred): event time
+of the record being processed for the last-access time, with out-of-order records left
+to a documented caveat. The comment names no message and its attached copy of the
+discussion was not read; the wrap-up is the thread's only summary, and Yu Li's reply
+calls it the conclusion. It was a "preliminary wrap-up", and Yu Li's confirmation was
+put as a question. No event-time TTL has shipped since, and there is no stated
+rejection: the feature was proposed, agreed in outline on the list and left
+unimplemented. Yu Li (comment 17121272) had said the discussion had no explicit
+conclusion; Zagrebin's next comment, above, disagreed. Flink's processing-time-only TTL
+therefore has no stated why of its own: it is what was built first, and the
+discussion's trend was towards event time.
 
 Source: https://issues.apache.org/jira/browse/FLINK-12005?focusedCommentId=17121272&page=com.atlassian.jira.plugin.system.issuetabpanels:comment-tabpanel#comment-17121272
 > We ever had a [discussion in ML|http://apache-flink-mailing-list-archive.1008284.n3.nabble.com/Discuss-Semantics-of-event-time-for-state-TTL-td28113.html] about the semantic of event time in state TTL but it seems to be no explicit conclusion.
@@ -1847,6 +1911,9 @@ Source: https://issues.apache.org/jira/browse/FLINK-12005?focusedCommentId=17121
 **Costs and dissent.**
 
 - Users ask for event-time TTL (FLINK-12005 comments 17120701, 17362401).
+- The developer who raised the out-of-order objection concluded for event time of the
+  record being processed, accepting that cost with a caveat (Zagrebin's wrap-up, quoted
+  above).
 - The storage cost is documented: 8 bytes per value or entry in RocksDB.
 
 ### K4. Apache Kafka: compacted topics and Kafka Streams KTables
@@ -2851,7 +2918,7 @@ From the specification and `CONTEXT.md`. A leaning is cited as a leaning.
 - **C2. A write never fails, never blocks and returns nothing** (`NeverFailsNeverBlocks`). A supplied time that is wrong cannot be refused loudly. It can only be kept, changed, or refused and counted.
 - **C3. Within one process the client's clock never moves backwards, and there is no ordering promise across processes** (`ClockNeverMovesBackwards`, settled).
 - **C4. Order within a run is the position, not the time.** Each accepted row gets the next position when it is accepted, and a lost row leaves a gap (marked "Derived" in `AcceptRow`). Nothing in the specification orders rows by time.
-- **C5. A keyed value is the latest by position in its slot, and its time records when it was last written** (settled). The maintainer's leaning is that time-to-live belongs to the final data store, which would read that time ("Leanings, not decisions").
+- **C5. A keyed value records when it was last written** (settled: the ticket, and the specification's `TableKind` comment). Which value is a slot's latest is decided by position: the one with the highest position, whatever order the rows were stored in (marked "Derived" in the specification, above `StoreSupersededKeyedRow`). The analysis below uses that rule as the current proposal, not as a settled promise. The maintainer's leaning is that time-to-live belongs to the final data store, which would read that time ("Leanings, not decisions").
 - **C6. The time is handed over** with each row to a collector, whose form is open question 15. A collector leans towards a pull (leaning). The client is not the store that keeps the rows in the end.
 - **C7. One behaviour for Rust and Python.**
 - **C8. The standing guidance:** follow practice rather than invent; prefer coordination-free solutions; keep the MVP simple without closing off later options.
@@ -2874,12 +2941,12 @@ From the specification and `CONTEXT.md`. A leaning is cited as a leaning.
 | T9 Loki | The in-order rule lost logs from agents that retry independently; a window still bounds the chunks | — | Server-side store with chunks per stream; ordering is by time there, by position here (C4) | Informs: a store downstream may bound times the client hands over |
 | T10 InfluxDB | Include a time if you want observation, not receipt; coarser precision for performance; NTP for the host | — | Server-side store; the "observation" it means is the application's, which a column carries here | Informs |
 | T11 Prometheus | Different times in one scrape break features, and most requests for client times were mistaken | A collector may pull (C6, leaning) | Staleness per scrape has no counterpart here | Informs |
-| T12 Kafka | KIP-32: broker time is robust, monotonic and makes retention deterministic, and a create time "can always be put into the message payload"; KIP-937: future times are inaccurate, and producers sent nanoseconds as milliseconds | The client is where a row is appended and given its position, as the broker is (C4); a time in the payload is a column (C1); a write cannot be rejected loudly (C2), so a bounds check like KIP-937's would have to count | Retention by time has no counterpart: the client purges by confirmation. The monotonic claim is not enforced across Kafka leaders, but this client has one writer per run | Justifies: an application's time is data, and the client's stamp is the append time |
-| T13 systemd journal | Trusted fields "cannot be faked by the client side", because syslog stored client metadata, timestamp included, unverified | A process-local receiver that stamps on receipt (C1, C3) | A separate daemon; clients are other processes | Justifies: the stamp is not the writer's to set |
+| T12 Kafka | KIP-32 listed among the broker time's advantages that a create time "can always be put into the message payload", but decided to let each topic choose, because "both LogAppendTime and CreateTime have their own use cases", and rejected a broker-time-only format because "Instead of asking each application to do this, it is better to include the timestamp in the message"; KIP-937: future times are inaccurate, and producers sent nanoseconds as milliseconds | The client is where a row is appended and given its position, as the broker is (C4); a write cannot be rejected loudly (C2), so a bounds check like KIP-937's would have to count | Retention by time has no counterpart: the client purges by confirmation. The monotonic claim is not enforced across Kafka leaders, but this client has one writer per run. Kafka's stated reason for its decision favours a per-topic choice (D), and its rejected Option 2 is A's design | Informs: KIP-937 records the risks of a supplied time; KIP-32's decision leans towards D |
+| T13 systemd journal | Trusted fields "cannot be faked by the client side" and are "not supplied by a potentially rogue client", because syslog stored client metadata, timestamp included, unverified. No stated rationale found for keeping the reception stamps in particular from the client | A process-local receiver that stamps on receipt (C1, C3) | A separate daemon; clients are other, untrusted processes. The trust boundary the stated reason defends does not exist here: the writer is the host application, in the client's own process (C1), and an application can reach whatever a library in its own process holds, so the client's stamp is no defence against the application (Inferred) | Informs: a receiver stamps its own reception time. That the writer may not set it is Inferred |
 | K1 Cassandra | Server stamps reorder one client thread's writes; client stamps keep them in order and make retries idempotent (CASSANDRA-6178); applications choose nonsensical times and mix up units (CASSANDRA-18352) | The client is the writer's own process, so its stamp is the client-side stamp Cassandra moved to (C1, C3); a supplied time can be wrong in units (C2) | Cassandra orders values by time (last write wins); here position orders them (C4) | Justifies the clock rule (monotonic in one process) and the risk of supplied times |
 | K2 HBase | The cell timestamp drives TTL, so set it yourself only with care; prefer a separate timestamp attribute (reference guide); server-only stamps break replication (HBASE-10247) | Downstream expiry reads the keyed time (C5, leaning) | HBase orders versions by time; replication replays edits | Justifies: keep the application's time in its own column |
-| K3 Flink state TTL | Event time can decrease, which "is unnatural for the notion of time"; event time is "just another user-defined column"; regulatory expiry runs from ingestion | A keyed last-write time used for expiry (C5); a time that must not go back (C3) | A stream processor | Justifies: the keyed time is the client's processing time |
-| K4 Kafka KTables, compaction | KIP-258 stores the latest record's time with the value; compaction is by offset, and KIP-280's time-based compaction was never shipped | Latest value by position (C4, C5) | The time stored is the record's, not the table write's, unless an extractor substitutes processing time | Informs |
+| K3 Flink state TTL | Zagrebin, opening the thread: event time can decrease, which "is unnatural for the notion of time"; Kloudas: event time is "just another user-defined column". Which clock regulatory expiry runs from was disputed: Kloudas, "not sure about the regulatory requirements of GDPR", assumed ingestion, and Krettek argued from GDPR for event time, so it is not leaned on. Zagrebin's "preliminary wrap-up" then named event time of the record being processed as the trend for the last-access time | A keyed last-write time used for expiry (C5); a time that must not go back (C3) | A stream processor. The discussion's trend went the other way; event-time TTL never shipped, and processing time, which shipped first, has no stated why of its own | Informs, and its discussion leans the other way |
+| K4 Kafka KTables, compaction | KIP-258 stores the latest record's time with the value; compaction is by offset, and KIP-280's time-based compaction was never shipped | Latest value by position (C4, C5; Derived) | The time stored is the record's, not the table write's, unless an extractor substitutes processing time | Informs |
 | K5 Redis | LRM evicts by last write regardless of reads | A write-only clock (C5) | An eviction clock, not a readable field | Informs |
 | K6 etcd | Revisions are a logical clock for ordering; no reason for omitting wall time | Order by a counter, not a clock (C4) | Cluster-wide consensus | Informs |
 | K7 Kubernetes | The node controller uses its own local time "to avoid the problem with time skew across the cluster" | No ordering across processes (C3); a collector may prefer its own clock (C6) | Many writers to one store | Informs |
@@ -2893,6 +2960,7 @@ From the specification and `CONTEXT.md`. A leaning is cited as a leaning.
 - **Refusing a bad supplied time loudly**, by raising, panicking or returning an error. A write never fails (C2).
 - **Blocking a write** to wait for a clock to be synchronised or to settle. A write never blocks (C2).
 - **A row time that moves backwards within a process while still described as the client's clock.** The clock never moves backwards (C3). An application-supplied time can therefore be the row's time only if the promise is restated to cover the client's clock alone, or the client changes the supplied time.
+- **A keyed value whose only time is not the time of its write.** A keyed value records when it was last written (C5, settled). An application-supplied time can therefore be a keyed value's only time only if it is the time of the write itself, which the client cannot check (C2), or if the client keeps its own time beside it, which is B.
 
 ## Options
 
@@ -2921,23 +2989,33 @@ As Log4j's `TimestampMessage` (T4), Kafka's `CreateTime` (T12), Loki (T9), Influ
 
 - **Monotonic promise.** No longer holds for the row's time. Rows of one process may carry times out of order, in the future or in the past.
 - **Keyed state tables.** Either the latest value by position may carry an older time than the value it replaced, or values are ordered by the supplied time, which changes the slots (C4) and brings Cassandra's and HBase's costs: a far-future time wins over every later write (CASSANDRA-18352's "doomstone"), and a wrong unit leaves a value that cannot be replaced (CASSANDRA-18374).
+- **The settled keyed record.** Under C a keyed value's only time is the one the application supplied, so the value records when it was last written (C5, settled) only if the application supplies the time of the write itself. The cases C exists for, a replayed, backfilled or event time (A's costs), are not that time, even when they arrive in increasing order, and the client cannot tell one from the other (C2). A keyed table keeps the settled record and an application's time together only by keeping the client's time beside it, which is B.
 - **What a bad supplied time does.** The client can keep it, clamp it to a window (as Loki and Kafka bound theirs), or refuse the row and count it. It cannot refuse loudly (C2).
 - **Costs.** The collector can no longer tell client lag from application time, which is what OpenTelemetry's and ECS's second time exists for (T1, T7).
 
 ### D. A per-table choice between A and C
 
-As Kafka's per-topic `message.timestamp.type` (T12). The declaration says which time a table's rows carry.
+As Kafka's per-topic `message.timestamp.type` (T12). The declaration says which time a table's rows carry. KIP-32's stated reason for the choice is that "both LogAppendTime and CreateTime have their own use cases" (T12).
 
-- **Costs.** C's costs for tables that choose it, and a declaration field that identical redeclaration must match (open question 16).
+- **Costs.** C's costs for tables that choose it, and a declaration field that identical redeclaration must match (open question 16). A keyed table that chose C would lose the settled record of when its value was last written, unless the supplied time is the time of the write (C5); a D that offered C to time series tables only would avoid that, and is a further choice.
 
 ### The clock itself, under every option
 
 The settled promise says the client's clock never moves backwards within a process. A wall clock can step back (NTP, a manual change). Two ways to honour the promise:
 
-- **Clamp.** Read the wall clock; if the reading is earlier than the last stamp in the process, use the last stamp again. This is what Cassandra's Java driver does by default, for the reason CASSANDRA-6178 gives (one client thread's writes must not go back in time), and it warns when its stamps drift ahead of the clock (K1). The Java OpenTelemetry SDK's anchored clock is another way: read the wall clock once, then advance by a monotonic clock (T2).
-- **Use a monotonic clock as the stamp.** Ruled out by the hand-over (C6): a monotonic reading "is NOT time since any particular epoch" (the `nanoTime` Javadoc, quoted by a Cassandra maintainer in CASSANDRA-6106, K1), and HBase's maintainers declined it for the same reason (HBASE-8927, K2).
+- **Clamp.** Read the wall clock; if the reading is earlier than the last stamp in the process, use the last stamp again. Cassandra's Java driver does nearly this by default, for the reason CASSANDRA-6178 gives (one client thread's writes must not go back in time): when the clock falls behind its last stamp, its stamps "will be artificially incremented to guarantee monotonicity", and it warns when they drift ahead of the clock (K1). Using the last stamp again, without the increment, is this client's adaptation (argued after these two bullets). The Java OpenTelemetry SDK's anchored clock is another way: read the wall clock once, then advance by a monotonic clock (T2).
+- **Use a monotonic clock as the stamp.** Ruled out by the hand-over (C6): a monotonic reading "is NOT time since any particular epoch" (Jonathan Ellis in CASSANDRA-6106, after quoting the `nanoTime` Javadoc, which says the method "can only be used to measure elapsed time"; K1), and HBase's maintainers declined it for the same reason (HBASE-8927, K2).
 
 Because position orders rows (C4), two rows may share a time; the clamp need not add a tick, as Cassandra's does, where the timestamp is the conflict order.
+
+**What each treatment does to the queue's age.** The specification derives `Run.oldest_queued_age` as `now - oldest_client_time(queued_rows)` and shows it to the host. It does not say whether that `now` is the client's clock; `AcceptRow` stamps `client_time: now` and calls it the client's clock. The age is a duration and the stamps are instants, so a treatment that suits one need not suit the other. With rows queued and a wall clock that steps back by S:
+
+- **Clamp, with the age read from the same clock.** The age never goes negative, and stops growing until the wall clock passes the last value the process used. It holds its last reported value if a diagnostic read counts as a use, and can fall back to the age at the newest stamp if only stamps count; in that case two successive diagnostic readings go backwards, and whether that breaks the promise depends on whether they are readings of the client's clock, which the specification does not say. It under-reports by up to S. A forward step of S over-reports by S, under any treatment that reads the wall clock.
+- **Clamp for the stamps, the raw wall clock for the age.** The age is negative until the wall clock passes the oldest queued stamp.
+- **The anchored clock (T2), for both.** The age is elapsed monotonic time, unaffected by a step either way; the method's own comment says its time "can be used for computing durations". The stamps never go back, but they keep the wall clock's error at the anchor and drift from it by every correction made afterwards (Inferred from the source). OpenTelemetry anchors at each local root span; a client that anchored once per process would carry that error for the life of the process, and re-anchoring brings back the step.
+- **A clamped wall clock for the stamps, and a monotonic reading kept with each queued row for the age.** The age is elapsed time and the stamps stay on the wall clock. It changes how `oldest_queued_age` is derived, and keeps one more value per queued row, in memory and never handed over.
+
+`Run.last_store_at` reads `now` too, and so does the run id (`uuid_v7(now)`). `last_store_at` is an instant, not a duration: under a clamp it repeats the last value used if its reading counts as a use, and can come out earlier than the previous `last_store_at` if only stamps count; an anchored clock moves it with the stamps. The promise covers the client's clock only and does not say which clock a duration reads; this research does not settle it either ("What A leaves open").
 
 ## Recommendation
 
@@ -2945,14 +3023,16 @@ Because position orders rows (C4), two rows may share a time; the clamp need not
 
 It rests on four claims.
 
-1. **The client's stamp is an observation time, and is the client's to set.** This rests on OpenTelemetry (T1), whose observed time is set by the first OpenTelemetry code that sees an event and is "only context about how the event was processed", while the source time "is fundamentally associated with the event itself"; and on the systemd journal (T13), whose design keeps the receiver's stamps out of the client's reach because syslog stored client-supplied metadata unverified. The fit is C1 and C6: the client is the first code to see a write, and the collector downstream can compare the observation time with any time the application keeps.
-2. **An application's own time is data, not the row's time.** This rests on Kafka (T12), whose KIP-32 lists among the broker time's advantages that a create time "can always be put into the message payload", and whose KIP-937 records producers sending nanoseconds as milliseconds and future times as "inherently inaccurate"; on Cassandra (K1), whose CASSANDRA-18352 says applications "can choose timestamps that may be nonsensical"; and on HBase's reference guide (K2), which advises a separate timestamp attribute because the cell time drives TTL. The fit is C2, C3 and C5: a wrong supplied time cannot be refused loudly, would break the monotonic promise, and in a keyed table would feed the expiry the maintainer leans towards leaving to the final store.
-3. **A keyed value's time is when the client accepted its latest write.** This rests on Flink's state TTL (K3). Flink ships processing time only. On its dev list, the developer who opened the discussion of event-time TTL wrote that event time "can not only increase but also decrease if records come out of order", rewriting the state's time to an earlier one, "which is unnatural for the notion of time", and another Flink developer called event time "just another user-defined column". Neither statement is a recorded decision: event-time TTL was discussed and not built, with no stated rejection, so this claim rests on the authors' stated reasoning rather than on a decision. The fit is C3, C4 and C5: values are ordered by position, and their time must not go back.
-4. **The clock is the wall clock, clamped so it never goes back.** This rests on Cassandra (K1): CASSANDRA-6178's reason for client-side, per-thread monotonic stamps, and the `nanoTime` Javadoc quoted in CASSANDRA-6106 against a monotonic reading as a time. The fit is C3 and C6.
+1. **The client's stamp is an observation time, and is the client's to set.** That it is an observation time rests on OpenTelemetry (T1), whose observed time is set by the first OpenTelemetry code that sees an event and is "only context about how the event was processed", while the source time "is fundamentally associated with the event itself". The fit is C1 and C6: the client is the first code to see a write, and the collector downstream can compare the observation time with any time the application keeps. That it is the client's alone to set has no justifying comparable: OpenTelemetry lets a bridge supply either time (T1). It is the researcher's argument (Inferred): a time the observed code sets is no longer an observation of it, and the promise that the clock never moves backwards is the client's (C3), which a time the application set could break without the client being able to refuse it loudly (C2). Claim 2 gives the comparables for that risk. The systemd journal (T13) informs it: its receiver stamps each entry itself and a client cannot write the reception stamps, but its stated reason covers the trusted fields, kept from "a potentially rogue client", not the reception stamps, and it defends a boundary between the daemon and the processes that send to it, which this client, a library in the writing process, does not have (C1).
+2. **An application's own time is data, not the row's time.** This rests on Cassandra (K1), whose CASSANDRA-18352 says applications "can choose timestamps that may be nonsensical", and on HBase's reference guide (K2), which advises a separate timestamp attribute because the cell time drives TTL. Kafka (T12) informs it in both directions: KIP-937 records producers sending nanoseconds as milliseconds and future times as "inherently inaccurate"; KIP-32 lists among the broker time's advantages that a create time "can always be put into the message payload", but its decision was to let each topic choose, and it rejected a broker-time-only format, A's design, because "Instead of asking each application to do this, it is better to include the timestamp in the message." The fit is C2, C3 and C5: a wrong supplied time cannot be refused loudly, would break the monotonic promise, and in a keyed table would feed the expiry the maintainer leans towards leaving to the final store.
+3. **A keyed value's time is when the client accepted its latest write.** No comparable justifies this. The researcher's argument (Inferred): it follows from claim 1 and from the specification's settled requirements that a keyed value records when it was last written (C5) and that the client's clock never moves backwards within a process (C3). Which write is a slot's latest is decided by position, a rule the specification marks Derived (C5); the claim uses that rule to name the write, not as a reason for it. Flink's state TTL (K3) informs it, in both directions. Flink ships processing time only. On its dev list, the developer who opened the discussion of event-time TTL wrote that event time "can not only increase but also decrease if records come out of order", rewriting the state's time to an earlier one, "which is unnatural for the notion of time", and another Flink developer called event time "just another user-defined column". But the same developer's wrap-up named event time of the record being processed as the trend for the last-access time, leaving out-of-order records to a caveat in the documentation, and a third developer offered to build it. Nothing was built, and nothing was decided either way.
+4. **The clock is the wall clock, clamped so it never goes back.** This rests on Cassandra (K1): CASSANDRA-6178's reason for client-side, per-thread monotonic stamps, and Jonathan Ellis's warning in CASSANDRA-6106, after quoting the `nanoTime` Javadoc, that a monotonic reading is not a time since any epoch. Cassandra's driver keeps its stamps increasing by incrementing them; using the last stamp again instead is this client's adaptation, argued in "The clock itself", not Cassandra's practice. The fit is C3 and C6. Its cost falls on the queue's age: read from the clamped clock, the age stops growing while the wall clock is behind the last value used ("The clock itself"). Which clock that age reads is left open.
 
-**What leans the other way.** Log4j (T4) added a caller-supplied time for applications that need accurate event times or log a milestone late; KIP-937 calls the client time the one that "closely represents the actual event timestamp" and the broker's "an implementation detail"; HBase's users rely on supplying a time to keep the latest value by data time (HBASE-18642); a Logback user asked for control of the clock (LOGBACK-1682); and Flink's users ask for event-time TTL (FLINK-12005). Each is met under A by a column, except keeping the latest keyed value by the application's time, which A does not offer.
+Claims 1, 2 and 4 have comparables that justify them (T1; K1 and K2; K1). The second half of claim 1 and all of claim 3 rest on the specification's settled requirements and the researcher's argument; the comparables cited there (T13, K3) inform them, and K3's discussion leans the other way. Kafka (T12), cited in claim 2, informs it in both directions, and its decision leans towards D.
 
-**What would turn the choice.** If the maintainer wants a replayed or backfilled row to carry its original time as the row's time, B is the answer, not C: it keeps the client's time and its promise. If the maintainer wants a keyed table to keep the latest value by the application's time, that changes how slots are decided (C4), and is a separate question from who stamps.
+**What leans the other way.** Log4j (T4) added a caller-supplied time for applications that need accurate event times or log a milestone late; KIP-937 calls the client time the one that "closely represents the actual event timestamp" and the broker's "an implementation detail"; HBase's users rely on supplying a time to keep the latest value by data time (HBASE-18642); a Logback user asked for control of the clock (LOGBACK-1682); and Flink's users ask for event-time TTL (FLINK-12005). KIP-32 itself chose a per-topic time over asking each application to carry one in its payload, and rejected A's design for Kafka (claim 2, T12). On Flink's dev list one developer argued from a GDPR perspective that only event time makes sense for the last-access time, and the discussion's own wrap-up named event time of the record being processed for it (K3). Under A each of these can keep its own time as a column the table declares, but none gets all it asked for: the column is not the row's time, its name and meaning are each table's own, and a collector has to be told which column holds the event time (A's costs). B answers that last part with one field every table has. Neither A nor B makes the application's time the row's time; only C does. Keeping the latest keyed value by the application's time A does not offer at all.
+
+**What would turn the choice.** If the maintainer wants a replayed or backfilled row's original time carried in a field every table has, which a collector finds without being told, B is the answer: it adds the application's time beside the client's and keeps the client's promise. If the maintainer wants that time to be the row's only time, that is C, with C's costs, among them, in a keyed table, the settled record of when the value was last written (C5). If the maintainer wants a keyed table to keep the latest value by the application's time, that changes how slots are decided (C4, and the Derived rule in C5) and is a separate question from who stamps; it would also need the client's time kept beside the application's, or the value would no longer record when it was last written (C5, settled).
 
 ### Name, precision and epoch
 
@@ -2960,12 +3040,14 @@ These rest more on the researcher's argument than the choice above, because few 
 
 - **Name: `observed_time`.** OpenTelemetry's wire name for the same meaning is `observed_time_unix_nano`, and its stated meaning, the time the first observing code saw the event, is the client's (T1). It reads for both kinds: for a keyed value, when the client observed its latest write. It answers the maintainer's wish, quoted in the ticket, for "something more standard" than `last_seen`. ECS's experience informs against a name that reads as the event's own time: `event.created` was found ambiguous (T7). `observed_at`, the elicitation's lead, is not OpenTelemetry's name. Keeping `client_time` is the alternative if the maintainer prefers a name that says who stamps.
 - **Epoch and representation: the Unix epoch, UTC, as an integer.** Every comparable that states an epoch uses the Unix epoch.
-- **Precision: microseconds.** In the researcher's view, not a stated reason: rows are ordered by position (C4), so precision serves people and downstream analysis, not order; Cassandra's driver documents that clocks commonly give milliseconds and that a finer part is a counter (K1); CASSANDRA-6106 calls sub-millisecond resolution meaningless across machines; microseconds meet the finest requirement found (MiFID II's 100 µs, cited by a commenter on LOG4J2-1883, T4) and match the journal (T13), Kubernetes' `MicroTime` (K7) and Cassandra (K1). Nanoseconds, OpenTelemetry's unit, are the alternative if handing over to OpenTelemetry without conversion matters; microseconds convert to nanoseconds without loss. No comparable states why it chose nanoseconds.
+- **Precision: microseconds.** In the researcher's view, not a stated reason: rows are ordered by position (C4), so precision serves people and downstream analysis, not order; Cassandra's driver documents that clocks commonly give milliseconds and that a finer part is a counter (K1); in CASSANDRA-6106 Sylvain Lebresne wrote "As far as conflict resolution goes, microsecond resolution is imo rather useless", given NTP's accuracy and network latency, while allowing it "if it's easy" (K1), a point about order across machines rather than about what people and analysis need; microseconds meet the finest requirement found for a stamp the recording code takes (MiFID II's 100 µs, cited by a commenter on LOG4J2-1883, T4) and match the journal (T13), Kubernetes' `MicroTime` (K7) and Cassandra (K1). HBASE-21476's nanoseconds, for "applications that timestamp updates at the source with nanoseconds" (K2), are a source time the application supplies, which under A is a column; the specification does not state a `timestamp` column's precision. Nanoseconds, OpenTelemetry's unit, are the alternative if handing over to OpenTelemetry without conversion matters; microseconds convert to nanoseconds without loss. No comparable states why it chose nanoseconds.
 
 **What A leaves open.**
 
 - Whether a clamp is counted or logged. Cassandra's driver logs a warning when its stamps drift (K1); the specification counts and logs only failures of the kinds it names.
 - The hand-over's representation of the time, which is open question 15.
+- Which clock `Run.oldest_queued_age` reads. Read from the clamped client's clock, it never goes negative and stops growing while the wall clock is behind; read from the raw wall clock, it can go negative; read from a monotonic clock, it is elapsed time, but needs either the anchored clock for the stamps, with its drift, or a monotonic reading kept with each queued row ("The clock itself"). The settled promise does not choose between them, and this research does not.
+- Whether a reading taken for a diagnostic, not a stamp, counts as one the process used under the clamp. It decides whether `oldest_queued_age` can fall and `Run.last_store_at` can come out earlier than its previous value, and it applies to the run id's reading too ("The clock itself"). The settled promise does not say, and this research does not.
 
 ## Proposed wording
 
@@ -2987,7 +3069,7 @@ Text for the maintainer to accept or change. It is written only here: the specif
             run: run, counters: counters, position: run.last_position + 1, observed_time: now,
 ```
 
-**The vocabulary comment and `Run.oldest_queued_age`**: `oldest_client_time` becomes `oldest_observed_time`.
+**The vocabulary comment and `Run.oldest_queued_age`**: `oldest_client_time` becomes `oldest_observed_time`. The derivation keeps reading `now`. If that `now` is the client's clock, which the specification does not say, the age under the clamp below stops growing while the wall clock is behind the last value the process used. Which clock the age reads is left open for the maintainer ("What A leaves open"), and no wording is proposed for it.
 
 **The hand-over surface**: `row.client_time` becomes `row.observed_time`.
 
@@ -3001,6 +3083,8 @@ Text for the maintainer to accept or change. It is written only here: the specif
         -- is not used, and the last one is used again. There is no
         -- ordering promise across processes.
 ```
+
+The wording does not say whether a reading taken for a diagnostic counts as one the process used. It matters to every reading that is not a stamp: `oldest_queued_age`, `Run.last_store_at` and the run id ("The clock itself"), and is left with the question of which clock those readings take ("What A leaves open").
 
 **The writing surface's `@guidance`** (its last sentence):
 
