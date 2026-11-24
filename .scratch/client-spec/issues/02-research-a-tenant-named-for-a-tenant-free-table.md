@@ -46,18 +46,18 @@ Standing guidance from the same elicitation: where practice exists, follow it ra
 
 **Status:** ready-for-agent
 
-- [ ] The survey covers at least three comparables at the broader system level and at least three at the framework and client level, each read from its official documentation or source code
-- [ ] For each comparable the findings state what happens to the write (stored without the scope, refused, raised as an error, or stored with it), and whether and how the mismatch is made visible
-- [ ] Every claim cites its source with a link and the date read, and anything no primary source confirmed is marked "Unverified"
-- [ ] For each comparable the research file records every field under "Citing a comparable" in `CONTEXT.md`: the stated why quoted and linked, or "No stated rationale found"; any inferred why labelled "Inferred"; the constraints behind the choice; costs and dissent; and fit
-- [ ] At least one comparable that chose otherwise is recorded with its why
-- [ ] The findings say which behaviour surprises a developer least and why, and which options the settled promises above rule out
-- [ ] The options are listed with trade-offs, including where each would be counted in the diagnostics, and one is recommended with its reasons
-- [ ] The recommendation rests only on comparables that have a stated why and a fit argument, and names them; any other comparable it mentions is marked as informing only
-- [ ] Proposed wording for the specification is given for the recommended option, as text for the maintainer to accept or change
-- [ ] The findings, options, recommendation and proposed wording are written to the research file; a "Hand-back" section appended to this ticket summarises them and points to it, and both are committed
-- [ ] The adversarial review ran at each key moment as `REVIEW.md` says, with reviewers that could open the sources, and the hand-back lists every finding with its verdict, its resolution and the reviewing model
-- [ ] Question 19 is still open in the specification, no tracked file other than this ticket and its research file is changed, and no code is added
+- [x] The survey covers at least three comparables at the broader system level and at least three at the framework and client level, each read from its official documentation or source code
+- [x] For each comparable the findings state what happens to the write (stored without the scope, refused, raised as an error, or stored with it), and whether and how the mismatch is made visible
+- [x] Every claim cites its source with a link and the date read, and anything no primary source confirmed is marked "Unverified"
+- [x] For each comparable the research file records every field under "Citing a comparable" in `CONTEXT.md`: the stated why quoted and linked, or "No stated rationale found"; any inferred why labelled "Inferred"; the constraints behind the choice; costs and dissent; and fit
+- [x] At least one comparable that chose otherwise is recorded with its why
+- [x] The findings say which behaviour surprises a developer least and why, and which options the settled promises above rule out
+- [x] The options are listed with trade-offs, including where each would be counted in the diagnostics, and one is recommended with its reasons
+- [x] The recommendation rests only on comparables that have a stated why and a fit argument, and names them; any other comparable it mentions is marked as informing only
+- [x] Proposed wording for the specification is given for the recommended option, as text for the maintainer to accept or change
+- [x] The findings, options, recommendation and proposed wording are written to the research file; a "Hand-back" section appended to this ticket summarises them and points to it, and both are committed
+- [x] The adversarial review ran at each key moment as `REVIEW.md` says, with reviewers that could open the sources, and the hand-back lists every finding with its verdict, its resolution and the reviewing model
+- [x] Question 19 is still open in the specification, no tracked file other than this ticket and its research file is changed, and no code is added
 
 ## Hand-back
 
@@ -110,6 +110,8 @@ Each is given with its effect on `WriteOutcome`, `FailureKind`, the host log, `C
 1. **The mismatch must not be silent, and should be logged.** The host log is the one channel that can reach a developer who is not looking, though nothing guarantees a record is read. This rests on acts_as_tenant (F7), Micrometer (F3), the ClickHouse maintainer (S6) and OpenTelemetry's error-handling principle (F4), each with a stated why and a fit argument.
 2. **Keep the row rather than refuse it.** This is the weakest step, and it is the researcher's own argument: no comparable both states a reason for it and fits.
 3. **Never store the tenant.** This is settled, and Hibernate's stated reason (F8) agrees.
+
+The fake-core flag, which lets a test assert that no write named a tenant, rests on Laravel (F11). A Rust typed table rests on client_golang (F2), for Rust only.
 
 Keeping has a cost that refusing would not. A wrongly named write that A2 keeps can replace a correct value in a tenant-free keyed state table. Under the production core it can also take the last queue place from a correct row. The file therefore puts one question to the maintainer, and says what would turn the choice to C. C is preferred to B in that case, because only C's signal tells a named tenant from a column that does not fit.
 
@@ -180,7 +182,7 @@ Before the first review, a preflight confirmed that Codex ran `gpt-6-astra` and 
 - Claim 2 of the recommendation rests on the researcher's own argument.
 - One question is put to the maintainer, on tenant-free keyed state tables. Its answer could turn the recommendation to C.
 - The proposed wording was not run through the pinned checker.
-- The second round at each key moment reviewed the fixes of the first. Each key moment's second-round fixes were checked again only by the quotation checks. The second key moment's reviewers covered the first key moment's second-round fixes, but nothing re-reviewed the second key moment's own second-round fixes.
+- Every round's fixes passed the quotation checks. The first key moment's second-round fixes were reviewed again by the second key moment's first round. The second key moment's second-round fixes, and the last edits made after the advisor's read of the whole file, were not reviewed by anyone after they were applied.
 
 ### Gates and files
 

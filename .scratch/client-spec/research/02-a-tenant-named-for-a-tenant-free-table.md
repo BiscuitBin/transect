@@ -7,7 +7,7 @@
 
 ## How the sources were checked
 
-Two survey agents found the candidates and saved raw text. The first adversarial review added sources of its own. The author then fetched every cited source again, independently:
+Two survey agents found the candidates and saved raw text. The adversarial reviewers, and the subagents that triaged their findings, added sources of their own. The author then fetched every cited source again, independently:
 
 - source and documentation files at a pinned tag or commit, through `raw.githubusercontent.com`;
 - issue, pull request, review-comment, commit, release and security-advisory text through the GitHub REST API, and a quotation cited to one comment from that comment alone;
@@ -257,7 +257,7 @@ No stated rationale was found for ignoring a header that is *present* in this mo
 
 **Constraints.**
 
-- The tenant travels in a header, not in the payload. An authenticating reverse proxy is expected to set it.
+- The tenant travels in a header, not in the payload. Whatever sends the request sets it: a proxy in front of the store, a shipping agent or the client (next bullet).
 - Single-tenant mode removes the requirement for the header. A Cortex maintainer offered it to a user who did not care about the tenant value, as the alternative to a front door that sets the header. No author was found saying it exists for small installs. A proxy is not what multi-tenant mode requires either: in a trusted environment the client can set the header itself. Loki's authentication page opens by saying an authenticating reverse proxy must be run. Its section on mutual TLS, though, calls that client authentication Loki supports natively, without a proxy. Mutual TLS does not set the tenant header, which in multi-tenant mode a proxy, the log shipping agent or the client must set. So in Loki, authenticating a client and supplying its tenant are separate matters.
 
   Source: https://github.com/cortexproject/cortex/blob/v1.22.0/docs/configuration/single-process-config-blocks.yaml
@@ -1529,7 +1529,7 @@ What follows is taken from the ticket, from the specification (`docs/specs/trans
 | S6 ClickHouse | Unknown column dropped silently; a warning proposed | Default: a side effect of a read-side change. Dissent: the drop is data loss, and an explicit name that does not match "is nearly always a mistake" | The names in a write through a client library are explicit, as a tenant named on a write here is (K5). The remedy chosen keeps the behaviour and adds a server-log warning, which this client can match through K2 | The thing dropped is a column's data. Here it is the tenant | **Justifies** claim 1 of the recommendation: the mismatch must not be silent |
 | S7 Elasticsearch `dynamic` and field limit | Configured: add, keep unindexed, or reject. The limit gained an option to accept and list the surplus | `strict`: "alert you to the problem" where Elasticsearch is the primary store (historical guide). Field limit: rejection causes data loss, worse where services share a stream | A refused write loses data (K8). Telemetry, where losing a row is a cost | The alert in `strict` is an exception to the caller, unlike K1. The field-limit reason, data loss, holds; shared streams, which a per-table queue here does not have, only made it worse. The limit is a resource cap that documents reach whether or not they are mistakes, while a named tenant here contradicts an explicit declaration (K5). An unknown field bears on this question only if a named tenant is row content, which question 19 leaves open (K6). The option is off for a plain index, though the built-in logs and metrics templates turn it on at `v9.5.7`, so Elastic's own defaults for telemetry keep the document | Informs. The field limit leans towards keeping the row, without justifying it |
 | S8 BigQuery | Rejected by default; ignore is opt-in per request | None | None | A request that fails to its caller, unlike K1 | Informs |
-| S9 InfluxDB explicit schemas | Rejected per field value and recorded in `rejected_points` | Protection from schemas "muddled up with junk" | A declared schema (K5) | Opt-in. The unit rejected is a field value, not a row. The caller sees an error | Informs |
+| S9 InfluxDB explicit schemas | Rejected per field value and recorded in `rejected_points` | Protection from schemas "muddled up with junk" | A declared schema (K5) | Opt-in. The unit rejected is a field value, not a row. In the documented examples the caller sees an error, and whether a rejection can come only after a `204` is Unverified | Informs |
 | S10 PostgreSQL | Rejected | Not looked for | None | A statement in a transaction the caller controls, unlike K1 | Informs |
 | S11 Weaviate | Rejected with a 422; per object in a batch | An aim only: strict separation of the two modes | A per-collection declaration, opt-in, and a tenant that names its shard (K5) | The refusal is visible to the caller as an error, unlike K1. A tenant here names no shard on a tenant-free table, so S11's inferred reason, a request naming a shard that does not exist, has nothing to name here | Informs |
 | F1 Prometheus client_python | Raises `ValueError` | Only the guideline that label names are fixed at creation | A target declared up front (K5) | Raising at the call site, which K1 forbids | Informs |
@@ -1744,7 +1744,9 @@ It rests on three claims. Each names the comparables it rests on, and only compa
 
 **Complement.** For Rust, a tenant-free table's type that cannot name a tenant, resting on client_golang (F2) for Rust only.
 
-**Informs only.** Every other comparable informs the recommendation and does not justify it: S1 to S5, S7 to S11, F1, F5, F6, F9, F10, F12 and F13, and the remedies (not the reasons) of F7 and F8.
+**The fake-core flag.** A's flag on `RecordedWrite`, so that a test can assert that no write named a tenant, rests on Laravel (F11): its stated reason makes the case for strictness where the developer is looking, at development time (K3). Laravel's silence in production informs only.
+
+**Informs only.** Every other comparable informs the recommendation and does not justify it: S1 to S5, S7 to S11, F1, F5, F6, F9, F10, F12 and F13, the remedies (not the reasons) of F7 and F8, and Laravel's production default (F11).
 
 **What A2 leaves open.**
 
@@ -1837,6 +1839,11 @@ enum FailureKind { queue_full | oversize | invalid | store_failed | shutdown | t
 ```
 
 **Open question 19** is removed in the same change, as the handbook requires when a question is decided.
+
+**Other places adoption would touch**, not drafted here:
+
+- Removing question 19 renumbers questions 20 to 26, so the guarantee text above would name question 23, not 24. The handbook page on working with the specifications says the module carries 26 open questions.
+- Three comments speak only of lost data: `FailureEpisode` ("One kind of lost data"), `LogRecord.count` ("losses of this kind") and the `StandardFacade` guarantee ("lost data is logged at WARNING"). Under A2 a dropped tenant is logged through the same machinery and loses no row, so each comment would widen as the `FailureKind` comment does above.
 
 **The glossary** (`docs/project/glossary.md`) would need an entry beside "Unattributed", for example: "Dropped tenant: a tenant a write named for a tenant-free table. The row is kept without it, and the write is counted and logged."
 
