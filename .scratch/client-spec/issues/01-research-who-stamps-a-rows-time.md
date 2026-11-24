@@ -185,6 +185,10 @@ Every review ran on Codex (codex-cli 0.169.1) with `gpt-6-astra`, the preferred 
 
   > All checks passed and the worktree is unchanged.
 
+- **After the adoption**, at `dee338d`, the specification, handbook and `CONTEXT.md` changes, this hand-back's record of the decision and the review fix. The commit that records this line changes only this section's lines.
+
+  > All checks passed and the worktree is unchanged.
+
 - **Changed files:** at hand-back, this ticket and its research file only. The specification was unchanged, and open question 11 was still in it. No code was added. The adoption since changes the specification, two handbook pages and `CONTEXT.md`: see "The maintainer's decision".
 - **`git status --short`** shows only `?? notes_2.md`, the user's own file, which this ticket did not touch.
 
