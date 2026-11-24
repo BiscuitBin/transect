@@ -59,11 +59,11 @@ Standing guidance from the same elicitation: where practice exists, follow it ra
 - [x] Proposed wording for the specification is given for the recommended option, as text for the maintainer to accept or change
 - [x] The findings, options, recommendation and proposed wording are written to the research file; a "Hand-back" section appended to this ticket summarises them and points to it, and both are committed
 - [x] The adversarial review ran at each key moment as `REVIEW.md` says, with reviewers that could open the sources, and the hand-back lists every finding with its verdict, its resolution and the reviewing model
-- [x] Question 11 is still open in the specification, no tracked file other than this ticket and its research file is changed, and no code is added
+- [x] Question 11 is still open in the specification, no tracked file other than this ticket and its research file is changed, and no code is added (true at hand-back; the maintainer has since decided question 11, and its adoption is folded into the same pull request: see "The maintainer's decision" below)
 
 ## Hand-back
 
-The work is in `research/01-who-stamps-a-rows-time.md`, beside the issues folder. This section summarises it. Question 11 is still open: nothing here decides it.
+The work is in `research/01-who-stamps-a-rows-time.md`, beside the issues folder. This section summarises it. Question 11 was still open at hand-back: nothing in the research decides it. The maintainer has since decided it, and the specification adopts the decision in the same pull request: see "The maintainer's decision".
 
 ### Findings
 
@@ -171,7 +171,7 @@ Every review ran on Codex (codex-cli 0.169.1) with `gpt-6-astra`, the preferred 
 **Open points.** No review finding is left open: all 48 numbered findings, and the suspicions, were applied or settled. What remains is for the maintainer, and is stated in the research file:
 
 - Claim 3 has no justifying comparable, and the second half of claim 1 rests on the researcher's argument; the name and the precision do too.
-- Which clock `Run.oldest_queued_age`, `Run.last_store_at` and the run id read; whether a clamp is counted or logged; and the hand-over's representation of the time (open question 15).
+- Which clock `Run.oldest_queued_age`, `Run.last_store_at` and the run id read; whether a clamp is counted or logged; and the hand-over's representation of the time (open question 15). Since decided by the maintainer, except open question 15: see "The maintainer's decision".
 - The proposed wording was not run through the pinned checker.
 - The second key moment's second-round fixes, and one follow-on edit to "What A leaves open" that made it agree with them, were not reviewed again after they were applied.
 
@@ -185,8 +185,39 @@ Every review ran on Codex (codex-cli 0.169.1) with `gpt-6-astra`, the preferred 
 
   > All checks passed and the worktree is unchanged.
 
-- **Changed files:** this ticket and its research file only. The specification is unchanged, and open question 11 is still in it. No code was added.
+- **Changed files:** at hand-back, this ticket and its research file only. The specification was unchanged, and open question 11 was still in it. No code was added. The adoption since changes the specification, two handbook pages and `CONTEXT.md`: see "The maintainer's decision".
 - **`git status --short`** shows only `?? notes_2.md`, the user's own file, which this ticket did not touch.
+
+### The maintainer's decision
+
+Put to the maintainer after the hand-back, on 2026-11-24, and decided as follows. At the maintainer's request, the adoption is folded into this ticket's pull request rather than left to a separate one.
+
+- **Who stamps: A.** The client stamps every accepted row from its own clock, and application code supplies no time. An application's own time, such as when an event happened, is a column the table declares.
+- **Name: `observed_time`**, replacing `client_time`.
+- **Precision and epoch:** microseconds since the Unix epoch, UTC.
+- **Clock:** the wall clock, clamped. A reading earlier than the last one the process used is not used, and the last one is used again.
+- **Other readings:** `oldest_queued_age`, `Run.last_store_at` and the run id (`uuid_v7(now)`) all read the client's clock. So no reading goes back, and the age stalls, never going negative, while the wall clock is behind.
+- **Clamp reporting:** silent, so neither counted nor logged.
+- **`CONTEXT.md`:** rename the `client_time` column header in its two worked examples, in this pull request.
+
+This answers "What A leaves open" in the research file, except the hand-over's representation of the time, which is still open question 15. The research file records the decision in its own closing section and is otherwise unchanged.
+
+**The adoption**, commit `fb8b7fa`, starts from the research file's proposed wording:
+
+- `docs/specs/transect-client.allium`: `Row.observed_time` and its comment, `AcceptRow`, `oldest_observed_time` and `Run.oldest_queued_age`, the hand-over surface, a vocabulary sentence that every `now` in the module is the client's clock, `ClockNeverMovesBackwards` with the clamp and its silence, and the writing surface's guidance. Open question 11 is removed and its number is not reused.
+- `docs/how-to/work-with-the-specs.md`: 24 open questions.
+- `docs/project/glossary.md`: "Observed time".
+- `.scratch/client-spec/CONTEXT.md`: the column header in both worked examples, with the columns re-aligned and nothing else changed.
+
+`AcceptRow`'s "Derived" marker stays: it covers both the position and the stamp being taken at acceptance, which the maintainer was not asked. Ticket 11 still lists "Every accepted row is stamped from the client's clock when it is written" among the Derived statements; the stamp's source is now decided, and its timing is ticket 11's to confirm.
+
+**Review of the adoption.** One review ran on Codex (codex-cli, read-only sandbox) with `gpt-6-astra`, the preferred model, which the session header recorded, against the maintainer's decisions above and the research file's proposed wording. A fresh Claude Code subagent on Claude Opus 5.5 (`claude-opus-5-5`), neither the author nor the reviewer, triaged its finding. The prompt, review and triage are under `ai_tmp/spec-review/q11/`, which is not committed.
+
+| # | Finding | Severity | Verdict | Resolution |
+| --- | --- | --- | --- | --- |
+| 1 | The handbook defines an unmarked statement as one answered "during the elicitation", so a later decision such as this one is described wrongly | Low | Valid; present since `2d563fd` adopted A2, not introduced here | `docs/how-to/work-with-the-specs.md`: "What the maintainer answered, during the elicitation or since." |
+
+The reviewer found nothing else: no stale name or reference to question 11, no departure from the decisions, no contradiction with another rule or open question, the count of 24 correct, and the `CONTEXT.md` change whitespace-only. It had no suspicions it could not confirm.
 
 ### Acceptance
 
@@ -201,4 +232,4 @@ Every review ran on Codex (codex-cli 0.169.1) with `gpt-6-astra`, the preferred 
 - [x] Proposed wording for the recommended option.
 - [x] Written to the research file, summarised here, and committed.
 - [x] Adversarial review at both key moments, with reviewers that opened the sources; every finding listed above.
-- [x] Question 11 still open, no other tracked file changed, and no code added.
+- [x] Question 11 still open, no other tracked file changed, and no code added: true at hand-back. The maintainer has since decided question 11, and the adoption changes the specification, two handbook pages and `CONTEXT.md` (see "The maintainer's decision").

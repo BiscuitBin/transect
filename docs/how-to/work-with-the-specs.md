@@ -23,7 +23,7 @@ Three kinds of statement sit in it, and they carry different weight:
 
 | Statement | Meaning |
 | --- | --- |
-| A rule, invariant or guarantee with no marker | What the maintainer answered during the elicitation. |
+| A rule, invariant or guarantee with no marker | What the maintainer answered, during the elicitation or since. |
 | A comment that says "Derived" | Follows from those answers but was never put to the maintainer directly. Confirm it before building on it. |
 | An `open question` | Nobody has decided. Where it says "Until decided", that behaviour holds in the module in the meantime. |
 

@@ -3115,3 +3115,17 @@ This section reports, and decides nothing.
 - **The keyed state slots.** The latest value per key is decided by position today. Comparables that order a key's values by a supplied time (K1, K2, and K4's versioned stores) bear on whether a supplied time could change which value is latest.
 - **The `@guidance` on the writing surface**, which says whether application code may supply a row's time is open question 11.
 - **The glossary**, which has no entry for a row's time.
+
+## Maintainer's decision (2026-11-24)
+
+After the hand-back, the maintainer decided open question 11. The specification adopts the decision in the same pull request as this research (commit `fb8b7fa`), and question 11 is removed from it; its number is not reused. The sections above stay as the record of the research as it was handed back, including where they say the question is open.
+
+- **Who stamps: A.** The client stamps every accepted row from its own clock, and application code supplies no time. An application's own time, such as when an event happened, is a column the table declares.
+- **Name: `observed_time`**, replacing `client_time`.
+- **Precision and epoch:** microseconds since the Unix epoch, UTC.
+- **Clock:** the wall clock, clamped. A reading earlier than the last one the process used is not used, and the last one is used again.
+- **Other readings:** `oldest_queued_age`, `Run.last_store_at` and the run id (`uuid_v7(now)`) all read the client's clock. So no reading goes back, and the age stalls, never going negative, while the wall clock is behind.
+- **Clamp reporting:** silent, so a reading used again is neither counted nor logged.
+- **`CONTEXT.md`:** the maintainer authorised renaming the `client_time` column in its two worked hand-over examples.
+
+This answers "What A leaves open" as follows. The clamp is silent. The queue's age, `Run.last_store_at` and the run id all read the client's clock. The hand-over's representation of the time is still open question 15.
