@@ -33,6 +33,7 @@ renamed.
 | Namespace | A name that groups tables. |
 | Tenant | An opaque identifier a row may be attributed to. A table is tenant-scoped or tenant-free. |
 | Unattributed | A row of a tenant-scoped table written with no tenant bound. It is kept and never given to any tenant. |
+| Dropped tenant | A tenant an accepted write named for a tenant-free table. The row is kept without it, and the write is counted and logged. |
 | Confluence (provisional) | The object, created at global scope, that tables are declared against. |
 | Establish (provisional) | The block that gives a confluence a core for its duration. |
 | Core (provisional) | What establish supplies: the production core, or a fake core in tests. Not the `libtransect` crate, which this handbook also calls the core. |
