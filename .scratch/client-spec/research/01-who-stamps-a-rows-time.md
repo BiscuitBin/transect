@@ -7,8 +7,8 @@
 
 ## How the sources were checked
 
-- Each comparable was read from its official documentation, a specification, or source code at a named tag or commit. GitHub links are pinned to a tag or a commit, except issue and pull request threads, which have no version. Apache JIRA issues are linked by their browse URL, Confluence pages (Kafka KIPs) by page id, and Apache mailing-list messages by their thread URL. The AWS documentation is unversioned; its pages were read as the Markdown rendition the site serves. The Redis `RESTORE` command page on redis.io, the Firebase pages on firebase.google.com, the systemd journal's design document (a published Google Doc) and the 0pointer.net post that links it are unversioned too, and were read as HTML; the systemd man page is the HTML that freedesktop.org serves for version 260. QOS.ch JIRA issues are linked by their browse URL, except two quotations found only in an issue's REST rendition (a comment, and a description in JIRA wiki markup), which are linked by that REST URL.
-- Every blockquote sits under the `Source:` line it was copied from. Each was checked as a substring of raw source text the researcher fetched again: GitHub files from `raw.githubusercontent.com`, GitHub threads through the GitHub API, Apache JIRA issues through the JIRA REST API, Confluence pages through the Confluence REST API, mailing-list messages through the Apache mail archive's API, and the HTML pages above, including the QOS.ch JIRA's browse pages, with their tags stripped. 362 quotations were checked; 351 match exactly, and 11 match only once whitespace is collapsed (two issue bodies with different line endings, three code comments whose indentation differs, and six passages of the systemd man page, whose HTML wraps lines).
+- Each comparable was read from its official documentation, a specification, or source code at a named tag or commit. GitHub links are pinned to a tag or a commit, except issue and pull request threads, which have no version. Apache JIRA issues are linked by their browse URL, Confluence pages (Kafka KIPs) by page id, and Apache mailing-list messages by their thread URL. The AWS documentation is unversioned; its pages were read as the Markdown rendition the site serves. The Redis `RESTORE` command page on redis.io, the Firebase pages on firebase.google.com, the systemd journal's design document (a published Google Doc) and the 0pointer.net post that links it are unversioned too, and were read as HTML; the systemd man pages are the HTML that freedesktop.org serves for version 260. QOS.ch JIRA issues are linked by their browse URL, except two quotations found only in an issue's REST rendition (a comment, and a description in JIRA wiki markup), which are linked by that REST URL.
+- Every blockquote sits under the `Source:` line it was copied from. Each was checked as a substring of raw source text the researcher fetched again: GitHub files from `raw.githubusercontent.com`, GitHub threads through the GitHub API, Apache JIRA issues through the JIRA REST API, Confluence pages through the Confluence REST API, mailing-list messages through the Apache mail archive's API, and the HTML pages above, including the QOS.ch JIRA's browse pages, with their tags stripped. 384 quotations were checked; 371 match exactly, and 13 match only once whitespace is collapsed (two issue bodies with different line endings, three code comments whose indentation differs, and eight passages of the systemd man pages, whose HTML wraps lines).
 - A quotation inside a sentence was checked the same way.
 - What no primary source confirmed is marked "Unverified". A reason the researcher worked out, and no author stated, is marked "Inferred".
 
@@ -38,7 +38,7 @@ Two families, as the maintainer asked: application logging frameworks and collec
 | Logback / SLF4J 2 | Logback's `LoggingEvent` constructor | Not through the SLF4J API or fluent builder; Logback's event has a public `setInstant` | `Instant` since 1.3; millis `timeStamp` and `nanoseconds` | Not applicable | `Clock.systemUTC()` |
 | Rust `tracing` | Each subscriber or layer, when it formats | No: events carry no timestamp | Formatter-defined | Not applicable | `SystemTime::now()` by default; `Uptime` uses `Instant` |
 | Elastic Common Schema | Source or pipeline (`@timestamp`), agent (`event.created`), store (`event.ingested`) | `@timestamp` is the source's time | `date`, three fields | Order expected `@timestamp` < `event.created` < `event.ingested` | Not specified |
-| Fluentd / Fluent Bit | Input plugin, a parser (`time_key`), or the sending client | Yes: forward protocol and logger libraries carry the client's time | `EventTime` (sec + ns) or integer seconds | Not checked | `Time.now` (Fluentd); `timespec_get(TIME_UTC)` (Fluent Bit) |
+| Fluentd / Fluent Bit | Input plugin, a parser (`time_key`), or the sending client | Yes: forward protocol and logger libraries carry the client's time | `EventTime` (sec + ns) or integer seconds | Not checked, except that the forward input replaces a zero time with its own current time | `Time.now` (Fluentd); `timespec_get(TIME_UTC)` (Fluent Bit) |
 | Grafana Loki | Client (push API) | Yes; the push format has a timestamp slot in every entry (Inferred: required) | ns since Unix epoch, as a string in JSON | Rejected if older than `reject_old_samples_max_age` (1w) or beyond `creation_grace_period` (10m); out of order accepted by default since 2.4, back to the stream's newest entry minus `max_chunk_age`/2 (1 h by default) | Bounds are relative to the current time (Inferred: the server's clock) |
 | InfluxDB | Client, or server when absent | Optional per point | Unix timestamp, default ns, `precision` parameter | Points outside retention rejected; same series and timestamp merges fields | Server host clock (UTC) when absent |
 | Prometheus | Server at scrape time | Exposition format allows it; docs say not to; `client_golang` exposes it with caveats | `int64` ms since epoch | Out of order rejected unless `out_of_order_time_window` > 0; on scrape, a sample more than 10 min ahead of the server is dropped | Server |
@@ -755,7 +755,29 @@ and wire protocol answer the same question. Family: time series.
 
   > The timestamp represents the time an Event was created. Every Event contains an associated timestamp. All events have timestamps, and they're set by the input plugin or discovered through a data parsing process.
 
-- Future, past or out-of-order times: no validation found in the pages read (Unverified).
+- The forward input (`in_forward`, `v1.20.1`) replaces a supplied time whose whole
+  seconds are zero, or a missing time, with the receiving Fluentd's current time. It
+  does so for a single message always, for each event of a `Forward` batch always, and
+  for a `PackedForward` batch only when `skip_invalid_event` is on, which is the
+  default. With that option on it also drops an event whose time is neither an integer
+  nor an `EventTime`. The forward protocol specification does not mention a zero time,
+  and no rationale was searched for.
+
+  Source: https://github.com/fluent/fluentd/blob/v1.20.1/lib/fluent/plugin/in_forward.rb
+
+  > config_param :skip_invalid_event, :bool, default: true
+
+  > time = Fluent::EventTime.now if time.to_i == 0
+
+  > time = Fluent::EventTime.now if time.nil? || time.to_i == 0 # `to_i == 0` for empty EventTime
+
+  > if @skip_invalid_event
+  >           es = normalize_event_stream(tag, es, conn.remote_host)
+
+  > !((time.is_a?(Integer) || time.is_a?(::Fluent::EventTime)) && record.is_a?(Hash) && tag.is_a?(String))
+
+- Future, past or out-of-order times: no validation found in the pages read, beyond the
+  zero-time rule above (Unverified).
 
 **Stated why** (precision only). Fluentd had second granularity until 0.14.0 (2016-05-25,
 pull request 653). The discussion in issue 461 weighed float seconds against a split
@@ -769,15 +791,31 @@ Source: https://github.com/fluent/fluentd/pull/653
 
 > This patch introduces new fluentd timestamp, `Fluent::EventTime`, which can have nanosecond granularity and is compatible with current `Integer` timestamp.
 
-For who stamps: No stated rationale found. Looked at the forward protocol specification,
-the parse-section docs, Fluent Bit's key concepts, and `fluent/fluent-bit` issues with
-`nanosecond` in the title (titles only).
+For the parser's fallback, its author stated a reason. Pull request 370 (by tagomoris,
+merged 2014-07-01) added `estimate_current_event` so that a parser can return no time
+instead of the current time, because a substituted current time cannot be told apart from
+a parsed one:
+
+Source: https://github.com/fluent/fluentd/pull/370
+
+> - By setting current time, caller cannot know "time" is from whether parse result or current time
+>   - it brings troubles especially in case for filter plugins like fluent-plugin-parser
+
+For the rest of who stamps, the forward protocol carrying the client's time and the input
+plugins stamping: No stated rationale found. Looked at the forward protocol
+specification, the parse-section docs, Fluent Bit's key concepts, `fluent/fluent-bit`
+issues with `nanosecond` in the title (titles only), and pull request 370's body and
+comments.
 
 **Constraints.** Events cross several hops (client, forwarder, aggregator), and plugins written for integer seconds had to keep working (pull request 653's backward-compatibility notes, not quoted further).
 
 **Costs and dissent.** Pull request 653 kept integer time on the wire by default
 (`time_as_integer`) for backward compatibility, so nanoseconds were lost unless every hop
 was upgraded (same pull request body; not quoted further).
+
+The parser's default (`estimate_current_event` true at `v1.20.1`, quoted under "What it
+does") carries the cost pull request 370 names: a later stage cannot tell whether an
+event's time was parsed or substituted (quoted under "Stated why").
 
 ### T9. Grafana Loki
 
@@ -917,7 +955,17 @@ Source: https://github.com/influxdata/docs-v2/blob/df4a7d5fcf18fe4b13277a4bdd6bc
 > However if your data isn't collected in nanoseconds, there is no need to write at that precision.
 > For better performance, use the coarsest precision possible for timestamps.
 
-**Constraints.** None stated in the pages read.
+**Constraints.** A time the server fills in is only as accurate as its host's clock.
+InfluxData's write guidance asks for hosts synchronised with NTP, because a point written
+without a timestamp takes the InfluxDB host's local time:
+
+Source: https://github.com/influxdata/docs-v2/blob/df4a7d5fcf18fe4b13277a4bdd6bc54e3f8e77d2/content/influxdb/v2/write-data/best-practices/optimize-writes.md
+> Use the Network Time Protocol (NTP) to synchronize time between hosts.
+> If a timestamp isn't included in line protocol, InfluxDB uses its host's local
+> time (in UTC) to assign timestamps to each point.
+> If a host's clocks isn't synchronized with NTP, timestamps may be inaccurate.
+
+No other constraint was stated in the pages read.
 
 **Costs and dissent.** The InfluxDB 1 FAQ names the cost of coarse precision: points
 that collide on a timestamp overwrite each other, under the merge rule quoted above.
@@ -1214,10 +1262,11 @@ Source: https://lists.apache.org/thread/s87r82g1l2c6wo54d0xdp8ft1vnfb9no
 
 ### T13. The systemd journal
 
-**Analogy.** A local log collector: one daemon receives entries from processes on the
-same machine and stamps each entry itself. Family: time series.
+**Analogy.** A local log collector: a daemon (by default one per machine) receives entries from processes on the same
+machine and stamps each entry itself. Family: time series.
 
-**What it does.** systemd `v260`: the `systemd.journal-fields(7)` man page for 260,
+**What it does.** systemd `v260`: the `systemd.journal-fields(7)` and `systemd-journald.service(8)` man
+pages for 260,
 `docs/JOURNAL_FILE_FORMAT.md` and `src/journal/journald-manager.c` at tag `v260`.
 
 - **Who stamps.** The journal daemon, on receipt, on two clocks: the wall clock
@@ -1315,13 +1364,22 @@ the reception timestamps without giving one. Looked at: the 260 man page,
 
 **Constraints.**
 
-- One daemon per machine receives from many local processes over sockets (Inferred from
-  the socket handling in `journald-manager.c`; not stated as a rule in what was read).
-- That daemon numbers every entry it writes from one sequence (Inferred from
+- By default one daemon receives from many local processes over sockets (Inferred from
+  the socket handling in `journald-manager.c`). The manual allows more than one: each
+  journal namespace has its own, independent log stream and its own daemon instance, and
+  a service is assigned to a namespace through `LogNamespace=`. The manual gives
+  isolation and performance as the reasons for namespaces.
+- Each daemon instance numbers every entry it writes from one sequence (Inferred from
   `JOURNAL_FILE_FORMAT.md`, which says files from the same daemon instance carry the
-  same `seqnum_id`).
+  same `seqnum_id`). With several namespaces, one machine therefore has several stamping
+  daemons and several independent sequences (Inferred).
 - Wall-clock jumps happen, so the realtime stamp is monotonic only between them (quoted
   above).
+
+Source: https://www.freedesktop.org/software/systemd/man/260/systemd-journald.service.html
+> Journal 'namespaces' are both a mechanism for logically isolating the log stream of projects consisting of one or more services from the rest of the system and a mechanism for improving performance. Multiple journal namespaces may exist simultaneously, each defining its own, independent log stream managed by its own instance of systemd-journald. Namespaces are independent of each other, both in the data store and in the IPC interface.
+
+> Service units may be assigned to a specific journal namespace through the LogNamespace= unit file setting
 
 **Costs and dissent.**
 
@@ -2101,14 +2159,48 @@ eviction, not for reporting.
 
 **Costs and dissent.**
 
-The access stamp can mislead about writes. A shared-integer optimisation makes many keys
-share one idle time (antirez, redis/redis#4403):
+The access stamp has misled about writes. In 2017 a shared-integer optimisation made many
+keys share one idle time (antirez, redis/redis#4403, opened 2017-10-27 and still open on
+the date read):
 
 Source: https://github.com/redis/redis/issues/4403#issuecomment-340387689
 > Every integer object has *a single* shared idle time. So every string set to "5" will be like sharing the same idle time. So if you set a string to a new integer, the result is that you see the idle time that the number you set happen to have.
 
-`updateLRM` returns early for shared objects (quoted above), so under LRM too a key set
-to a shared integer does not get its own stamp.
+That describes the code of 2017. At 8.12.0 a stored key's value is its own object. Adding
+or overwriting a key copies a shared integer into a new object with a reference count of
+1, stamps it, and hands that object on, so `updateLRM`'s early return for shared objects
+(quoted above) is not reached for it, under LRM or any other policy (Inferred from
+`object.c` and `db.c` at 8.12.0, read for the `SET` path through `setKey`; other write
+paths were not traced, and nothing was run).
+
+Source: https://github.com/redis/redis/blob/8.12.0/src/object.c
+> kv = kvobjCreate(val->type, key, valptr, keyMetaBits);
+
+> kv->refcount = 1;
+
+Source: https://github.com/redis/redis/blob/8.12.0/src/db.c
+> kvobj *kv = kvobjSet(key->ptr, val, spec->metabits);
+>     initObjectLRUOrLFU(kv);
+
+> *valref = kvNew;
+
+> /* Signal key modification and update LRM timestamp. */
+>     keyModified(c,db,key,*valref,!(flags & SETKEY_NO_SIGNAL));
+
+Separately, when `maxmemory` is set under an LRU, LFU or LRM policy, integer values are
+not taken from the shared pool at all; the code comment gives the reason, per-key
+eviction data:
+
+Source: https://github.com/redis/redis/blob/8.12.0/src/server.h
+> #define MAXMEMORY_FLAG_NO_SHARED_INTEGERS \
+>     (MAXMEMORY_FLAG_LRU|MAXMEMORY_FLAG_LFU|MAXMEMORY_FLAG_LRM)
+
+Source: https://github.com/redis/redis/blob/8.12.0/src/object.c
+> /* The function avoids returning a shared integer when LFU/LRU info
+>  * are needed, that is, when the object is used as a value in the key
+>  * space(for instance when the INCR command is used), and Redis is
+>  * configured to evict based on LFU/LRU, so we want LFU/LRU values
+>  * specific for each key. */
 
 Source: https://github.com/redis/redis/issues/8399#issuecomment-869139727
 > so 1 second resolution is not ideal for a small db which can replace the entire keyspace in one second.
@@ -2586,8 +2678,33 @@ Source: https://issues.apache.org/jira/browse/ZOOKEEPER-1366
 **Constraints.**
 
 - One leader orders every write, and the zxid exposes the total order. The guide says
-  real time is used for nothing except the stat timestamps (quoted above). That the
-  wall-clock stamp plays no part in ordering is Inferred from that.
+  real time is used for nothing except the stat timestamps (quoted above). The same
+  release qualifies that: the `ContainerManager`, which `LeaderZooKeeperServer` starts,
+  compares the server's wall clock with a node's `mtime` to decide when an optional TTL
+  node (added in 3.5.3, disabled by default) or a never-used container node becomes a
+  candidate for deletion. That the wall-clock stamp plays no part in ordering is Inferred
+  from the guide and the zxid definition; the TTL use is expiry, not ordering.
+
+  Source: https://github.com/apache/zookeeper/blob/release-3.9.4/zookeeper-server/src/main/java/org/apache/zookeeper/server/ContainerManager.java
+
+  > return Time.currentWallTime() - node.stat.getMtime();
+
+  > if ((ttl != 0) && (getElapsed(node) > ttl)) {
+
+  > if ((maxNeverUsedIntervalMs != 0) && (getElapsed(node) > maxNeverUsedIntervalMs)) {
+
+  Source: https://github.com/apache/zookeeper/blob/release-3.9.4/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/LeaderZooKeeperServer.java
+
+  > containerManager = new ContainerManager(
+
+  Source: https://github.com/apache/zookeeper/blob/release-3.9.4/zookeeper-docs/src/main/resources/markdown/zookeeperProgrammers.md
+
+  > you can optionally set a TTL in milliseconds for the znode. If the znode
+  > is not modified within the TTL and has no children it will become a candidate
+  > to be deleted by the server at some point in the future.
+
+  > Note: TTL Nodes must be enabled via System property as they
+  > are disabled by default.
 - The stamp is taken once and replicated in the transaction header, so replicas agree on
   it (code quoted above).
 
@@ -2595,6 +2712,11 @@ Source: https://issues.apache.org/jira/browse/ZOOKEEPER-1366
 
 - Using wall time for elapsed-time measures cost mass session expiry on a clock change
   (ZOOKEEPER-1366). The fix moved timers to elapsed time and kept `mtime` on wall time.
+- TTL expiry still measures elapsed time as wall clock minus `mtime`, so a step in the
+  wall clock, or a difference between the clock that stamped `mtime` and the clock of the
+  server that checks it, moves when a TTL node becomes eligible for deletion (Inferred
+  from `ContainerManager.java` at `release-3.9.4`; not documented in what was read, not
+  tested). It is the kind of clock dependence ZOOKEEPER-1366 removed from session timers.
 - No dissent about `mtime` itself was found in the JIRA titles searched.
 
 ### K11. Cloud Firestore
