@@ -195,7 +195,7 @@ Before the first review, a preflight confirmed that Codex ran `gpt-6-astra` and 
 
   > All checks passed and the worktree is unchanged.
 
-- **Final**, at `c35976d`, the research file and this hand-back as reviewed and fixed. The commit that records this line changes only the line itself.
+- **Final**, at `671f32f`, the research file and this hand-back as reviewed and fixed. The commit that records this line changes only the line itself.
 
   > All checks passed and the worktree is unchanged.
 
