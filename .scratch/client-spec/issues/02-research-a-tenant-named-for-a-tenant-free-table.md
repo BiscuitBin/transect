@@ -58,3 +58,156 @@ Standing guidance from the same elicitation: where practice exists, follow it ra
 - [ ] The findings, options, recommendation and proposed wording are written to the research file; a "Hand-back" section appended to this ticket summarises them and points to it, and both are committed
 - [ ] The adversarial review ran at each key moment as `REVIEW.md` says, with reviewers that could open the sources, and the hand-back lists every finding with its verdict, its resolution and the reviewing model
 - [ ] Question 19 is still open in the specification, no tracked file other than this ticket and its research file is changed, and no code is added
+
+## Hand-back
+
+The work is in `research/02-a-tenant-named-for-a-tenant-free-table.md`, beside the issues folder. This section summarises it. Question 19 is still open: nothing here decides it.
+
+### Findings
+
+The survey covers eleven comparables at the system level (S1 to S11) and thirteen at the framework and client level (F1 to F13). For each it records:
+
+- the shape: named or ambient, scope-like or unknown-field-like;
+- what happens to the write;
+- the stated why, quoted and linked, or "No stated rationale found" with where was looked;
+- any inferred why;
+- the constraints, the costs and dissent, and the fit.
+
+Every quotation was checked as a substring of source text the author fetched again: 222 quotations at the last check. The closest matches split:
+
+- **Kubernetes (S1) clears a namespace named on a cluster-scoped object silently.** No reason is stated. A reviewer called it "weird", and a downstream security advisory turns on it.
+- **Weaviate (S11) rejects a tenant named on a collection without multi-tenancy.** Its code states only an aim.
+- **Elasticsearch time series (S3), Spark (S4) and Cosmos DB (S5) also reject.** None states why it refuses rather than ignores.
+
+Among the client libraries, Prometheus raises or fails to compile (F1, F2), OpenTelemetry Views and `tracing` drop (F4, F6), and Micrometer moved four times, each time with a stated reason (F3). acts_as_tenant reversed a silent overwrite of a named tenant because it "was confusing and hid bugs" (F7).
+
+The complaints are consistent that silent handling that loses data surprises developers. On keeping the row against refusing it, they point both ways, and no source compares the two.
+
+### Options
+
+**Ruled out by the settled promises:**
+
+- storing the named tenant;
+- failing loudly;
+- blocking;
+- leaving the write uncounted;
+- storing the row under another tenant.
+
+**The options:**
+
+- **A1:** keep the row without the tenant, counted in a counter of its own.
+- **A2:** as A1, and logged as a kind of its own.
+- **B:** refuse the row as invalid.
+- **C:** refuse the row with an outcome, counter and kind of its own.
+- **D:** keep the row, counted only as accepted.
+
+Each is given with its effect on `WriteOutcome`, `FailureKind`, the host log, `CountersMatchTheRows`, `RecordedWrite` and the rule order. A Rust typed table that cannot name a tenant is a complement, not an option.
+
+### Recommendation
+
+**A2**, resting on three claims:
+
+1. **The mismatch must not be silent, and must reach the host log.** This rests on acts_as_tenant (F7), Micrometer (F3), the ClickHouse maintainer (S6) and OpenTelemetry's error-handling principle (F4), each with a stated why and a fit argument.
+2. **Keep the row rather than refuse it.** This is the weakest step, and it is the researcher's own argument: no comparable both states a reason for it and fits.
+3. **Never store the tenant.** This is settled, and Hibernate's stated reason (F8) agrees.
+
+Keeping has a cost that refusing would not. A wrongly named write that A2 keeps can replace a correct value in a tenant-free keyed state table. Under the production core it can also take the last queue place from a correct row. The file therefore puts one question to the maintainer, and says what would turn the choice to C. C is preferred to B in that case, because only C's signal tells a named tenant from a column that does not fit.
+
+### Proposed wording
+
+Allium text for A2 covers every place a counter, outcome or kind is listed, and gives wording for C too. It is in the research file only. It was not run through the pinned checker, because `just check-specs` checks only the tracked module. The glossary would need a new entry.
+
+### Adversarial review
+
+Every review ran on Codex (codex-cli 0.169.1) with `gpt-6-astra`, the preferred model. Each session header recorded the model, because the model could not name itself. Every reviewer had live web search under this ticket's authorisation, and a read-only sandbox. Every finding was triaged by a fresh Claude Code subagent on Claude Opus 5.5 (`claude-opus-5-5`), which was neither the author nor a reviewer.
+
+Before the first review, a preflight confirmed that Codex ran `gpt-6-astra` and could open a URL. The review files and triage files are under `ai_tmp/client-spec-review/02/`, which is not committed.
+
+| Key moment, round, lens | # | Finding | Verdict | Resolution |
+| --- | --- | --- | --- | --- |
+| 1, 1, sources | 1 | F8 missed Hibernate's stated reason and dissent | Valid | Pull request #3867's review thread added, with its dissent |
+| 1, 1, sources | 2 | S7 said the surplus fields were removed | Valid | Corrected: unmapped and listed in `_ignored` |
+| 1, 1, sources | 3 | F3 conflated Micrometer's two registries | Valid | Legacy registry recorded at stage 2 |
+| 1, 1, sources | 4 | S3 missed the routing discussion | Valid | Pull requests #77731 and #79384 added; refusing rather than ignoring stays unexplained |
+| 1, 1, sources | 5 | F9 missed a cost of switching the tenant | Valid | Added as a historical cost, repaired |
+| 1, 1, sources | 6 | S9 missed InfluxData's stated reason | Valid | The blog post added |
+| 1, 1, sources | 7 | S7 missed Elastic's reason for `strict` | Valid | The 2.x guide added, marked historical |
+| 1, 1, sources | 8 | F2 overstated the compile-time check | Valid | Zero-label `CounterVec` recorded |
+| 1, 1, sources | 9 | F10 applied mass assignment too broadly | Valid | Limited to `fill()` |
+| 1, 1, sources | 10 | S9 said an implicit bucket accepts anything | Valid | Corrected |
+| 1, 1, sources | 11 | S6 missed the proposed warning's limit | Valid | Added |
+| 1, 1, reasoning | 1 | Weaviate, a close comparable that rejects, was missing | Valid | S11 added |
+| 1, 1, reasoning | 2 | S2 treated substitution as removal | Valid | Reworded: the tenant is replaced |
+| 1, 1, reasoning | 3 | S7 said surplus values were removed | Valid | As sources 2 |
+| 1, 1, reasoning | 4 | Elasticsearch `strict` was called a default | Valid | Default and configured rejection split |
+| 1, 1, reasoning | 5 | F2 overstated the compile-time check | Valid | As sources 8 |
+| 1, 1, reasoning | 6 | F4 missed OTEP 0126's cardinality motive | Valid | Added |
+| 1, 1, reasoning | 7 | S9's claim about implicit schemas was false | Valid | As sources 10 |
+| 1, 2, sources | 1 | S1 missed the Capsule security advisory | Valid | Added as a downstream controller's cost |
+| 1, 2, sources | 2 | S9 missed the rejection unit and timing | Valid | Added; late rejection under explicit schemas marked Unverified |
+| 1, 2, sources | Suspicion | SPARK-16033 near S4 | Recorded | Added as an adjacent API that informs only |
+| 1, 2, reasoning | 1 | S7 called an added option a reversal | Valid | Corrected: the index default still rejects |
+| 1, 2, reasoning | 2 | As sources 2 | Valid | Merged with sources 2 |
+| 1, 2, reasoning | 3 | F13 treated search-path fallback as routing | Valid | django-tenants and Apartment told apart |
+| 1, 2, reasoning | Suspicion | S2's unsourced "small install" reason | Valid | Replaced by what Cortex's authors said |
+| 2, 1, sources | 1 | "No reversal removed a signal" was false | Valid | The synthesis now records both directions |
+| 2, 1, sources | 2 | A reason was attributed to Hibernate that it did not state | Valid | Claim 2 corrected |
+| 2, 1, sources | 3 | Pulumi's complaint was reported without its resolution | Valid | Its won't-fix close and pull request #538 added |
+| 2, 1, sources | 4 | The fit called the Kubernetes clear an accident | Valid | Back to "no stated rationale" |
+| 2, 1, sources | 5 | S7's constraint inverted the shared-stream risk | Valid | Corrected |
+| 2, 1, sources | 6 | F12 missed Rails' logging override | Valid | Added, with its stated why; informs only |
+| 2, 1, sources | 7 | S2 overstated Loki's proxy requirement | Valid | Corrected |
+| 2, 1, sources | Suspicion | F4 "nothing is counted" outran the source | Valid | Narrowed to what the specification requires |
+| 2, 1, reasoning | 1 | A2 can let a wrong write replace correct keyed state | Valid | Third mistake added; claim 2 qualified; question put to the maintainer; A2 kept |
+| 2, 1, reasoning | 2 | B and C relied on rule order | Valid | Mutually exclusive guards given |
+| 2, 1, reasoning | 3 | As sources 1 | Valid | As sources 1 |
+| 2, 1, reasoning | 4 | The fit dropped Elasticsearch's telemetry-template default | Valid | Restored |
+| 2, 1, reasoning | 5 | A1 was compared without its fake-core flag | Valid | A1 now weighed against rather than ruled out |
+| 2, 1, reasoning | 6 | As sources 4 | Valid | As sources 4 |
+| 2, 1, reasoning | 7 | As sources 7 | Valid | As sources 7 |
+| 2, 1, reasoning | Suspicion | InfluxDB's late rejection was stated as fact in the summary | Valid | Marked Unverified there too |
+| 2, 2, sources | 1 | The S7 fit made shared streams a prerequisite of Elasticsearch's reason | Valid | Corrected in five places. S7 still informs, on two misfits that hold: a resource cap, and an unknown field |
+| 2, 2, sources | 2 | F3 said Micrometer's current registry rejects only a type mismatch | Valid | Reworded, with the v1.18.0 source |
+| 2, 2, sources | 3 | F9 made django-multitenant's guard unconditional | Valid | Its conditions stated, with the source line |
+| 2, 2, sources | Suspicion | SPARK-16033's comments could not be opened | Not a finding | Verified through the Jira REST API |
+| 2, 2, reasoning | 1 | A kept wrong row can take the last queue place from a correct row | Valid | Added to A's costs and to claim 2 |
+| 2, 2, reasoning | 2 | B's signal is ambiguous, not wrong | Valid | Reworded in five places. C over B is now a weighed trade-off |
+| 2, 2, reasoning | 3 | A2 and C are equally visible only for otherwise accepted writes | Valid | Qualified |
+| 2, 2, reasoning | 4 | The host log is not guaranteed to reach a developer | Valid | Claim 1 qualified, citing `StandardFacade` |
+
+**Open points.** No review finding is left open: all 44 numbered findings, and the suspicions, were applied or settled. What remains is for the maintainer, and is stated in the research file:
+
+- Claim 2 of the recommendation rests on the researcher's own argument.
+- One question is put to the maintainer, on tenant-free keyed state tables. Its answer could turn the recommendation to C.
+- The proposed wording was not run through the pinned checker.
+- The second round at each key moment reviewed the fixes of the first. Each key moment's second-round fixes were checked again only by the quotation checks. The second key moment's reviewers covered the first key moment's second-round fixes, but nothing re-reviewed the second key moment's own second-round fixes.
+
+### Gates and files
+
+- **Baseline**, at `196156c`. The first runs failed on this fresh worktree:
+  - the tools were missing, until `just sync` and `just install-allium` ran;
+  - markdownlint failed on `notes_2.md`, until its owner fixed it;
+  - `fuzz-build` failed, until `just install-tools` ran with the user's authorisation.
+
+  Then:
+
+  > All checks passed and the worktree is unchanged.
+
+
+- **Changed files:** `git diff main --stat` shows only this ticket and its research file. The specification is unchanged, and open question 19 is still in it. No code was added.
+- **`git status --short`** shows only `?? notes_2.md`, the user's own file, which this ticket did not touch.
+
+### Acceptance
+
+- [x] At least three comparables at each level, read from official documentation or source: eleven at the system level, thirteen at the framework level.
+- [x] What happens to each write, and whether and how the mismatch is visible.
+- [x] Every claim linked with the date read, and "Unverified" where no primary source confirmed it.
+- [x] Every field under "Citing a comparable" recorded for each comparable, with fit in its own section.
+- [x] Comparables that chose otherwise, with their why.
+- [x] Which behaviour surprises least and why, labelled as the researcher's view where it is one, and the options the settled promises rule out.
+- [x] The options with their trade-offs and where each is counted, and one recommended with its reasons.
+- [x] The recommendation rests only on comparables with a stated why and a fit argument, names them, and marks the rest as informing.
+- [x] Proposed wording for the recommended option, and for C.
+- [x] Written to the research file, summarised here, and committed.
+- [x] Adversarial review at both key moments, with reviewers that opened the sources; every finding listed above.
+- [x] Question 19 still open, no other tracked file changed, and no code added.

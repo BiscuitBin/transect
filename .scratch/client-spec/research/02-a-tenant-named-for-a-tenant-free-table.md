@@ -525,7 +525,7 @@ Source: https://github.com/elastic/elasticsearch/blob/v9.5.7/docs/reference/elas
 
 > When set to `true`, the index request will not fail. Instead, fields that would exceed the limit are not added to the mapping, similar to [`dynamic: false`](/reference/elasticsearch/mapping-reference/dynamic.md). The fields that were not added to the mapping will be added to the [`_ignored` field](/reference/elasticsearch/mapping-reference/mapping-ignored-field.md).
 
-The stated reason is data loss in shared telemetry streams. The proposal also said the surplus fields would be kept, not removed.
+The stated reason is data loss for logging and tracing data, made worse where several services share one data stream. The proposal also said the surplus fields would be kept, not removed.
 
 Source: https://github.com/elastic/elasticsearch/issues/89911#issuecomment-1301836032
 
@@ -543,7 +543,11 @@ Source: https://github.com/elastic/elasticsearch/pull/105180
 
 > This reduces the risk of document loss if too many fields are added.
 
-**Constraints.** Several services share one data stream. The stated risk is that one service affects the others: "a single misbehaving service can cause data loss for all services".
+**Constraints.** Several services share one data stream. The stated risk is that one service affects the others: "a single misbehaving service can cause data loss for all services". The limit itself is a cap against mapping explosion, and the issue that led to the option says documents that are not bogus reach it too.
+
+Source: https://github.com/elastic/elasticsearch/issues/89911
+
+> The fact that many users end up reaching the limit despite they are not ingesting bogus documents sounds like a bug
 
 **Costs and dissent.** The field-limit change added an option and did not change the index default.
 
@@ -897,7 +901,11 @@ The maintainer declined in 2021, finding no appetite for a change.
 
    > It's better to lose some observability info than cause issues for the application. Logging this is far more reasonable if we're only talking about meter registration failures caused by instrumentation issues in code that users control in their application code, but it's a problem when we're talking about instrumentation issues in code that users don't control (third-party libraries).
 
-4. **Accepted, in the current registry.** At `v1.18.0`, `io.micrometer.prometheusmetrics.PrometheusMeterRegistry` (artifact `micrometer-registry-prometheus`, on the Prometheus Java client 1.x) rejects only a mismatch of metric *type*, and has no tag-key check. The maintainer dates the change to 1.17, and the 1.17 migration guide records it. That version's source was not read.
+4. **Accepted, in the current registry.** At `v1.18.0`, `io.micrometer.prometheusmetrics.PrometheusMeterRegistry` (artifact `micrometer-registry-prometheus`, on the Prometheus Java client 1.x) has no tag-key check. It still rejects some registrations, among them a meter of a different metric *type* and one whose different Micrometer name maps to the same Prometheus name, but not one with a different set of tag keys. The maintainer dates the change to 1.17, and the 1.17 migration guide records it. That version's source was not read.
+
+   Source: https://github.com/micrometer-metrics/micrometer/blob/v1.18.0/implementations/micrometer-registry-prometheus/src/main/java/io/micrometer/prometheusmetrics/PrometheusMeterRegistry.java
+
+   >             if (!existingCollector.getOriginalId().getName().equals(id.getName())) {
 
    Source: https://github.com/micrometer-metrics/micrometer/issues/877#issuecomment-3924463517
 
@@ -1223,7 +1231,7 @@ Source: https://github.com/hibernate/hibernate-orm/pull/3867#discussion_r7066181
 
 - `save()` sets the current tenant only if the object has none.
 - If the object carries a different tenant, the current tenant is **switched to the object's** for the save and then restored.
-- Changing the tenant column of an existing row raises `NotSupportedError`.
+- On an existing row that already has a tenant, assigning a different, truthy tenant to the tenant column makes the next `save()` raise `NotSupportedError`. A falsy value does not trip this guard. That was traced in the source, not executed.
 
 Source: https://github.com/citusdata/django-multitenant/blob/v4.0.0/django_multitenant/mixins.py
 
@@ -1232,6 +1240,8 @@ Source: https://github.com/citusdata/django-multitenant/blob/v4.0.0/django_multi
 >         if self.tenant_value and tenant_value != self.tenant_value:
 >             self_tenant = get_object_tenant(self)
 >             set_current_tenant(self_tenant)
+
+>             raise NotSupportedError("Tenant column of a row cannot be updated.")
 
 Models that do not use `TenantModelMixin` are **Inferred** to be left alone.
 
@@ -1478,7 +1488,7 @@ There is no single majority to stand against, so this section records the split 
 - **ClickHouse (S6) and Laravel (F11) drop silently by default.**
   - ClickHouse's default came about as a side effect of a read-side change. In November 2026 a maintainer called it data loss and asked for a warning. The warning proposed does not cover data the client parses itself.
   - Laravel's reason is security, and its documentation calls the silence expected in production and confusing in development.
-- **Elasticsearch's field limit (S7) gained an option to accept the document, with the surplus fields unmapped and unindexed and their names listed in `_ignored`.** Rejection stays the index default, and the built-in logs and metrics templates turn the option on. The reason given for the option and for the templates was that one misbehaving service could lose data for every service sharing the stream.
+- **Elasticsearch's field limit (S7) gained an option to accept the document, with the surplus fields unmapped and unindexed and their names listed in `_ignored`.** Rejection stays the index default, and the built-in logs and metrics templates turn the option on. The reason given for the option was data loss, made worse where one misbehaving service could lose data for every service sharing the stream. The templates' pull request names only "the risk of document loss".
 
 ## Candidates not examined, or dropped
 
@@ -1517,7 +1527,7 @@ What follows is taken from the ticket, from the specification (`docs/specs/trans
 | S4 Spark | Rejected at analysis | None for the SQL clause; the adjacent DataFrame reason is about an already partitioned table | A declared target (K5) | A statement that fails whole to its caller, unlike K1 | Informs |
 | S5 Cosmos DB | A conflicting key rejected | None | None | The key is derived from the document, and no container is truly scope-free | Informs |
 | S6 ClickHouse | Unknown column dropped silently; a warning proposed | Default: a side effect of a read-side change. Dissent: the drop is data loss, and an explicit name that does not match "is nearly always a mistake" | The names in a write through a client library are explicit, as a tenant named on a write here is (K5). The remedy chosen keeps the behaviour and adds a server-log warning, which this client can match through K2 | The thing dropped is a column's data. Here it is the tenant | **Justifies** claim 1 of the recommendation: the mismatch must not be silent |
-| S7 Elasticsearch `dynamic` and field limit | Configured: add, keep unindexed, or reject. The limit gained an option to accept and list the surplus | `strict`: "alert you to the problem" where Elasticsearch is the primary store (historical guide). Field limit: rejection causes data loss in shared streams | A refused write loses data (K8). Telemetry, where losing a row is a cost | The alert in `strict` is an exception to the caller, unlike K1. The field-limit reason rests on many services sharing one stream, which a per-table queue here does not have. The option is off for a plain index, though the built-in logs and metrics templates turn it on at `v9.5.7`, so Elastic's own defaults for telemetry keep the document | Informs. The field limit leans towards keeping the row, without justifying it |
+| S7 Elasticsearch `dynamic` and field limit | Configured: add, keep unindexed, or reject. The limit gained an option to accept and list the surplus | `strict`: "alert you to the problem" where Elasticsearch is the primary store (historical guide). Field limit: rejection causes data loss, worse where services share a stream | A refused write loses data (K8). Telemetry, where losing a row is a cost | The alert in `strict` is an exception to the caller, unlike K1. The field-limit reason, data loss, holds; shared streams, which a per-table queue here does not have, only made it worse. The limit is a resource cap that documents reach whether or not they are mistakes, while a named tenant here contradicts an explicit declaration (K5). An unknown field bears on this question only if a named tenant is row content, which question 19 leaves open (K6). The option is off for a plain index, though the built-in logs and metrics templates turn it on at `v9.5.7`, so Elastic's own defaults for telemetry keep the document | Informs. The field limit leans towards keeping the row, without justifying it |
 | S8 BigQuery | Rejected by default; ignore is opt-in per request | None | None | A request that fails to its caller, unlike K1 | Informs |
 | S9 InfluxDB explicit schemas | Rejected per field value and recorded in `rejected_points` | Protection from schemas "muddled up with junk" | A declared schema (K5) | Opt-in. The unit rejected is a field value, not a row. The caller sees an error | Informs |
 | S10 PostgreSQL | Rejected | Not looked for | None | A statement in a transaction the caller controls, unlike K1 | Informs |
@@ -1577,7 +1587,7 @@ On keeping the row against refusing it, the complaints point both ways, and they
 | --- | --- | --- | --- |
 | **A1** keep, counted only | Rows kept without the tenant. A counter rises, and the fake core flags each write, so a test that asserts no write named a tenant fails. Nothing is logged | Rows correct. A counter rises and the fake core flags each write. Nothing is logged | The row is kept as a global row. Signals as in mistake 1 |
 | **A2** keep, counted and logged | As A1, and one WARNING onset names the table and the kind, then a total. The tenants of the rows written so far are lost | Rows correct. As A1, and one onset and one total per table per run: noise, and no loss | The row is kept as a global row. Signals as in mistake 1 |
-| **B** refuse as invalid | Every row that named a tenant refused and lost. One WARNING onset with the kind `invalid`, although the columns fit. The log carries no detail beyond table, kind and count, so the developer looks for a column that does not fit and finds none | Every row of the table refused and lost, for a harmless habit | The row is refused and lost, with the misleading signal of mistake 1 |
+| **B** refuse as invalid | Every row that named a tenant refused and lost. One WARNING onset with the kind `invalid`, which under B covers a named tenant as well as a column that does not fit. The log carries no detail beyond table, kind and count, so it does not say which. A developer who reads `invalid` as a column misfit looks for one and finds none | Every row of the table refused and lost, for a harmless habit | The row is refused and lost, with the ambiguous signal of mistake 1 |
 | **C** refuse with its own kind | Every row that named a tenant refused and lost. One WARNING onset with a kind that names the cause | As B, but the log names the cause | The row is refused and lost, and the log names the cause |
 | **D** keep, counted only as accepted | Rows kept without the tenant. Nothing shows in the counters or the log | Rows correct. Nothing shows | The row is kept as a global row. Nothing shows |
 
@@ -1593,7 +1603,7 @@ In the researcher's view, A2 surprises least:
 
 - It keeps the most rows in mistakes 1 and 2, and its signal names the cause. Keeping the most rows is not keeping the most correct data, though: in a keyed state table, mistake 3 lets one wrong write replace a value that C would have kept.
 - No option is best in all three mistakes, and no source says how often each happens.
-- C is as clear as A2, and loses the rows. B's signal points at the wrong cause.
+- C is as clear as A2 for a write that would otherwise be accepted, and loses the rows. B's kind, `invalid`, does not say whether a column or the tenant caused it.
 - A1 has the same counter and fake-core flag as A2, so a test or a reading of the diagnostics finds the mismatch. It differs from A2 only in that nothing reaches the host log.
 - D shows nothing in either channel, and is the silent handling the complaints above are about.
 
@@ -1636,6 +1646,7 @@ Two variants:
 - A2 logs a kind that loses no row, beside kinds that do. `FailureKind` is commented as "the kinds of lost data", so the comment changes.
 - A2 is logged while `unattributed` is counted and not logged, an asymmetry open question 22 already asks about for `unattributed`. Choosing A2 does not answer question 22.
 - In a keyed state table the kept row takes its key's slot like any other write to the table. One wrong write can then replace a correct value (mistake 3), and in mistake 1 every tenant's value for a key collapses into one. A replaced value is neither sent nor counted as lost. Refusing, under B or C, keeps the correct value in mistake 3. This rests on the proposed specification's slots, which are marked "Derived".
+- Every row A keeps holds a queue position until the data writer takes it, a wrong row included. In mistake 3, under the production core and while the table's queue is full, a correct write can be refused for want of the position the wrong row holds. C, refusing the wrong write, would have left it free. The correct write's loss is counted and logged as `queue_full`, not as the mismatch (`RefuseRowWhenQueueFull`).
 - A's core act, dropping a named tenant and keeping the row, resembles what acts_as_tenant did before 2.0 and what Hibernate's first draft did, and both authors moved away from it (F7, F8). Only acts_as_tenant states why: the overwrite "was confusing and hid bugs". Hibernate's stated reason is against honouring the tenant, not against the overwrite. What differs in A is set out under "Recommendation".
 
 ### B. Refuse the row and count it as invalid
@@ -1674,7 +1685,7 @@ rule RefuseInvalidRow {
 **Costs.**
 
 - The row is lost.
-- The counter and the log record cannot tell a column misfit from a tenant mismatch, so the one signal points the developer at the columns.
+- The counter and the log record cannot tell a column misfit from a tenant mismatch, so the one signal does not say which to look for.
 - A harmless habit loses every row of the table (mistake 2).
 
 ### C. Refuse the row, with an outcome of its own
@@ -1713,13 +1724,14 @@ It rests on three claims. Each names the comparables it rests on, and only compa
    - the ClickHouse maintainer (S6): an explicit name that does not match is nearly always a mistake, and a warning comes first;
    - the OpenTelemetry error-handling principle (F4): a suppressed error "SHOULD" be logged.
 
-   The fit is K1 and K2. The write itself can carry no signal. A counter must be read, and A's fake-core flag reaches only a test that asserts on it. Like the callbacks Micrometer users had to register (F3), both are signals a developer must go looking for. The host log is the channel that reaches a developer unprompted. This rules out D, which has no signal at all, weighs against A1, which has the counter and the flag but no log, and puts A2 beside C.
+   The fit is K1 and K2. The write itself can carry no signal. A counter must be read, and A's fake-core flag reaches only a test that asserts on it. Like the callbacks Micrometer users had to register (F3), both are signals a developer must go looking for. The host log is the one channel that can reach a developer who is not looking for it, because the record goes wherever the host already sends its logs. It is not guaranteed to. The client installs no handlers (`StandardFacade`), so the record reaches someone only if the host's logging passes a WARNING from the client's logger to a sink that someone reads. This rules out D, which has no signal at all, weighs against A1, which has the counter and the flag but no log, and puts A2 beside C.
 2. **Keep the row rather than refuse it.** No comparable both states a reason for keeping and fits here, so **this step is the weakest, and rests on the researcher's own argument**:
    - Within the specification, the tenant dimension already keeps a mismatched row and counts it (`unattributed`, K7), while refusal is settled for the column dimension (K6). The precedent holds fully for a time series table only. Under the proposed specification an unattributed row of a keyed state table is in a slot group of its own, so it never replaces an attributed value. A row kept under A is untenanted like every other row of its table, and does share its key's slot with correct values.
-   - A2 and C are equally visible. For a time series table, refusing adds only the loss of the row, and in mistake 2 that loss is every row of a correctly declared table. For a keyed state table, refusing also protects: in mistake 3, C keeps a correct value that A2 lets a wrong write replace, while in mistake 2, C leaves each key's value stale or empty.
+   - A2 and C are equally visible for a write that would otherwise be accepted. For a fitting write that is too large or meets a full queue, each reports one cause and hides the other. A2 counts it as oversize or queue full and leaves the mismatch uncounted, while C counts the mismatch and not the size or the full queue. A row that does not fit is invalid under both.
+   - For a time series table, refusing loses the row, and in mistake 2 that loss is every row of a correctly declared table. In mistake 3 refusing also protects, in either kind of table. Under the production core a refused write takes no queue position, while a row A2 keeps holds one until the data writer takes it. So a correct write that arrives while the queue is full can be refused in its place, counted and logged as queue full. For a keyed state table refusing protects a value as well: in mistake 3, C keeps a correct value that A2 lets a wrong write replace, while in mistake 2, C leaves each key's value stale or empty.
    - Only acts_as_tenant states why it left its overwrite: it "was confusing and hid bugs" (F7). Its overwrite saved the row to the current tenant when the write named another. The cross-tenant creation its pull request also describes came from polymorphic tenants, which never overwrote. Hibernate's author first found the overwrite "fine". The author's stated reason, "cross-tenant associations", answers a colleague's proposal to keep the tenant the user gave, not the overwrite. For an error rather than the overwrite, the author said only that it "would be better, probably" (F8).
    - A2 differs from the acts_as_tenant overwrite in two ways: the mismatch is counted and logged rather than hidden, and the row is stored with no tenant, where every row of a tenant-free table goes, rather than under a tenant the write did not name. Whether that answers "confusing and hid bugs" is the researcher's argument, not acts_as_tenant's. In a keyed state table that place is its key's slot, so the cost of keeping is a value replaced, not a tenant crossed.
-   - Elasticsearch's field limit (S7) leans the same way and only informs: its reason, data loss, holds here, but its shared-stream constraint does not. The option is off for a plain index and on in Elastic's built-in logs and metrics templates, so for telemetry Elastic's own default keeps the document.
+   - Elasticsearch's field limit (S7) leans the same way and only informs: its reason, data loss, holds here, and shared streams only made it worse. It still does not fit: the limit is a resource cap that legitimate documents reach too, not a write against an explicit declaration (K5), and an unknown field bears here only if a named tenant is row content, which question 19 leaves open (K6). The option is off for a plain index and on in Elastic's built-in logs and metrics templates, so for telemetry Elastic's own default keeps the document.
    - Rails' `attribute_writer_missing` (F12) also leans this way and only informs. Its documented override keeps the rest of the assignment and logs the unknown name, but it is opt-in, raising stays the default, and its reason, drifting external input, is not this client's case.
 
    **What would turn the choice to C.** Two things would, and both are the maintainer's to weigh:
@@ -1727,7 +1739,7 @@ It rests on three claims. Each names the comparables it rests on, and only compa
    - if the maintainer reads a named tenant as part of the row, the settled rule for a row that does not fit points the other way;
    - if the tenant-free tables the maintainer expects are mostly keyed state, or a wrong value replacing a right one is worse to them than a lost row (mistake 3 against mistake 2).
 
-   In either case **C** is the answer rather than B, because B's signal names the wrong cause.
+   In either case **C** is the answer rather than B, in the researcher's view. B's own wording makes a named tenant one of the causes of `invalid`, so its signal is not wrong, but the counter and the log record cannot tell a tenant mismatch from a column misfit. C tells them apart, at the cost of one more outcome, counter and kind.
 3. **Never store the named tenant.** This is settled. Hibernate's stated reason (F8) agrees.
 
 **Complement.** For Rust, a tenant-free table's type that cannot name a tenant, resting on client_golang (F2) for Rust only.
