@@ -7,7 +7,14 @@
 
 ## How the sources were checked
 
-Two survey agents found the candidates and saved raw text. The author then fetched every cited source again, independently: source and documentation files at a pinned tag or commit through `raw.githubusercontent.com`, issue, pull request and commit text through the GitHub REST API, Jira through its REST API, and the two vendor documentation pages as HTML with the tags stripped. Each quotation below was then checked by machine as a substring of that text. Every quotation matched character for character, except three that match only once line breaks and indentation are collapsed. Those three are marked "(line breaks collapsed)", and their wording is verbatim.
+Two survey agents found the candidates and saved raw text. The first adversarial review added sources of its own. The author then fetched every cited source again, independently:
+
+- source and documentation files at a pinned tag or commit, through `raw.githubusercontent.com`;
+- issue, pull request, review-comment and commit text through the GitHub REST API, and a quotation cited to one comment from that comment alone;
+- Jira through its REST API;
+- vendor pages and blog posts as HTML, with the tags stripped.
+
+Each quotation below was then checked by machine as a substring of that text. Every quotation matched character for character, except those marked "(line breaks collapsed)". Those match only once line breaks, indentation or diff markers are collapsed, and their wording is verbatim.
 
 A quotation from source code keeps the comment markers and indentation it has in the file.
 
@@ -26,7 +33,7 @@ Some comparables are a different shape again: a named tenant that **conflicts** 
 
 ### S1. Kubernetes API server: a namespace on a cluster-scoped object
 
-**Shape.** Named and scope-like, the closest match found. A cluster-scoped kind, such as `ClusterRole` or `Node`, is declared without a namespace. A write can name one in three places, and each is handled differently.
+**Shape.** Named and scope-like. A cluster-scoped kind, such as `ClusterRole` or `Node`, is declared without a namespace. A write can name one in three places, and each is handled differently.
 
 **What it does.** Read at tag `v1.37.2`.
 
@@ -138,7 +145,7 @@ Source: https://github.com/kubernetes/kubernetes/issues/111248#issuecomment-2977
 
 ### S2. Grafana Mimir and Loki (and Cortex) with multi-tenancy off
 
-**Shape.** Named (the push carries an `X-Scope-OrgID` header) and scope-like (a tenant). The scope-free declaration is deployment-wide (`-auth.multitenancy-enabled=false` in Mimir, `auth_enabled: false` in Loki), not per target, so this is looser than S1: the whole cluster is the "table".
+**Shape.** Named (the push carries an `X-Scope-OrgID` header) and scope-like (a tenant). The scope-free declaration is deployment-wide (`-auth.multitenancy-enabled=false` in Mimir, `auth_enabled: false` in Loki), not per target, so this is looser than S1. The outcome differs too. Storage stays tenant-scoped, and every push is stored under one substitute tenant, so a named tenant is **replaced**, not removed. That is not "stored without a tenant".
 
 **What it does.** The push is **stored under a substitute tenant, and the header is never read**: `anonymous` in Mimir, `fake` in Loki. No error, log line or metric for the ignored header was found in the source read.
 
@@ -160,6 +167,8 @@ Loki, at `v3.7.10`. The docs say only that the header is "not required". The cod
 
 Source: https://github.com/grafana/loki/blob/v3.7.10/docs/sources/operations/multi-tenancy.md
 
+> When configured with `auth_enabled: false`, Loki uses a single tenant.
+
 > The `X-Scope-OrgID` header is not required in Loki API requests.
 
 > The single tenant ID will be the string `fake`.
@@ -178,6 +187,13 @@ Source: https://github.com/grafana/loki/blob/v3.7.10/pkg/loki/modules.go
 Source: https://github.com/cortexproject/cortex/blob/v1.22.0/pkg/util/fakeauth/fake_auth.go
 
 > // Package fakeauth provides middlewares that injects a fake userID, so the rest of the code
+> // can continue to be multitenant.
+
+Mimir's copy of the middleware keeps the same reason.
+
+Source: https://github.com/grafana/mimir/blob/mimir-3.2.6/pkg/util/noauth/no_auth.go
+
+> // Package noauth provides middlewares that injects a tenant ID so the rest of the code
 > // can continue to be multitenant.
 
 Loki's current default branch says the same in other words.
@@ -232,13 +248,44 @@ Source: https://github.com/elastic/elasticsearch/blob/v8.19.0/docs/reference/dat
 
 > TSDS documents don't support a custom `_routing` value. Similarly, you can't
 
-**Stated why.** No stated rationale found beyond the documentation's statement of the rule. Searched: GitHub pull request searches for "routing_path", "TSDB routing_path" and "specifying routing is not supported", and one web search.
+**Stated why.** In part, by the author of the change (nik9000), but no reason is given for refusing a value rather than ignoring it.
 
-**Inferred why.** Inferred: in a TSDS, routing is a function of the dimensions (`index.routing_path`). A caller-supplied routing value would put one time series on two shards, so the named scope would *conflict* with a declared derivation, not merely go unused.
+- The refusal was introduced in pull request #77731 (merged 2021-10-15). A follow-up, #79384 (merged 2021-10-19), says what routing is for in this mode.
+
+  Source: https://github.com/elastic/elasticsearch/pull/79384
+
+  > `routing_path`'s job is to put the same time series on the same node.
+
+  > The third document could be routed to a different shard than the first two! Which would be a disaster because it'd cut the time series identified by `"dim":"a"` into pieces!
+
+  (line breaks collapsed)
+
+  That harm is stated for a `routing_path` that matches a non-dimension field, not for a caller's routing value.
+- In the review of #77731 the author explained why this mode does not read routing at all. "Duplicate bytes" there refers to storing a *generated* routing value, not a caller's.
+
+  Source: https://github.com/elastic/elasticsearch/pull/77731#discussion_r710111746
+
+  > We didn't like the idea of writing this generated routing value to the translog because its just duplicate bytes. It felt much more natural not to have to look at `routing` at all for tsdb and make the change we needed here.
+
+  Source: https://github.com/elastic/elasticsearch/pull/77731#discussion_r710268965
+
+  > In another sense, when `index.routing_path` is set routing is *forbidden* on CRUD operations. And I think that sense aligns better with how we document it. And how the code works, thankfully.
+
+- No passage says why a supplied value is refused rather than ignored. Searched: GitHub pull request searches for "routing_path", "TSDB routing_path" and "specifying routing is not supported", one web search, and every review comment, review and conversation comment on #77731 and #79384.
+
+**Inferred why.** Inferred: in a TSDS, routing is a function of the dimensions (`index.routing_path`). A caller-supplied routing value would put one time series on two shards, so the named scope would *conflict* with a declared derivation, not merely go unused. #79384 states that harm, a series cut across shards, for a misconfigured `routing_path`. That it is the reason a caller's routing value is refused remains Inferred.
 
 **Constraints.** Routing is derived from the data. A wrong routing value would silently split a series across shards.
 
-**Costs and dissent.** None found in the sources read.
+**Costs and dissent.** An alternative was raised in review and set aside: accepting a routing value that is "right", so that updates and deletes could work. The author's answer is quoted under "Stated why", and the reviewer then accepted the approach.
+
+Source: https://github.com/elastic/elasticsearch/pull/77731#discussion_r710081653
+
+> But I wonder if we would then not also support an indexing request with the "right" routing value. That would allow updates and deletes too, meaning update-by-query and delete-by-query would work?
+
+Source: https://github.com/elastic/elasticsearch/pull/77731#discussion_r710256606
+
+> Which in turn means that the approach taken in this PR looks good to me.
 
 ### S4. Spark SQL: `INSERT ... PARTITION (...)` into a non-partitioned table
 
@@ -338,6 +385,16 @@ Source: https://github.com/ClickHouse/ClickHouse/issues/130754#issuecomment-6794
 
 Pull request #131160, still open on 2026-11-24, adds a server-log warning for each skipped field (at most 10 per query) and a separate setting to turn the warning off.
 
+As proposed, the warning does not reach the issue's own example. The pull request's description leaves out data the client parses itself, and the warning's author gave the reason on the issue.
+
+Source: https://github.com/ClickHouse/ClickHouse/pull/131160
+
+> Not covered: data `clickhouse-client` or `clickhouse-local` parse on the client side (stdin, `FROM INFILE` as in the issue's example, inline data with `async_insert = 0`), reads through table functions, and formats that do not use the setting (`Parquet`, `ORC`, `Arrow`, `Avro`, `Protobuf`, `CapnProto`).
+
+Source: https://github.com/ClickHouse/ClickHouse/issues/130754#issuecomment-6839429936
+
+> One limitation: the issue's `FROM INFILE` example is parsed by `clickhouse-client` itself, which drops `c` before it sends any block, so the server never sees that column and does not warn.
+
 ### S7. Elasticsearch `dynamic` mapping, and the field-count limit (unknown-field-like)
 
 **Shape.** Named and unknown-field-like. The operator declares, per object, what happens to an undeclared field.
@@ -354,15 +411,33 @@ Source: https://github.com/elastic/elasticsearch/blob/v9.5.7/docs/reference/elas
 
 > :   If new fields are detected, an exception is thrown and the document is rejected. New fields must be explicitly added to the mapping.
 
-**Stated why.** The page gives no reason for the `false` and `strict` choices.
+**Stated why.** The current reference page gives none. Elastic's older book, *Elasticsearch: The Definitive Guide* for 2.x, gives one for `strict`, especially where Elasticsearch is the primary data store, and only a bare preference for `false`. The page marks itself as no longer maintained, so this is historical guidance for a version past its end of life.
 
-**Adjacent: the field-count limit.** A document that would take an index over `index.mapping.total_fields.limit` is rejected by default. A later setting, `ignore_dynamic_beyond_limit`, keeps the document and records the surplus fields in `_ignored`, and the logs and metrics templates turned it on. The stated reason is data loss in shared telemetry streams.
+Source: https://www.elastic.co/guide/en/elasticsearch/guide/current/dynamic-mapping.html
+
+> Perhaps you just want to ignore them.
+
+> especially if you are using Elasticsearch as a primary data store
+
+> perhaps you want unknown fields to throw an exception to alert you to the problem.
+
+(line breaks collapsed)
+
+**Adjacent: the field-count limit.** A document that would take an index over `index.mapping.total_fields.limit` is rejected by default. A later setting, `ignore_dynamic_beyond_limit`, indexes the document instead. It leaves the surplus fields out of the mapping, "similar to `dynamic: false`", and lists their names in `_ignored`. The logs and metrics templates turned it on.
+
+Source: https://github.com/elastic/elasticsearch/blob/v9.5.7/docs/reference/elasticsearch/index-settings/mapping-limit.md
+
+> When set to `true`, the index request will not fail. Instead, fields that would exceed the limit are not added to the mapping, similar to [`dynamic: false`](/reference/elasticsearch/mapping-reference/dynamic.md). The fields that were not added to the mapping will be added to the [`_ignored` field](/reference/elasticsearch/mapping-reference/mapping-ignored-field.md).
+
+The stated reason is data loss in shared telemetry streams. The proposal also said the surplus fields would be kept, not removed.
 
 Source: https://github.com/elastic/elasticsearch/issues/89911#issuecomment-1301836032
 
 > I think that the biggest pain with the field limit is that it causes data loss.
 
 > As in APM, multiple services share the same data stream, a single misbehaving service can cause data loss for all services.
+
+> the additional fields would just be stored but not added to the mapping (similar to `dynamic: false`).
 
 Source: https://github.com/elastic/elasticsearch/pull/96235
 
@@ -374,7 +449,7 @@ Source: https://github.com/elastic/elasticsearch/pull/105180
 
 **Constraints.** Several services share one data stream, so a refused document is lost for its sender and the stream keeps working for the rest.
 
-**Costs and dissent.** The field-limit change is itself a reversal: from rejecting the document to storing it without the surplus and recording what was left out.
+**Costs and dissent.** The field-limit change is itself a reversal: from rejecting the document to accepting it, with the surplus fields unmapped and unindexed and their names listed in `_ignored`. The values are not described as removed. The setting's documentation likens them to `dynamic: false`, whose fields "will still appear in the `_source` field of returned hits", but it does not state the retention directly.
 
 ### S8. BigQuery `tabledata.insertAll` (unknown-field-like)
 
@@ -406,9 +481,27 @@ Source: https://github.com/influxdata/docs-v2/blob/df4a7d5fcf18fe4b13277a4bdd6bc
 
 > the data must conform to the schema. Otherwise, InfluxDB rejects the data.
 
-**Stated why.** No stated rationale found on these pages.
+**Stated why.** Yes for explicit schemas as such, but not for rejecting a non-conforming point rather than dropping it. The two documentation pages above give no reason. InfluxData's blog post introducing the feature (Russ Savage, published 2021-08-26, updated 2025-12-14) gives the problem it solves.
 
-**Constraints.** The schema is opt-in per bucket. Without it, a bucket accepts anything.
+Source: https://www.influxdata.com/blog/new-bucket-schema-option-protect-from-unwanted-schema-changes/
+
+> As your application grows, and more users are adding their own data, it can become tricky to ensure that the schema doesn’t get muddled up with junk. Some customers actually end up developing some sort of protection service to ensure only the right points make it to their production databases.
+
+> To help solve this problem for our users, we have introduced a new option to explicitly define the schema of the data that can be written to a bucket.
+
+**Constraints.** The explicit schema is opt-in per bucket, and the default bucket schema type is `implicit`. The blog post describes an implicit bucket as allowing "any schema". Even so, it checks a new point against the series already written, and rejects a point whose field has a conflicting data type, logging it in `rejected_points`. What an implicit bucket does with a new field or tag was not read.
+
+Source: https://www.influxdata.com/blog/new-bucket-schema-option-protect-from-unwanted-schema-changes/
+
+> the default for new buckets is to allow any schema, aka implicit
+
+Source: https://github.com/influxdata/docs-v2/blob/df4a7d5fcf18fe4b13277a4bdd6bc54e3f8e77d2/content/shared/influxdb-v2/write-data/troubleshoot.md
+
+> If a point has a field with a different data type than the series, InfluxDB rejects the point and logs a `rejected_points` entry.
+
+Source: https://github.com/influxdata/docs-v2/blob/df4a7d5fcf18fe4b13277a4bdd6bc54e3f8e77d2/content/shared/influxdb-v2/reference/cli/influx/bucket/create.md
+
+> Bucket schema type (`explicit`, default `implicit`) _(Cloud only)_.
 
 **Costs and dissent.** None looked for.
 
@@ -429,6 +522,126 @@ Row-level security was ruled out as a comparable. It concerns a table that *has*
 **Constraints.** A statement fails whole, inside a transaction the caller controls.
 
 **Costs and dissent.** None looked for.
+
+### S11. Weaviate: a tenant named on a write to a collection without multi-tenancy
+
+**Shape.** Named (the object or request carries a tenant) and scope-like (a tenant, which in Weaviate is also the shard the data lives on). The target is a collection declared without multi-tenancy. That is the default, and the declaration is per collection, as a table's is here. This comparable was found by the first adversarial review.
+
+**What it does.** Read at tag `v1.36.0`. The write is **rejected**.
+
+- A single create gets HTTP 422 with the message "class … has multi-tenancy disabled, but request was with tenant", and nothing is stored. The acceptance tests at the tag assert this.
+- In a batch, each object that names a tenant fails on its own with that message. The source records the error at that object's position and carries on, so the rest of the batch is written. The batch acceptance test gives every object a tenant, so it does not exercise a mixed batch.
+- The check runs in shard resolution: the resolver for a collection without multi-tenancy reads the object's tenant and validates it before it picks a shard. Which call raises the error first for a single create was not traced, because `AddObject` calls `EnsureTenantActiveForWrite` and `Exists` before the write.
+- The rule dates from `v1.20.0`, the first release with multi-tenancy. It mirrors the rule that rejects a missing tenant on a multi-tenant collection.
+- A tenant that is **inherited**, not named, is cleared rather than rejected. When a reference crosses from a multi-tenant collection into one without multi-tenancy, Weaviate's own code drops the source's tenant.
+
+Source: https://github.com/weaviate/weaviate/blob/v1.36.0/adapters/repos/db/multitenancy/validator.go
+
+> // The returned validator will reject any requests that include tenant parameters.
+
+> 				fmt.Errorf("class %s has multi-tenancy disabled, but request was with tenant", v.className),
+
+Source: https://github.com/weaviate/weaviate/blob/v1.36.0/adapters/repos/db/sharding/resolver.go
+
+> 	tenant := object.Object.Tenant
+> 	if err := r.tenantValidator.ValidateTenants(ctx, tenant); err != nil {
+
+Source: https://github.com/weaviate/weaviate/blob/v1.36.0/adapters/repos/db/index.go
+
+> 			out[pos] = err
+
+Source: https://github.com/weaviate/weaviate/blob/v1.36.0/test/acceptance_with_go_client/multi_tenancy_tests/data_test.go
+
+> 	t.Run("fails creating objects of non-MT class when tenant given", func(t *testing.T) {
+
+> 		assert.Equal(t, 422, clientErr.StatusCode)
+
+Source: https://github.com/weaviate/weaviate/blob/v1.20.0/adapters/repos/db/index.go
+
+> 	} else if !i.partitioningEnabled && tenant != "" {
+
+Source: https://github.com/weaviate/weaviate/blob/v1.36.0/adapters/repos/db/search.go
+
+> 	// if this is reference search and tenant is given (as origin class is MT)
+> 	// but searched class is non-MT, then skip tenant to pass validation
+
+Source: https://github.com/weaviate/weaviate/blob/v1.36.0/usecases/objects/batch_references_add.go
+
+> 		if err := validateTenantRefObject(ctx, repo, targetClass, target.TargetID, ""); err != nil {
+
+**Visible?** To the caller, as the 422, or as the object's failed status in a batch. To the operator, as a user error in the REST requests-total metric, in the same family of branches as invalid user input and an unrecognised property. The metric's exported name was not looked up.
+
+Source: https://github.com/weaviate/weaviate/blob/v1.36.0/adapters/handlers/rest/handlers_objects.go
+
+> 	case errors.As(err, &uco.ErrMultiTenancy{}):
+> 		e.logUserError(className)
+
+**Stated why.** In part. A code comment states an aim, but no reason was found for refusing a named tenant rather than ignoring it.
+
+- The comment on the validator states the aim. It was added in 2025 by pull request #9251, a refactor that moved the existing check into its own package, so it was not there when the rule was introduced.
+
+  Source: https://github.com/weaviate/weaviate/blob/v1.36.0/adapters/repos/db/multitenancy/validator.go
+
+  > // singleTenantValidator validates requests for collections with multi-tenancy disabled.
+  > // It ensures that no tenant parameters are provided in requests to single-tenant
+  > // collections, maintaining strict separation between single and multi-tenant modes.
+
+- The pull request gives a reason for validating the tenant together with shard resolution, not for refusing it.
+
+  Source: https://github.com/weaviate/weaviate/pull/9251
+
+  > These two things need to happen together because you can't assign a shard without knowing if the tenant is valid first, considering also that the tenant is required if the collection is multi-tenant.
+
+- The commit that introduced the rule, `9ab7a764bc` (2023-06-29), has no pull request, and its message gives no reason.
+
+  Source: https://github.com/weaviate/weaviate/commit/9ab7a764bce0fc8c22a7ea7787eec6162babab98
+
+  > adds multitenancy support for listing objects
+
+- Also searched, with nothing found:
+  - the multi-tenancy how-to page and the data concepts page in `weaviate/docs` at commit `6fcdb058b4`;
+  - the launch blog post;
+  - issue and pull request searches for "multi-tenancy disabled";
+  - a commit search for the error text.
+
+**Inferred why.** Inferred: in Weaviate a tenant names both the shard to write to and the shard to authorise against (`authorization.ShardsData(className, object.Tenant)` in `AddObject`). A collection without multi-tenancy has no tenant shards, so the request names a target that does not exist. No source states this.
+
+**Constraints.**
+
+- Multi-tenancy is opt-in per collection, and the launch post promised no change to collections that do not use it.
+
+  Source: https://weaviate.io/blog/multi-tenancy-vector-search
+
+  > Weaviate’s new multi-tenancy mode is opt-in. If you don’t require it, there are no changes for you.
+
+- A tenant is a physically separate shard, kept separate for isolation.
+
+  Source: https://weaviate.io/blog/multi-tenancy-vector-search
+
+  > To make sure we have isolation for both technical and compliance reasons, Weaviate must also store the data per tenant separately.
+
+  Source: https://github.com/weaviate/docs/blob/6fcdb058b4adc81fbbbd8a1ee8a00a6bc0b571d5/docs/weaviate/manage-collections/multi-tenancy.mdx
+
+  > Multi-tenancy provides data isolation. Each tenant is stored on a separate shard.
+
+- It is a server API. The caller gets an error for each request, or a status for each object in a batch.
+
+**Costs and dissent.**
+
+- The strict rule tripped Weaviate's own cross-reference paths, where the tenant was inherited from the source collection rather than named by the caller.
+  - Pull request #3679 (2023, by a member of the Weaviate organisation, merged) fixed it for reference search.
+
+    Source: https://github.com/weaviate/weaviate/pull/3679
+
+    > Now whenever reference search on non-MT class is performed tenant is unset.
+
+  - Issue #7281 (2025, opened by a contributor) reports it for reading references, and was still open on 2026-11-24. An outside contributor's fix, pull request #13925, was also still open.
+
+    Source: https://github.com/weaviate/weaviate/issues/7281
+
+    > fetch_objects method with return_references fails when a multi-tenant collection references a single-tenant collection.
+
+- No complaint was found about the refusal of a tenant the caller named.
 
 ---
 
@@ -463,7 +676,18 @@ Source: https://github.com/prometheus/client_python/issues/500
 
 ### F2. Prometheus client_golang: the `Counter` and `CounterVec` split, and `With` versus `GetMetricWith`
 
-**Shape.** The same as F1. Go rules the label-free case out **at compile time**: a plain `Counter` has no `With` method, so a label cannot be named on it.
+**Shape.** The same as F1, but a metric can be label-free in two ways, and they are handled differently.
+
+- A plain `Counter` has no `With` method, so **the compiler rejects** a label named on it.
+- A `CounterVec` built with zero label names is also label-free, and the maintainer confirms it is allowed. Its `With` accepts a `Labels` map at compile time. A map that names a label then fails the label-count check **at run time**: `With` panics and `GetMetricWith` returns the error. This was traced in the source at `v1.25.0`, not executed.
+
+Source: https://github.com/prometheus/client_golang/issues/204#issuecomment-223248317
+
+> Nothing is keeping you from using XxxVec's with 0 labels.
+
+Source: https://github.com/prometheus/client_golang/blob/v1.25.0/prometheus/vec.go
+
+> 	if err := validateValuesInLabels(labels, len(m.desc.variableLabels.names)-len(m.curry)); err != nil {
 
 **What it does.** At `v1.25.0`, for a labelled metric, `GetMetricWith` **returns an error** when the label names or count are inconsistent with those declared, and `With` **panics** in the same cases.
 
@@ -480,6 +704,8 @@ Source: https://github.com/prometheus/client_golang/blob/v1.25.0/prometheus/coun
 Source: https://github.com/prometheus/client_golang/issues/204#issuecomment-223248317
 
 > The current way was deliberately chosen (after literally weeks of intense discussion with very insightful Prometheans and Go developers) to allow the compiler to detect incorrect calls of label-less metrics with labels and vice versa. Ideally, the compiler would also detect the right number of labels, but that's not feasible with Go.
+
+That reason covers a plain `Counter`. It does not cover a zero-label `CounterVec`, where the mistake only shows at run time.
 
 Source: https://github.com/prometheus/client_golang/issues/204#issuecomment-498373396
 
@@ -519,7 +745,7 @@ The maintainer declined in 2021, finding no appetite for a change.
 
    > In this way, the user can do whatever they'd like with these problems, including logging or propagating a hard failure if they choose.
 
-3. **Logged**, once at WARN and afterwards at DEBUG, by default (pull request #5228, merged 2024-10-08; the tag-key check is still present at `v1.16.9`).
+3. **Logged**, once at WARN and afterwards at DEBUG, by default (pull request #5228, merged 2024-10-08). The tag-key check is still present at `v1.16.9` in `io.micrometer.prometheusmetrics.PrometheusMeterRegistry`.
 
    Source: https://github.com/micrometer-metrics/micrometer/pull/5228
 
@@ -529,11 +755,33 @@ The maintainer declined in 2021, finding no appetite for a change.
 
    > It's better to lose some observability info than cause issues for the application. Logging this is far more reasonable if we're only talking about meter registration failures caused by instrumentation issues in code that users control in their application code, but it's a problem when we're talking about instrumentation issues in code that users don't control (third-party libraries).
 
-4. **Accepted.** At `v1.18.0` only a mismatch of metric *type* is rejected, and there is no tag-key check. The maintainer dates the change to 1.17. That version's source was not read.
+4. **Accepted, in the current registry.** At `v1.18.0`, `io.micrometer.prometheusmetrics.PrometheusMeterRegistry` (artifact `micrometer-registry-prometheus`, on the Prometheus Java client 1.x) rejects only a mismatch of metric *type*, and has no tag-key check. The maintainer dates the change to 1.17, and the 1.17 migration guide records it. That version's source was not read.
 
    Source: https://github.com/micrometer-metrics/micrometer/issues/877#issuecomment-3924463517
 
    > With the Prometheus Java client 1.5.0 that was recently released, it included https://github.com/prometheus/client_java/issues/696. That unblocked us from supporting the same, and so this restriction has been removed from the Micrometer `PrometheusMeterRegistry`.
+
+   Source: https://github.com/micrometer-metrics/micrometer/wiki/1.17-Migration-Guide
+
+   > Additionally, we have removed the restriction that meters having the same name must all have the same set of tag names - see https://github.com/micrometer-metrics/micrometer/issues/877.
+
+**The legacy registry is still at stage 2.** Micrometer ships two Prometheus registries.
+
+Source: https://docs.micrometer.io/micrometer/reference/implementations/prometheus.html
+
+> Micrometer uses the Prometheus Java Client under the hood; there are two versions of it and Micrometer supports both.
+
+The legacy one, `io.micrometer.prometheus.PrometheusMeterRegistry`, is in the artifact `micrometer-registry-prometheus-simpleclient` and runs on the Prometheus Java client 0.x. At `v1.18.0` it is deprecated and still has the tag-key check.
+
+- A mismatch goes to `meterRegistrationFailed`. This class does not override it, so only registered callbacks hear of the mismatch. Pull request #5228 added its log line to the current registry alone.
+- The mismatched meter is left out of the scrape, silently unless a callback is registered.
+- This was traced in the source, not executed.
+
+Source: https://github.com/micrometer-metrics/micrometer/blob/v1.18.0/implementations/micrometer-registry-prometheus-simpleclient/src/main/java/io/micrometer/prometheus/PrometheusMeterRegistry.java
+
+>  * @deprecated since 1.13.0, use the class with the same name from
+
+>             if (existingCollector.getTagKeys().equals(tagKeys)) {
 
 **Constraints.**
 
@@ -595,6 +843,13 @@ Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63
 
   > OpenTelemetry's architecture separates the concerns of instrumentation and operation.
 
+- Why a View may drop attributes: the same OTEP names, as one of its three use cases, an operator constraining cardinality.
+
+  Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63.0/oteps/metrics/0126-Configurable-Metric-Aggregations.md
+
+  > 3) The application developer/operator wishes to constrain the cardinality of labels for metrics being reported
+  > to the metric vendor/backend of choice.
+
 - The project's error-handling principles, which apply to every API:
 
   Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63.0/specification/error-handling.md
@@ -611,7 +866,7 @@ Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63
 
 **Inferred why.** Inferred: under these principles a View's drop is not an error, because it is the outcome the operator configured, so there is nothing to log.
 
-**Constraints.** Instrumentation authors and operators are different people. Operators reshape streams without touching instrumentation, and the library must never break the host application.
+**Constraints.** Instrumentation authors and operators are different people, and an operator may choose which attributes to keep in order to limit the cardinality sent to a back end. Operators reshape streams without touching instrumentation, and the library must never break the host application.
 
 **Costs and dissent.** A 2026-10-27 comment on specification issue #3785 lists inconsistencies between SDKs. It describes itself as an AI-assisted audit, so its claims about SDK behaviour are **Unverified** here.
 
@@ -751,17 +1006,62 @@ Source: https://github.com/hibernate/hibernate-orm/blob/7.4.17/hibernate-core/sr
 
 An entity **without** `@TenantId` gets no tenant filter, because `TenantIdBinder` sets one up only for an attribute that carries the annotation. That such an entity is written without a tenant is **Inferred**.
 
-**Stated why.** The rule is stated, but no reason for it was found. The originating commit says only "use this to throw exception from TenantIdGeneration".
+**Stated why.** Yes, by the author (gavinking), in review. The check was written in pull request #3867, which was closed unmerged. The same change landed through #4428 (merged 2021-12-08) as commit `8af548b52d`.
 
-Source: https://github.com/hibernate/hibernate-orm/commit/8af548b52d3cfbe438799f11665f035694f0e4dd
+Source: https://github.com/hibernate/hibernate-orm/pull/4428
 
-> use this to throw exception from TenantIdGeneration
+> Supersedes #3867.
 
-Searched: the three commits for HHH-6054, all 65 comments on Jira HHH-6054 (three long comments read only in their first 400 characters), the user guide's chapter on multitenancy, and the `TenantId` and `CurrentTenantIdentifierResolver` javadocs. No GitHub pull request search was run.
+- The first version overwrote a tenant id the application had set with the session's, and the author found that acceptable.
+
+  Source: https://github.com/hibernate/hibernate-orm/pull/3867#discussion_r706585040
+
+  > Looks like it gets overwritten, which is fine, IMO.
+
+- Asked to keep a value the user supplies, the author gave the reason against honouring it, and then made the mismatch an error.
+
+  Source: https://github.com/hibernate/hibernate-orm/pull/3867#discussion_r706590727
+
+  > Well the thing is that it would let the user set up cross-tenant associations which would break the semantics of this stuff. An error would be better, probably, but it doesn't look like that's supported by the APIs I'm working with.
+
+  Source: https://github.com/hibernate/hibernate-orm/pull/3867#discussion_r706594299
+
+  > I now enforce that the tenant id be correct.
+
+- The stated reason is against honouring a mismatched tenant. For an error rather than the earlier overwrite, the thread gives only the preference "An error would be better, probably".
+- The "root" tenant is the stated way out.
+
+  Source: https://github.com/hibernate/hibernate-orm/pull/3867#issuecomment-918107706
+
+  > I've introduced the notion of a "root" tenant, a sort of superuser, in order to provide a reasonable way to turn this functionality off.
+
+- The commit message adds no reason of its own.
+
+  Source: https://github.com/hibernate/hibernate-orm/commit/8af548b52d3cfbe438799f11665f035694f0e4dd
+
+  > use this to throw exception from TenantIdGeneration
+
+Also read: the three commits for HHH-6054, all 65 comments on Jira HHH-6054 (three long comments only in their first 400 characters), the user guide's chapter on multitenancy, and the `TenantId` and `CurrentTenantIdentifierResolver` javadocs.
 
 **Constraints.** Discriminator multi-tenancy in one schema. The tenant comes from the session, and the root tenant is the way out for administrative writes.
 
-**Costs and dissent.** None found in the sources read.
+**Costs and dissent.** Another member of the Hibernate organisation (beikov) argued in the same thread for keeping the supplied value, and against the check.
+
+Source: https://github.com/hibernate/hibernate-orm/pull/3867#discussion_r706588885
+
+> Hmm, not sure if that is such a good idea. IMO if the user gives us a value, we should stick to that.
+
+Source: https://github.com/hibernate/hibernate-orm/pull/3867#discussion_r706607181
+
+> Anyway, preventing to accidently set a wrong value is IMO the task of a developer by controlling the write access to the property through proper encapsulation and we shouldn't mess with that.
+
+The author answered by also making the field non-updatable, and restated the reason.
+
+Source: https://github.com/hibernate/hibernate-orm/pull/3867#discussion_r706618183
+
+> Well I was already planning on having `@TenantId` imply `optional=false` and `updateable=false`.
+
+> As soon as you have associations between rows with different tenant ids, our filters just aren't going to do the right thing.
 
 ### F9. django-multitenant (Citus): the explicit tenant wins (a different shape)
 
@@ -789,7 +1089,32 @@ Models that do not use `TenantModelMixin` are **Inferred** to be left alone.
 
 **Constraints.** Citus routes each statement by its tenant (distribution) column.
 
-**Costs and dissent.** None found.
+**Costs and dissent.** One historical cost, since repaired: the switched tenant stayed current when the save failed. A user reported it on the pull request that introduced the switch.
+
+Source: https://github.com/citusdata/django-multitenant/pull/88#discussion_r476198054
+
+> fails (e.g. because of uniqueness validation), this `set_current_tenant` would not be executed and the code would continue with a "wrong" tenant
+
+The pull request's author accepted the repair the reporter proposed, and the reporter confirmed it in v2.3.2. That release was not checked, because no `v2.3.2` tag was found.
+
+Source: https://github.com/citusdata/django-multitenant/pull/88#discussion_r476383575
+
+> That's a brilliant idea, I'll do that now.
+
+Source: https://github.com/citusdata/django-multitenant/pull/88#discussion_r476528856
+
+> I just tested `v2.3.2` and it worked like a charm.
+
+At `v4.0.0` the tenant is restored in a `finally` block.
+
+Source: https://github.com/citusdata/django-multitenant/blob/v4.0.0/django_multitenant/mixins.py
+
+>         try:
+>             obj = super().save(*args, **kwargs)
+>         finally:
+>             set_current_tenant(current_tenant)
+
+No other cost or dissent was found in the sources read.
 
 ### F10. stancl/tenancy (Laravel) `BelongsToTenant`: the explicit tenant wins, unchecked (a different shape)
 
@@ -801,7 +1126,18 @@ Source: https://github.com/archtechx/tenancy/blob/v3.10.1/src/Database/Concerns/
 
 >             if (! $model->getAttribute(BelongsToTenant::$tenantIdColumn) && ! $model->relationLoaded('tenant')) {
 
-The documentation calls tenant-free models "global models". A `tenant_id` named on one falls to Eloquent's mass-assignment rules (F11).
+The documentation calls tenant-free models "global models". How a `tenant_id` named on one is treated depends on how it is named.
+
+- Through `fill()`, it falls to Eloquent's mass-assignment rules (F11), and is dropped silently only if the key is not fillable.
+- Assigned directly as a property, it bypasses those rules: `__set` passes it to `setAttribute`, which stores it with no fillable check. What a later save does with it was not traced.
+
+Source: https://github.com/laravel/framework/blob/v13.43.0/src/Illuminate/Database/Eloquent/Model.php
+
+>         $this->setAttribute($key, $value);
+
+Source: https://github.com/laravel/framework/blob/v13.43.0/src/Illuminate/Database/Eloquent/Concerns/HasAttributes.php
+
+>         $this->attributes[$key] = $value;
 
 Source: https://github.com/stancl/tenancy-docs/blob/2be4b681d0cee05451a27a4415de8d4e6345785c/source/docs/v3/single-database-tenancy.blade.md
 
@@ -815,7 +1151,7 @@ Source: https://github.com/stancl/tenancy-docs/blob/2be4b681d0cee05451a27a4415de
 
 ### F11. Laravel Eloquent `fill()`: attributes the model does not accept are discarded silently
 
-**Shape.** Named and unknown-field-like: a key that is not in `$fillable`. It is scope-like when the key is `tenant_id` on a global model (F10).
+**Shape.** Named and unknown-field-like: a key that is not in `$fillable`. It is scope-like when the key is `tenant_id` on a global model, passed through `fill()` (F10).
 
 **What it does.** At `v13.43.0`, keys that are not fillable are **dropped silently** by default. An exception is raised only under the opt-in `preventSilentlyDiscardingAttributes()`, which can route the case to a callback instead, or when the model is totally guarded.
 
@@ -893,27 +1229,45 @@ There is no single majority to stand against, so this section records the split 
 
 **Among the scope-like comparables at the system level:**
 
-- **Kubernetes (body field and `kubectl`) and the Grafana family drop the named scope silently.** No author gave a reason for dropping a scope that is present. Grafana's stated reason covers only the substitute tenant (S2), and a Kubernetes reviewer found the clear "weird" (S1).
-- **Elasticsearch TSDS, Spark, the Kubernetes URL path and Cosmos DB reject it.** None states a reason. In Elasticsearch and Cosmos DB the target derives its scope from the data, so a named scope would conflict with it rather than merely go unused. That reading is Inferred.
+- **Kubernetes (body field and `kubectl`) drops the named scope silently. The Grafana family silently replaces it with a substitute tenant, on storage that stays tenant-scoped.**
+  - No author gave a reason for ignoring a scope that is present.
+  - Grafana's stated reason covers only the substitute tenant (S2), and a Kubernetes reviewer found the clear "weird" (S1).
+- **Weaviate (S11), Elasticsearch TSDS, Spark, the Kubernetes URL path and Cosmos DB reject it.**
+  - None states why a named value is refused rather than ignored.
+  - Weaviate's code states an aim, "maintaining strict separation between single and multi-tenant modes", added after the rule. Weaviate clears a tenant *inherited* across a reference instead of rejecting it, so it treats the named and the inherited case differently.
+  - Elasticsearch's author states what routing is for, and that a series cut across shards "would be a disaster" (S3).
+  - In Elasticsearch and Cosmos DB the target derives its scope from the data, so a named scope would conflict with it rather than merely go unused. That reading is Inferred.
 
 **Among the telemetry clients:**
 
-- **Prometheus client_golang (F2) refuses at compile time, and panics or returns an error at run time.** Its maintainer's stated reason is that the compiler should catch "incorrect calls of label-less metrics with labels". client_python (F1) raises, with no stated reason of its own.
-- **OpenTelemetry Views (F4) and `tracing` (F6) drop silently.** OpenTelemetry states a project-wide reason, "users would prefer to lose telemetry data rather than have the library significantly change the behavior of the instrumented application". `tracing` states only its mechanism.
-- **Micrometer (F3) went from raising, to dropping silently, to logging, to accepting.** Each step has a stated reason. Against it, a Prometheus contributor argued that a silent failure means "your graphs/alerts will silently break".
+- **Prometheus client_golang (F2) refuses at compile time on a plain `Counter`. On a `CounterVec`, including one built with no labels, it refuses at run time: `With` panics and `GetMetricWith` returns an error.**
+  - Its maintainer's stated reason is that the compiler should catch "incorrect calls of label-less metrics with labels", and that covers the plain `Counter` only.
+  - client_python (F1) raises, with no stated reason of its own.
+- **OpenTelemetry Views (F4) and `tracing` (F6) drop silently.**
+  - OpenTelemetry states two reasons. The project-wide one is "users would prefer to lose telemetry data rather than have the library significantly change the behavior of the instrumented application". The one specific to Views is that an operator "wishes to constrain the cardinality of labels" (OTEP 0126). So a View's drop is configured by an operator, not an error the library tolerates.
+  - `tracing` states only its mechanism.
+- **Micrometer (F3), in its current registry, went from raising, to dropping silently, to logging, to accepting.**
+  - Each step has a stated reason.
+  - Its deprecated legacy registry still leaves the mismatched meter out and tells only registered callbacks.
+  - Against the change, a Prometheus contributor argued that a silent failure means "your graphs/alerts will silently break".
 
 **Among the tenancy libraries (the conflicting shape):**
 
-- **acts_as_tenant reversed** from silently overwriting a named tenant to failing validation, because the overwrite "was confusing and hid bugs" (F7). Hibernate throws, and states no reason (F8).
+- **acts_as_tenant reversed** from silently overwriting a named tenant to failing validation, because the overwrite "was confusing and hid bugs" (F7).
+- **Hibernate went, during the review of the change, from overwriting a named tenant to throwing.** Its author's reason is that honouring the tenant "would let the user set up cross-tenant associations", and a member of the project argued for keeping the supplied value (F8).
 - **django-multitenant (F9) and stancl/tenancy (F10) keep the named tenant.** Neither states a reason.
 
 **Among the unknown-field comparables:**
 
-- **Rejection is the default** for BigQuery (S8), InfluxDB explicit schemas (S9), PostgreSQL (S10), Elasticsearch `strict` (S7), Rails and Django (F12).
+- **Rejection is the default** for BigQuery (S8), PostgreSQL (S10), and Rails and Django (F12).
+- **Rejection is configured**, and is not the default, in Elasticsearch `dynamic: strict` (S7) and InfluxDB Cloud explicit bucket schemas (S9).
+  - Elasticsearch's default, `dynamic: true`, adds the new field to the mapping, and `dynamic: false` keeps it in `_source` without indexing it.
+  - InfluxDB's default bucket schema type is `implicit` (S9).
+  - Both have a stated reason for the stricter mode: the Definitive Guide's "alert you to the problem" where Elasticsearch is the primary store, and InfluxData's protection against schemas "muddled up with junk".
 - **ClickHouse (S6) and Laravel (F11) drop silently by default.**
-  - ClickHouse's default came about as a side effect of a read-side change, and in November 2026 a maintainer called it data loss and asked for a warning.
+  - ClickHouse's default came about as a side effect of a read-side change. In November 2026 a maintainer called it data loss and asked for a warning. The warning proposed does not cover data the client parses itself.
   - Laravel's reason is security, and its documentation calls the silence expected in production and confusing in development.
-- **Elasticsearch's field limit (S7) moved from rejecting the document to storing it without the surplus and recording what was left out.** Its reason was that one misbehaving service could lose data for every service sharing the stream.
+- **Elasticsearch's field limit (S7) moved from rejecting the document to accepting it, with the surplus fields unmapped and unindexed and their names listed in `_ignored`.** Its reason was that one misbehaving service could lose data for every service sharing the stream.
 
 ## Candidates not examined, or dropped
 
