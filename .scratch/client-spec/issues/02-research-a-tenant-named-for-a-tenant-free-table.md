@@ -202,6 +202,15 @@ Before the first review, a preflight confirmed that Codex ran `gpt-6-astra` and 
 - **Changed files:** `git diff main --stat` shows only this ticket and its research file. The specification is unchanged, and open question 19 is still in it. No code was added.
 - **`git status --short`** shows only `?? notes_2.md`, the user's own file, which this ticket did not touch.
 
+### The maintainer's answers
+
+Put to the maintainer after the hand-back, on 2026-11-24 (UTC), and answered as follows:
+
+- **What happens to a write that names a tenant for a tenant-free table?** The maintainer chose "A2: keep, count, log (Recommended)": the row is stored untenanted, a `tenant_dropped` counter counts the write, and its onset and total are logged at WARNING. This accepts the keyed-state cost the research names.
+- **Is a named tenant part of the row, or a separate parameter?** The maintainer chose "Separate parameter (Recommended)": `fits` never sees the tenant, so the rule for a row that does not fit does not apply.
+
+These answers decide question 19 in substance. The specification still carries it as open, and removing it is a separate change: the wording in the research file, its renumbering and the handbook's count of open questions.
+
 ### Acceptance
 
 - [x] At least three comparables at each level, read from official documentation or source: eleven at the system level, thirteen at the framework level.
