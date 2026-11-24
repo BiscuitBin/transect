@@ -3,7 +3,7 @@
 - **Ticket:** `issues/02-research-a-tenant-named-for-a-tenant-free-table.md`, open question 19 of `docs/specs/transect-client.allium`.
 - **Sources read:** every source on 2026-11-24 (UTC), which was 2026-11-23 in the researcher's local time.
 - **Web research:** authorised by the maintainer on 2026-11-23 for this ticket, for the agent working it and for its reviewers.
-- **State of this file:** findings only. Fit, which behaviour surprises least, the options, the recommendation and the proposed wording are not written yet: they follow the first adversarial review, as `REVIEW.md` requires.
+- **State of this file:** complete. The findings, up to "Candidates not examined, or dropped", passed the first adversarial review in two rounds. Fit, least surprise, the options, the recommendation and the proposed wording were written after it, and the second review covers them.
 
 ## How the sources were checked
 
@@ -306,7 +306,7 @@ Source: https://github.com/elastic/elasticsearch/blob/v8.19.0/docs/reference/dat
   (line breaks collapsed)
 
   That harm is stated for a `routing_path` that matches a non-dimension field, not for a caller's routing value.
-- In the review of #77731 the author explained why this mode does not read routing at all. "Duplicate bytes" there refers to storing a *generated* routing value, not a caller's.
+- In the review of #77731 the author explained why this mode does not read routing at all. The phrase "duplicate bytes" there refers to storing a *generated* routing value, not a caller's.
 
   Source: https://github.com/elastic/elasticsearch/pull/77731#discussion_r710111746
 
@@ -1416,10 +1416,307 @@ There is no single majority to stand against, so this section records the split 
 - **Dropped:** Thanos Receive, because it has no tenancy-off mode. PostgreSQL row-level security, because it has a different shape (S10).
 - **Read only in part:** the Hive rule for a partition spec on a non-partitioned table (an error is defined, but its use on the insert path was not traced), and the comment threads on Micrometer issue #877, client_java issue #696 and client_golang issue #1072.
 
-## Fit, least surprise, options and recommendation
+## Fit
 
-Not written yet. They follow the first adversarial review, as `REVIEW.md` requires.
+This section and the ones after it were written after the first adversarial review. They cite the sections above rather than quote them again.
+
+### The constraints of this client
+
+What follows is taken from the ticket, from the specification (`docs/specs/transect-client.allium`) and from `CONTEXT.md`. A leaning is marked as one.
+
+- **K1. A write never fails, never blocks and returns nothing** (`NeverFailsNeverBlocks`). The call site gets no signal of any outcome, whatever the client decides.
+- **K2. The client reports on itself through two channels only**: the diagnostics snapshot and the host's logs (`TwoChannels`). The host log carries, for each record, the table, the kind of failure, the phase (onset or total) and a count, and nothing else (`HostLog`).
+- **K3. A test sees what a fake core recorded** for each write: its outcome, attribution and tenant (`FakeCoreRecords`). That is the development-time channel.
+- **K4. The client is a library inside the host process, and must never harm it** (standing guidance). The most common host is an ephemeral pod. That is a leaning, not a decision.
+- **K5. Each table is declared once, as tenant-scoped or tenant-free**, by the application that writes to it. The declaration is explicit and per table.
+- **K6. The tenant is a parameter of the write, not a column.** `fits(definition, values)` never sees it, so the settled rule that a row which does not fit is refused whole and that "nothing is converted" speaks to columns. Whether a named tenant belongs to the row is exactly what question 19 leaves open.
+- **K7. The settled tenancy rules.** A tenant-free table never stores a tenant. No row is attributed to a tenant that was not explicitly bound. A tenant-scoped row with no tenant is kept, marked unattributed and counted (`AcceptRow`).
+- **K8. Every write is counted exactly once, and so is every lost row.**
+- **K9. One behaviour for Rust and Python.** Rust has static types, and Python does not.
+- **K10. Where practice exists, follow it** (standing guidance).
+
+### Fit of each comparable
+
+"Holds" lists the constraints behind the comparable's choice that this client shares. "Does not hold" lists those it does not share. "Use" says what the comparable may do in the recommendation: **justifies** needs a stated why and a fit argument, under `CONTEXT.md`, and everything else **informs**.
+
+| § | Behaviour | Stated why | Holds here | Does not hold | Use |
+| --- | --- | --- | --- | --- | --- |
+| S1 Kubernetes | Body namespace cleared silently; URL path 404; `kubectl` drops it | None for the clear | The target's scope is declared and known to the receiver (K5) | A server API that could answer with an error or a warning, unlike K1; the clear is a historical accident, not a design | Informs. Its costs (a reviewer's surprise, Pulumi's "flaw", the Capsule advisory) inform the case against silence |
+| S2 Grafana family | Header replaced by a substitute tenant | For the substitute tenant only: internals stay multi-tenant | None of the reason: storage here is not tenant-scoped underneath | The scope-free declaration is deployment-wide, and the tenant is replaced, not dropped | Informs |
+| S3 Elasticsearch TSDS | Rejected with an error | What routing is for; nothing on refusing rather than ignoring | A declaration of how the target is scoped (K5) | Routing is derived from the data, so a named value conflicts with it; here nothing is derived from a tenant on a tenant-free table. A server API that can return an error, unlike K1 | Informs |
+| S4 Spark | Rejected at analysis | None for the SQL clause; the adjacent DataFrame reason is about an already partitioned table | A declared target (K5) | A statement that fails whole to its caller, unlike K1 | Informs |
+| S5 Cosmos DB | A conflicting key rejected | None | None | The key is derived from the document, and no container is truly scope-free | Informs |
+| S6 ClickHouse | Unknown column dropped silently; a warning proposed | Default: a side effect of a read-side change. Dissent: the drop is data loss, and an explicit name that does not match "is nearly always a mistake" | The names in a write through a client library are explicit, as a tenant named on a write here is (K5). The remedy chosen keeps the behaviour and adds a server-log warning, which this client can match through K2 | The thing dropped is a column's data. Here it is the tenant | **Justifies** claim 1 of the recommendation: the mismatch must not be silent |
+| S7 Elasticsearch `dynamic` and field limit | Configured: add, keep unindexed, or reject. The limit gained an option to accept and list the surplus | `strict`: "alert you to the problem" where Elasticsearch is the primary store (historical guide). Field limit: rejection causes data loss in shared streams | A refused write loses data (K8). Telemetry, where losing a row is a cost | The alert in `strict` is an exception to the caller, unlike K1. The field-limit reason rests on many services sharing one stream, which a per-table queue here does not have. The option is not the default | Informs. The field limit leans towards keeping the row, without justifying it |
+| S8 BigQuery | Rejected by default; ignore is opt-in per request | None | None | A request that fails to its caller, unlike K1 | Informs |
+| S9 InfluxDB explicit schemas | Rejected per field value and recorded in `rejected_points` | Protection from schemas "muddled up with junk" | A declared schema (K5) | Opt-in. The unit rejected is a field value, not a row. The caller sees an error | Informs |
+| S10 PostgreSQL | Rejected | Not looked for | None | A statement in a transaction the caller controls, unlike K1 | Informs |
+| S11 Weaviate | Rejected with a 422; per object in a batch | An aim only: strict separation of the two modes | A per-collection declaration, opt-in, and a tenant that names its shard (K5) | The refusal is visible to the caller as an error, unlike K1. A tenant here names no shard on a tenant-free table, so S11's inferred reason, a request naming a shard that does not exist, has nothing to name here | Informs |
+| F1 Prometheus client_python | Raises `ValueError` | Only the guideline that label names are fixed at creation | A target declared up front (K5) | Raising at the call site, which K1 forbids | Informs |
+| F2 Prometheus client_golang | Compile-time on a plain `Counter`; run time on a `CounterVec` | The compiler should catch "incorrect calls of label-less metrics with labels" | In Rust, a tenant-free table's type could have no way to name a tenant (K9 for Rust only) | Python has no such check (K9). A zero-label vector still needs the run-time check, as the specification's guidance on typed rows already says | **Justifies** the Rust complement, not the run-time behaviour |
+| F3 Micrometer | Current registry: raised, dropped silently, logged, then accepted. Legacy: dropped, callbacks only | Each stage stated; stage 3: users could not "be aware of the failure unless they register a callback"; "better to lose some observability info than cause issues for the application" | A library in someone else's process, often fed by code the host does not control (K4). Silence went unnoticed, and the remedy was a log (K2) | The mismatch is between registrations, not one write and a declaration. Stage 4 accepted the mismatch because the back end could then represent it | **Justifies** claim 1: not silent, and logged |
+| F4 OpenTelemetry Views | Dropped silently, as configured | Views: separation of concerns and cardinality. Project-wide: "users would prefer to lose telemetry data rather than have the library significantly change the behavior of the instrumented application", and a suppressed error "SHOULD" be logged | The error-handling principle holds fully: an in-process telemetry library (K1, K4). Its rule to log a suppressed error fits K2 | A View's drop is configured by an operator, so it is not a mistake; a tenant named here for a tenant-free table is a mistake or a habit | **Justifies** claim 1: log the suppressed mismatch. The View's own silence informs only |
+| F5 OpenTelemetry attribute limits | Dropped and counted (`dropped_attributes_count`), logged at most once per record | Memory safety | Counting what was dropped, next to what was kept (K2) | Memory safety is not the reason here | Informs the shape of a counter |
+| F6 `tracing` | Silent no-op | The mechanism only | A field set declared up front (K5) | No reason for the silence; its users ask for a warning | Informs, and its open issues inform the case against silence |
+| F7 acts_as_tenant | Before 2.0: named tenant overwritten silently. Since: validation fails | The overwrite "was confusing and hid bugs" | A named tenant handled silently hid bugs, and a write to a tenant-free table here would be just as invisible without a counter or log (K1) | The overwrite gave the row another tenant, a cross-tenant risk. Dropping a tenant here puts the row where every row of a tenant-free table goes (K7). Its remedy, a failed validation, is visible to the caller; K1 forbids that here | **Justifies** claim 1: not silent. Its remedy, refusal, informs only |
+| F8 Hibernate | Throws on a mismatched tenant | Honouring it "would let the user set up cross-tenant associations"; an error rather than the first draft's overwrite is only "better, probably" | Honouring a named tenant against the declaration is ruled out here too (K7) | An exception to the caller, which K1 forbids. The conflict is between two tenants, not a tenant and a tenant-free table | **Justifies** not storing the named tenant, which is settled anyway |
+| F9 django-multitenant | The named tenant wins | None | None | A tenant-scoped model; Citus routing | Informs |
+| F10 stancl/tenancy | The named tenant wins, unchecked | None | None | A tenant-scoped model | Informs |
+| F11 Laravel | Dropped silently by default; strict opt-in, recommended outside production | Security for mass assignment; silence "expected" in production and confusing in development | Strictness where the developer is looking, at development time: K3, the fake core | Mass assignment from untrusted input is not this client's case | **Justifies** making the mismatch visible to tests through the fake core. Its production silence informs only |
+| F12 Rails, Django | Raise | Not looked for | None | An exception to the caller (K1) | Informs |
+| F13 django-tenants, Apartment | Ambient only; the ambient tenant does not apply to a shared model | Partly | The ambient case, which the ticket already settles | No write can name a tenant | Informs the settled ambient rule only |
+
+## Which behaviour surprises a developer least
+
+**What the evidence is.** Reported complaints, and the reasons authors gave for changing course. No source compares the two answers the maintainer was offered: a row kept without its tenant and counted, against a row refused and counted. Anything below that chooses between them is the researcher's view, and says so.
+
+**Complaints about silence**, every one from a source quoted above:
+
+- Kubernetes (S1): a reviewer found the clear "weird", Pulumi's maintainers called it a "flaw", and Capsule's security advisory turns on it.
+- ClickHouse (S6): a maintainer called the silent drop data loss.
+- Micrometer (F3): a user lost hours to metrics that silently did not appear.
+- `tracing` (F6): users ask for an opt-in warning.
+- acts_as_tenant (F7): the silent overwrite "was confusing and hid bugs", and was reversed.
+- Laravel (F11): the silent discard was called a cause of bugs, and an opt-in strict mode was added.
+
+**Complaints about strictness:**
+
+- Micrometer (F3): throwing was a "significant burden" on users, and was removed.
+- Elasticsearch (S7): rejection at the field limit was the "biggest pain", because it lost data.
+- Spark (S4): a commenter expected users to be surprised when an API was refused.
+- Hibernate (F8): a project member argued that a value the user gives should be kept.
+- Weaviate (S11): the strict rule broke Weaviate's own reference paths, where the tenant was inherited rather than named.
+
+**What the evidence supports.** The complaints are consistent on one point: **a mismatch handled silently surprises developers.** Every reversal recorded here added a signal: a validation failure, a log line, a warning, a counter or a callback. None removed one. On keeping the row against refusing it, the complaints point both ways, and they do not settle the question.
+
+**Two mistakes, worked through each option.** This is the researcher's view, not a finding. The options are defined under "Options" below.
+
+| | 1. The table was declared tenant-free by mistake | 2. A helper passes a tenant on every write, and the table is rightly tenant-free |
+| --- | --- | --- |
+| **A1** keep, counted only | Rows kept without the tenant. A counter rises, and nothing is logged. Found only by reading the diagnostics | Rows correct. A counter rises, and nothing is logged |
+| **A2** keep, counted and logged | Rows kept without the tenant. One WARNING onset names the table and the kind, then a total. The tenants of the rows written so far are lost | Rows correct. One onset and one total per table per run: noise, and no loss |
+| **B** refuse as invalid | Every row refused and lost. One WARNING onset with the kind `invalid`, although the columns fit. The log carries no detail beyond table, kind and count, so the developer looks for a column that does not fit and finds none | Every row of the table refused and lost, for a harmless habit |
+| **C** refuse with its own kind | Every row refused and lost. One WARNING onset with a kind that names the cause | As B, but the log names the cause |
+| **D** keep, counted only as accepted | Rows kept without the tenant. Nothing shows anywhere | Rows correct. Nothing shows |
+
+In the researcher's view, A2 surprises least: it keeps the most data in both mistakes, and its signal names the cause. C is as clear and loses the rows. B's signal points at the wrong cause. A1 and D are the silent handling that the complaints above are about.
+
+## Options the settled promises rule out
+
+- **Store the row with the named tenant.** A tenant-free table never stores a tenant (`TenantFreeTablesStoreNoTenant`). Hibernate's stated reason against honouring a mismatched tenant (F8) agrees.
+- **Fail loudly: raise, panic or return an error.** A write never fails (`NeverFailsNeverBlocks`). This rules out following F1, F2 at run time, F8, F12, S3, S4, S8, S10 and S11 as they are.
+- **Block the write**, for example to wait for a decision. A write never blocks.
+- **Leave the write without an outcome**, as today. Every write is counted exactly once (`EveryWriteIsCountedOnce`), and the ticket says whatever is recommended must end that exception.
+- **Store the row under another tenant**, such as the handle's or a substitute like Grafana's (S2). No row is attributed to a tenant that was not explicitly bound, and a tenant-free table stores none.
+
+## Options
+
+Each option is described by:
+
+- where the write is counted;
+- its effect on `WriteOutcome`, `FailureKind`, the host-log onset and total, `CountersMatchTheRows` and the fake core's `RecordedWrite`;
+- where it sits in the rule order, that is, which outcome a write gets when it both names a tenant for a tenant-free table and would also be refused for another reason.
+
+In every option, "names a tenant" means the write's `tenant` is present. What an empty identifier counts as is open question 2, and no option answers it.
+
+### A. Keep the row without the tenant, and count the mismatch in a counter of its own
+
+The write is accepted as for any tenant-free table: the row is untenanted, and no tenant is stored. A new per-table counter, written here as `tenant_dropped`, counts the accepted writes that named a tenant. Like `unattributed`, it is a sub-count of `accepted`, not a second outcome, so each write is still counted once, under `accepted`.
+
+- **`WriteOutcome`:** unchanged; the write is `accepted`.
+- **`CountersMatchTheRows`:** needs a row-level marker, so that `tenant_dropped` equals a count of rows, as `unattributed` does. The marker stays off the hand-over unless the maintainer wants a collector to see it.
+- **`RecordedWrite`:** the outcome is `accepted`, the attribution `untenanted` and the tenant absent, plus a flag that the write named a tenant, so that a test can assert none did (F11, K3).
+- **Rule order:** the mismatch is counted only when the write is accepted. A write refused or discarded for another reason is counted under that outcome alone, and its named tenant is not counted. A row that names a tenant and does not fit, for instance, counts as `rejected_invalid` only.
+- **Nothing is converted.** The values are stored as given, and only the tenant parameter, which `fits` never sees, is not applied (K6).
+
+Two variants:
+
+- **A1: counted only.** No log record. This matches how `unattributed` is treated until open question 22 is decided.
+- **A2: counted and logged.** `FailureKind` gains a kind for it, and accepting such a write raises `FailureCounted`, so the existing onset and total rules log it at WARNING. Nothing else changes in the log machinery.
+
+**Costs.**
+
+- The tenant the write named is lost, though the row is kept.
+- A2 logs a kind that loses no row, beside kinds that do. `FailureKind` is commented as "the kinds of lost data", so the comment changes.
+- A2 is logged while `unattributed` is counted and not logged, an asymmetry open question 22 already asks about for `unattributed`. Choosing A2 does not answer question 22.
+- A's core act, dropping a named tenant and keeping the row, resembles what acts_as_tenant did before 2.0 and what Hibernate's first draft did, and both authors moved away from it (F7, F8). What differs is set out under "Recommendation".
+
+### B. Refuse the row and count it as invalid
+
+The tenant mismatch joins `RefuseInvalidRow`: the row is refused whole, as a row with an unknown column is.
+
+- **Counted as:** `rejected_invalid`.
+- **`WriteOutcome`:** `rejected_invalid`.
+- **`FailureKind`:** `invalid`, so the existing onset and total are logged.
+- **`CountersMatchTheRows`:** unchanged, since no row exists.
+- **`RecordedWrite`:** records the refusal through `WriteDecided`, with no attribution and no tenant.
+- **Rule order:** the invalid rule comes before the oversize and queue-full rules, so the mismatch wins over both. The guard on both accept rules stays.
+
+**Costs.**
+
+- The row is lost.
+- The counter and the log record cannot tell a column misfit from a tenant mismatch, so the one signal points the developer at the columns.
+- A harmless habit loses every row of the table (mistake 2).
+
+### C. Refuse the row, with an outcome of its own
+
+As B, but with its own counter (for example `rejected_tenant_named`), its own `WriteOutcome` and its own `FailureKind`, and so its own onset and total.
+
+- **Rule order:** its place must be chosen. Right after the invalid rule would let a misfit row count as `invalid` and a fitting row with a named tenant win over oversize and queue-full.
+
+**Costs.**
+
+- As B, except that the signal names the cause.
+- One more outcome, counter and kind in every place they are listed.
+
+### D. Keep the row without the tenant, counted only as accepted
+
+The guard on both accept rules is removed, and nothing else changes.
+
+- **Counted as:** `accepted` only.
+- **Nothing else changes:** no new counter, outcome or kind. The fake core's record cannot be told from any other tenant-free write.
+
+**Costs.** The mismatch is invisible in both channels. This is the silence the complaints are about: Kubernetes' body namespace (S1), `tracing` (F6), and acts_as_tenant before 2.0 (F7). No settled promise rules it out, because the write is counted, but no comparable with a stated why supports it here.
+
+### A complement, not an option: a Rust typed table
+
+In Rust, a tenant-free table's handle or row type could offer no way to name a tenant, so the mistake would not compile. client_golang's maintainer gave that reason for its type split (F2), and it fits Rust. It does not reach Python (K9), and, as client_golang's zero-label vector shows, a dynamic path still needs a run-time rule. The specification's guidance already says this of typed rows: "the refusal still exists for the rest." So the complement narrows how often the run-time rule fires, and replaces none of the options.
+
+## Recommendation
+
+**A2: keep the row without the tenant, count the mismatch in a counter of its own, and log it as a kind of its own.**
+
+It rests on three claims. Each names the comparables it rests on, and only comparables with a stated why and a fit argument (see "Fit") are leaned on.
+
+1. **The mismatch must not be silent, and the host log is where it should show.** This rests on:
+   - acts_as_tenant (F7): a silent treatment of a named tenant "was confusing and hid bugs";
+   - Micrometer (F3): users could not be aware of a failure without a callback, so it was logged;
+   - the ClickHouse maintainer (S6): an explicit name that does not match is nearly always a mistake, and a warning comes first;
+   - the OpenTelemetry error-handling principle (F4): a suppressed error "SHOULD" be logged.
+
+   The fit is K1 and K2. The write itself can carry no signal, so a counter that someone must go and read is not enough on its own, and the host log is the channel that reaches a developer. This rules out D and A1, and puts A2 beside C.
+2. **Keep the row rather than refuse it.** No comparable both states a reason for keeping and fits here, so **this step is the weakest, and rests on the researcher's own argument**:
+   - Within the specification, the tenant dimension already keeps a mismatched row and counts it (`unattributed`, K7), while refusal is settled for the column dimension (K6).
+   - A2 and C are equally visible, so refusing adds only the loss of the row. In mistake 2 that loss is every row of a correctly declared table.
+   - What made acts_as_tenant and Hibernate leave the silent overwrite was a row given to *another tenant*, and the silence. Neither holds for A2: the row goes where every row of a tenant-free table goes, and the mismatch is logged and counted.
+   - Elasticsearch's field limit (S7) leans the same way and only informs: its reason, data loss, holds here, but its shared-stream constraint does not, and the option is not a default.
+
+   If the maintainer reads a named tenant as part of the row, the settled rule for a row that does not fit points the other way, and **C** is the answer rather than B, because B's signal names the wrong cause.
+3. **Never store the named tenant.** This is settled. Hibernate's stated reason (F8) agrees.
+
+**Complement.** For Rust, a tenant-free table's type that cannot name a tenant, resting on client_golang (F2) for Rust only.
+
+**Informs only.** Every other comparable informs the recommendation and does not justify it: S1 to S5, S7 to S11, F1, F5, F6, F9, F10, F12 and F13, and the remedies (not the reasons) of F7 and F8.
+
+**What A2 leaves open.**
+
+- Question 22 still decides whether `unattributed` is logged.
+- Question 2 still decides whether an empty identifier names a tenant.
+- The counter's name is a placeholder for the maintainer.
+
+## Proposed wording
+
+This is text for the maintainer to accept or change. It is written only here: the specification is not edited, and open question 19 stays open. It was **not** run through the pinned checker, because `just check-specs` and `just analyse-specs` check the tracked module only, and no recipe checks a copy.
+
+The names are placeholders: `tenant_dropped` for the counter, the row marker and the log kind. Each statement the maintainer has not confirmed would carry "Derived" if adopted without being put to them. The ones most likely to need that are the row marker, the marker's absence from the hand-over, and the fake-core flag.
+
+**The comment above the write rules** (replacing its last sentence):
+
+```text
+-- accepted. Each is counted once. None fails, none blocks and none returns
+-- anything to the caller. A write that names a tenant for a tenant-free
+-- table is accepted like any other write to it: the row stores no tenant,
+-- and the write is also counted as tenant_dropped and logged.
+```
+
+**`FailureKind`** (its comment and one value):
+
+```text
+-- The kinds of lost data the host is warned about, per table, and a tenant
+-- a write named for a tenant-free table, which was not stored.
+enum FailureKind { queue_full | oversize | invalid | store_failed | shutdown | tenant_dropped }
+```
+
+**`TableCounters`** (one counter and one row set):
+
+```text
+    tenant_dropped: Integer         -- accepted writes that named a tenant for this tenant-free table
+    ...
+    tenant_dropped_rows: rows where tenant_dropped
+```
+
+**`Row`** (one field):
+
+```text
+    tenant_dropped: Boolean         -- Derived: the write named a tenant, and none was stored; not handed over
+```
+
+**`RecordedWrite`** (one field; `FakeCoreRecordsWrite` sets it to `false`):
+
+```text
+    tenant_dropped: Boolean
+```
+
+**`OpenCountersForLateTable` and `AttachRun`**: add `tenant_dropped: 0` to both initialisers.
+
+**`AcceptRow`** (the guard `requires: table.is_tenant_scoped or tenant = null` is removed):
+
+```text
+    let drops_tenant = not table.is_tenant_scoped and tenant != null
+    ...
+        Row.created(
+            ...,
+            tenant: if table.is_tenant_scoped: bound else: null,
+            tenant_dropped: drops_tenant,
+            values: values, status: queued
+        )
+        ...
+        if drops_tenant:
+            counters.tenant_dropped = counters.tenant_dropped + 1
+        if drops_tenant:
+            FailureCounted(counters: counters, kind: tenant_dropped)
+```
+
+**`AcceptRowOnFakeCore`**: the same `let` and the same two `if` lines, with the guard removed, and `tenant_dropped: drops_tenant` in its `RecordedWrite.created`.
+
+**`CountersMatchTheRows`** (one line):
+
+```text
+            and c.tenant_dropped = c.tenant_dropped_rows.count
+```
+
+**`RunDiagnostics`**: expose `c.tenant_dropped`. **`FakeCoreRecords`**: expose `write.tenant_dropped`.
+
+**`EveryWriteIsCountedOnce`** (its exception narrows to question 24):
+
+```text
+    @guarantee EveryWriteIsCountedOnce
+        -- A write that is not accepted is counted once, in the counter its
+        -- outcome names. A write that is accepted is counted as accepted.
+        -- The exception is the write open question 24 leaves without an
+        -- outcome: until it is decided, this module does not count it.
+```
+
+**Open question 19** is removed in the same change, as the handbook requires when a question is decided.
+
+**The glossary** (`docs/project/glossary.md`) would need an entry beside "Unattributed", for example: "Dropped tenant: a tenant a write named for a tenant-free table. The row is kept without it, and the write is counted and logged."
+
+**If the maintainer chooses C instead**, the same places change, but differently:
+
+- `WriteOutcome` gains a value.
+- `TableCounters` gains a `rejected_` counter, and both initialisers set it to zero.
+- `FailureKind` gains a kind.
+- A rule refuses the write, placed right after `RefuseInvalidRow`, with `requires: fits(table.definition, values)` and `requires: not table.is_tenant_scoped and tenant != null`.
+- Both accept rules keep their guard, and the guarantee narrows to question 24 as above.
 
 ## What the findings bear on in the specification
 
-Not written yet, for the same reason.
+This section reports, and decides nothing.
+
+- **Open question 19**, which the options answer, and which stays open.
+- **`EveryWriteIsCountedOnce`** and the comment above the write rules, which name this write as the exception today.
+- **Both accept rules**, whose guard `table.is_tenant_scoped or tenant = null` is what leaves the write without an outcome.
+- **Open question 22.** If A2 is chosen, a dropped tenant is logged while an unattributed row is not, and question 22 already asks whether unattributed rows are logged.
+- **Open question 2.** What counts as naming a tenant depends on whether an empty identifier is no tenant.
+- **The `@guidance` on typed rows in Rust**, which the Rust complement would extend to tenancy.
+- **The glossary**, which would need a new term for any option but D.
