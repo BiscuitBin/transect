@@ -10,7 +10,7 @@
 Two survey agents found the candidates and saved raw text. The first adversarial review added sources of its own. The author then fetched every cited source again, independently:
 
 - source and documentation files at a pinned tag or commit, through `raw.githubusercontent.com`;
-- issue, pull request, review-comment and commit text through the GitHub REST API, and a quotation cited to one comment from that comment alone;
+- issue, pull request, review-comment, commit, release and security-advisory text through the GitHub REST API, and a quotation cited to one comment from that comment alone;
 - Jira through its REST API;
 - vendor pages and blog posts as HTML, with the tags stripped.
 
@@ -143,6 +143,34 @@ Source: https://github.com/kubernetes/kubernetes/issues/111248#issuecomment-2977
 
   > When fetching a cluster-scoped resource via the cache, the namespace key is ignored, just like with a direct client. The APIReader and Cache behavior should be consistent.
 
+- A downstream controller's security advisory turns on this clear. This is the advisory's account as Capsule published it, not a Kubernetes author's.
+  - Capsule, a multi-tenancy controller built on Kubernetes, published advisory GHSA-qjjm-7j9w-pw72 (CVE-2026-22872). It affects versions up to v0.12.4 and is patched in 0.13.0. The repository's advisory rates it high, and GitHub's advisory database rates it medium.
+  - Capsule's controller set a tenant's namespace on each object a tenant supplied in a `TenantResource`, then created the object with its own privileges. For a cluster-scoped kind the namespace did not confine the object, and it was created cluster-wide.
+  - The advisory names the prerequisites: the controller runs with cluster-admin privileges, which it calls the default; a tenant owner may create a `TenantResource`; and the controller does not check whether a resource is cluster-scoped.
+  - The vulnerability belongs to that controller. Kubernetes' own authorization still refused the tenant owner a direct create, and the advisory claims no bypass of it.
+
+  Source: https://github.com/projectcapsule/capsule/security/advisories/GHSA-qjjm-7j9w-pw72
+
+  > Although the TenantResource RawItems processing logic forcibly sets the namespace, this is ineffective for cluster-scoped resources.
+
+  > Although the code calls `obj.SetNamespace(ns.Name)`, this is ineffective for cluster-scoped resources (ClusterRole, ValidatingWebhookConfiguration, etc.), as the Kubernetes API ignores this field
+
+  > Tenant administrators can leverage the Controller's elevated privileges to create cluster-scoped resources (such as ClusterRole and ValidatingWebhookConfiguration) that they cannot create directly, achieving cross-tenant privilege escalation and cluster-level attacks.
+
+  "Ignores" is the advisory's word. Traced, not executed:
+  - At Capsule v0.12.4 the controller writes through controller-runtime v0.22.4, the version its `go.mod` pins.
+  - That client leaves the namespace out of the request path for a kind that is not namespaced, and sends it in the body. So the write is routed, and the server's clear described above removes the namespace.
+  - The advisory's proof of concept ran on Kubernetes 1.27 or later, not on v1.37.2.
+  - How 0.13.0 closes the issue was not read. Its release note points to impersonation for `TenantResource` as the immediate mitigation.
+
+  Source: https://github.com/projectcapsule/capsule/blob/v0.12.4/internal/controllers/resources/processor.go
+
+  > 			obj.SetNamespace(ns.Name)
+
+  Source: https://github.com/kubernetes-sigs/controller-runtime/blob/v0.22.4/pkg/client/unstructured_client.go
+
+  > 		NamespaceIfScoped(o.namespace, o.isNamespaced()).
+
 ### S2. Grafana Mimir and Loki (and Cortex) with multi-tenancy off
 
 **Shape.** Named (the push carries an `X-Scope-OrgID` header) and scope-like (a tenant). The scope-free declaration is deployment-wide (`-auth.multitenancy-enabled=false` in Mimir, `auth_enabled: false` in Loki), not per target, so this is looser than S1. The outcome differs too. Storage stays tenant-scoped, and every push is stored under one substitute tenant, so a named tenant is **replaced**, not removed. That is not "stored without a tenant".
@@ -207,7 +235,24 @@ No stated rationale was found for ignoring a header that is *present* in this mo
 **Constraints.**
 
 - The tenant travels in a header, not in the payload. An authenticating reverse proxy is expected to set it.
-- Single-tenant mode exists so that a small install needs no proxy.
+- Single-tenant mode removes the requirement for the header. A Cortex maintainer offered it to a user who did not care about the tenant value, as the alternative to a front door that sets the header. No author was found saying it exists for small installs. A proxy is not what multi-tenant mode requires either: in a trusted environment the client can set the header itself, and Loki requires an authenticating proxy in either mode.
+
+  Source: https://github.com/cortexproject/cortex/blob/v1.22.0/docs/configuration/single-process-config-blocks.yaml
+
+  > # Disable the requirement that every request to Cortex has a
+  > # X-Scope-OrgID header. `fake` will be substituted in instead.
+
+  Source: https://github.com/cortexproject/cortex/issues/1479#issuecomment-506516141
+
+  > If you do not care about what the tenant value is you can also set a flag for `-auth.enabled=false` which will add "fake" as the tenant everywhere.
+
+  Source: https://github.com/cortexproject/cortex/blob/v1.22.0/docs/guides/authentication-and-authorisation.md
+
+  > In trusted environments, Prometheus can send the `X-Scope-OrgID` header itself
+
+  Source: https://github.com/grafana/loki/blob/v3.7.10/docs/sources/operations/authentication.md
+
+  > Grafana Loki does not come with any included authentication layer. You must run an authenticating reverse proxy in front of your services.
 - The authors themselves describe the setting as a tenancy switch, not an authentication switch.
 
   Source: https://github.com/grafana/mimir/issues/276
@@ -311,11 +356,34 @@ Source: https://github.com/apache/spark/blob/v4.3.0/common/utils/src/main/resour
 
 The second message is for data sources that are not file-based. The third is the same rule for `LOAD DATA`.
 
-**Stated why.** No stated rationale found. Searched: the error conditions and the source comments. No pull request or JIRA issue was looked up.
+**Stated why.** No stated rationale found for the SQL clause. Searched: the error conditions and the source comments. No pull request or JIRA issue was looked up for the SQL check itself.
+
+- **An adjacent API, informing only.** The DataFrame API has the same shape: `partitionBy()` names partitioning on the write, and `insertInto()` targets a table that declares its own. Spark rejects the combination.
+  - Its JIRA issue, SPARK-16033 (fixed in 2.0.0), and pull request #13747 state a reason, written for an existing partitioned table.
+  - Traced at v4.3.0, not executed: the check runs before the table is looked up, so it fires for a non-partitioned table too.
+  - The stated reason does not speak to that case, and it is not the reason for the SQL check above.
+
+  Source: https://github.com/apache/spark/pull/13747
+
+  > When inserting into an existing partitioned table, partitioning columns should always be determined by catalog metadata of the existing table to be inserted. Extra `partitionBy()` calls don't make sense, and mess up existing data because newly inserted data may have wrong partitioning directory layout.
+
+  Source: https://github.com/apache/spark/blob/v4.3.0/sql/core/src/main/scala/org/apache/spark/sql/classic/DataFrameWriter.scala
+
+  >       throw QueryCompilationErrors.partitionByDoesNotAllowedWhenUsingInsertIntoError(tableName)
+
+  Source: https://github.com/apache/spark/blob/v4.3.0/common/utils/src/main/resources/error/error-conditions.json
+
+  > partitionBy() cannot be used with insertInto(). Partition columns for table <tableName> are determined by the table definition.
 
 **Constraints.** Analysis runs before any data is written, and a SQL statement is expected to fail whole on a schema mismatch.
 
-**Costs and dissent.** None looked for.
+**Costs and dissent.** For the SQL clause, none looked for. On the adjacent DataFrame API only: two days after the fix, a commenter on SPARK-16033 objected that `partitionBy()` had a valid use, and proposed allowing it when it matches the table's partition spec. The objection concerns a partitioned table, not a non-partitioned one, and the check still stands at v4.3.0.
+
+Source: https://issues.apache.org/jira/browse/SPARK-16033
+
+> I think users will be surprised when this support is removed in 2.0.
+
+> but those columns are validated against the partition spec for the table.
 
 ### S5. Azure Cosmos DB: a partition key on the call that differs from the document's
 
@@ -449,7 +517,25 @@ Source: https://github.com/elastic/elasticsearch/pull/105180
 
 **Constraints.** Several services share one data stream, so a refused document is lost for its sender and the stream keeps working for the rest.
 
-**Costs and dissent.** The field-limit change is itself a reversal: from rejecting the document to accepting it, with the surplus fields unmapped and unindexed and their names listed in `_ignored`. The values are not described as removed. The setting's documentation likens them to `dynamic: false`, whose fields "will still appear in the `_source` field of returned hits", but it does not state the retention directly.
+**Costs and dissent.** The field-limit change added an option and did not change the index default.
+
+- With `ignore_dynamic_beyond_limit` on, the document is accepted, its surplus fields are unmapped and unindexed, and their names are listed in `_ignored`.
+- With it off, which is still the default at `v9.5.7`, the document is rejected.
+- What changed by default is the built-in `logs@settings` and `metrics@settings` component templates, which set the option to `true` (pull request #105180). A data stream built on them accepts the document.
+
+Source: https://github.com/elastic/elasticsearch/blob/v9.5.7/docs/reference/elasticsearch/index-settings/mapping-limit.md
+
+> When set to `false` (the default), the index request of the document that tries to add a dynamic field to the mapping will fail with the message `Limit of total fields [X] has been exceeded`.
+
+Source: https://github.com/elastic/elasticsearch/blob/v9.5.7/x-pack/plugin/core/template-resources/src/main/resources/logs@settings.json
+
+>             "ignore_dynamic_beyond_limit": true
+
+Source: https://github.com/elastic/elasticsearch/pull/105180
+
+> As these component templates are imported by Fleet, this also affects integrations.
+
+The values are not described as removed. The setting's documentation likens them to `dynamic: false`, whose fields "will still appear in the `_source` field of returned hits", but it does not state the retention directly.
 
 ### S8. BigQuery `tabledata.insertAll` (unknown-field-like)
 
@@ -471,7 +557,7 @@ Source: https://cloud.google.com/bigquery/docs/reference/rest/v2/tabledata/inser
 
 **Shape.** Named and unknown-field-like.
 
-**What it does.** A point that does not conform is **rejected, and the rejection is recorded** in a `rejected_points` measurement in the `_monitoring` bucket, so it can be counted. Two reasons are documented: a measurement the schema does not allow, and a field of the wrong type. **Unverified:** what happens to an undeclared tag or field under a measurement the schema allows.
+**What it does.** A point that does not conform is **rejected, and the rejection is recorded** in a `rejected_points` measurement in the `_monitoring` bucket, so it can be counted. A point here is one field value, not a whole line (below). Two reasons are documented: a measurement the schema does not allow, and a field of the wrong type. **Unverified:** what happens to an undeclared tag or field under a measurement the schema allows.
 
 Source: https://github.com/influxdata/docs-v2/blob/df4a7d5fcf18fe4b13277a4bdd6bc54e3f8e77d2/content/influxdb/cloud/admin/buckets/bucket-schema.md
 
@@ -480,6 +566,34 @@ Source: https://github.com/influxdata/docs-v2/blob/df4a7d5fcf18fe4b13277a4bdd6bc
 Source: https://github.com/influxdata/docs-v2/blob/df4a7d5fcf18fe4b13277a4bdd6bc54e3f8e77d2/content/shared/influxdb-v2/write-data/troubleshoot.md
 
 > the data must conform to the schema. Otherwise, InfluxDB rejects the data.
+
+**The unit rejected is one field value, not one line.**
+
+- InfluxDB's "point" is a series key, one field value and a timestamp, and `rejected_points` logs one entry for each rejected field.
+- In the documented field-type example, two lines of three fields each are written, and only the second line's `temperature` has the wrong type. The response reports five points accepted and one rejected, and one entry is logged. So the other two fields of that line are written. That is Inferred from the example's counts and the definition of a point: the page does not say it of the line.
+- In the measurement example, one line of three fields is logged as three entries.
+
+Source: https://github.com/influxdata/docs-v2/blob/df4a7d5fcf18fe4b13277a4bdd6bc54e3f8e77d2/content/shared/influxdb-v2/reference/key-concepts/data-elements.md
+
+> A **point** includes the series key, a field value, and a timestamp
+
+Source: https://github.com/influxdata/docs-v2/blob/df4a7d5fcf18fe4b13277a4bdd6bc54e3f8e77d2/content/shared/influxdb-v2/write-data/troubleshoot.md
+
+> InfluxDB logs an entry for each point (each unique field) that is rejected.
+
+> partial write error (5 accepted): 1 out of 6 points rejected
+
+> InfluxDB logs three `rejected_points` entries, one for each field.
+
+> For example, a partial write may occur when InfluxDB writes all points that conform to the bucket schema, but rejects points that have the wrong data type in a field.
+
+**When the caller learns of a rejection.** Both explicit-schema examples return an error with the write request itself, a `400` in the field-type example. InfluxDB Cloud also acknowledges a write with `204` once it is validated and queued, and the page says points may still be rejected after that. **Unverified:** whether an explicit-schema rejection in particular can arrive after a `204`. The page does not say which applies.
+
+Source: https://github.com/influxdata/docs-v2/blob/df4a7d5fcf18fe4b13277a4bdd6bc54e3f8e77d2/content/shared/influxdb-v2/write-data/troubleshoot.md
+
+> InfluxDB returns a `400` error and a message that describes the result:
+
+> InfluxDB may still reject points after you receive _success_ (HTTP `204` status code).
 
 **Stated why.** Yes for explicit schemas as such, but not for rejecting a non-conforming point rather than dropping it. The two documentation pages above give no reason. InfluxData's blog post introducing the feature (Russ Savage, published 2021-08-26, updated 2025-12-14) gives the problem it solves.
 
@@ -1205,7 +1319,34 @@ Source: https://github.com/django/django/blob/5.2.19/django/db/models/base.py
 
 **Shape.** Ambient (the connection's search path) and scope-like. In both libraries a write call has no way to name a tenant, so the named case cannot occur. It is included because it is how two widely used libraries model tenant-free tables.
 
-**What it does.** While a tenant is active, a shared or excluded model resolves to the public schema, and the ambient tenant simply does not apply.
+**What it does.** While a tenant is active, both libraries leave the ambient tenant off a shared or excluded model, by different mechanisms.
+
+- **django-tenants falls back through the search path, and does not route.**
+  - It sets the path to the tenant's schema followed by `public`, and PostgreSQL takes the first schema that has the table.
+  - A shared model therefore resolves to `public` only when the tenant's schema has no table of that name, which holds for an app listed in `SHARED_APPS` alone. An app listed in both `SHARED_APPS` and `TENANT_APPS` is migrated into both schemas, and the tenant's copy is found first.
+  - A connection set with `include_public=False` leaves `public` off the path. The library does that only while migrating.
+  - The precedence is read from source. No documentation page read states it.
+- **Apartment routes an excluded model explicitly.** Its PostgreSQL schema adapter qualifies the model's table name with the default schema, so the search path plays no part. Its database-per-tenant adapters give the model its own connection to the default database.
+
+Source: https://github.com/django-tenants/django-tenants/blob/v4.0.7/django_tenants/postgresql_backend/base.py
+
+>         Issue `SET search_path` for the currently selected schema. Database will
+>         search schemata from left to right when looking for the object
+>         (table, index, sequence, etc.).
+
+>         elif self.include_public_schema:
+>             search_paths = [self.schema_name, public_schema_name]
+
+Source: https://github.com/django-tenants/django-tenants/blob/v4.0.7/django_tenants/tests/test_tenants.py
+
+>         Tests that both SHARED_APPS and TENANT_APPS can have apps in common.
+>         In this case they should get synced to both tenant and public schemas.
+
+Source: https://github.com/rails-on-services/apartment/blob/v3.4.4/lib/apartment/adapters/postgresql_adapter.rb
+
+>           # Then explicitly set to default schema to prevent tenant-based queries
+
+>           klass.table_name = "#{default_tenant}.#{table_name}"
 
 Source: https://github.com/django-tenants/django-tenants/blob/v4.0.7/docs/index.rst
 
@@ -1260,14 +1401,14 @@ There is no single majority to stand against, so this section records the split 
 **Among the unknown-field comparables:**
 
 - **Rejection is the default** for BigQuery (S8), PostgreSQL (S10), and Rails and Django (F12).
-- **Rejection is configured**, and is not the default, in Elasticsearch `dynamic: strict` (S7) and InfluxDB Cloud explicit bucket schemas (S9).
+- **Rejection is configured**, and is not the default, in Elasticsearch `dynamic: strict` (S7) and InfluxDB Cloud explicit bucket schemas (S9). InfluxDB rejects and counts per field value, not per line, and may report a rejection only after the write is acknowledged.
   - Elasticsearch's default, `dynamic: true`, adds the new field to the mapping, and `dynamic: false` keeps it in `_source` without indexing it.
   - InfluxDB's default bucket schema type is `implicit` (S9).
   - Both have a stated reason for the stricter mode: the Definitive Guide's "alert you to the problem" where Elasticsearch is the primary store, and InfluxData's protection against schemas "muddled up with junk".
 - **ClickHouse (S6) and Laravel (F11) drop silently by default.**
   - ClickHouse's default came about as a side effect of a read-side change. In November 2026 a maintainer called it data loss and asked for a warning. The warning proposed does not cover data the client parses itself.
   - Laravel's reason is security, and its documentation calls the silence expected in production and confusing in development.
-- **Elasticsearch's field limit (S7) moved from rejecting the document to accepting it, with the surplus fields unmapped and unindexed and their names listed in `_ignored`.** Its reason was that one misbehaving service could lose data for every service sharing the stream.
+- **Elasticsearch's field limit (S7) gained an option to accept the document, with the surplus fields unmapped and unindexed and their names listed in `_ignored`.** Rejection stays the index default, and the built-in logs and metrics templates turn the option on. The reason given for the option and for the templates was that one misbehaving service could lose data for every service sharing the stream.
 
 ## Candidates not examined, or dropped
 
