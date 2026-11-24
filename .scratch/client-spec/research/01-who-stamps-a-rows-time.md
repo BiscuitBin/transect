@@ -3047,7 +3047,7 @@ These rest more on the researcher's argument than the choice above, because few 
 - Whether a clamp is counted or logged. Cassandra's driver logs a warning when its stamps drift (K1); the specification counts and logs only failures of the kinds it names.
 - The hand-over's representation of the time, which is open question 15.
 - Which clock `Run.oldest_queued_age` reads. Read from the clamped client's clock, it never goes negative or falls, its reading being one the process used (C3), and stops growing while the wall clock is behind; read from the raw wall clock, it can go negative; read from a monotonic clock, it is elapsed time, but needs either the anchored clock for the stamps, with its drift, or a monotonic reading kept with each queued row ("The clock itself"). The settled promise does not choose between them, and this research does not.
-- Whether a reading taken for a diagnostic, not a stamp, counts as one the process used under the clamp. It decides whether `oldest_queued_age` can fall and `Run.last_store_at` can come out earlier than its previous value, and it applies to the run id's reading too ("The clock itself"). The settled promise does not say, and this research does not.
+- Which clock `Run.last_store_at` and the run id (`uuid_v7(now)`) read. If it is the client's clock, each reading counts as one the process used, as a stamp does, so neither comes out earlier than a value the process already used ("The clock itself"); if it is another clock, the promise does not cover them. The specification does not say, and this research does not choose.
 
 ## Proposed wording
 
