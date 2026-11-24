@@ -136,8 +136,9 @@ enum WriteOutcome {
     | discarded_client_closed
 }
 
--- The kinds of lost data the host is warned about, per table.
-enum FailureKind { queue_full | oversize | invalid | store_failed | shutdown }
+-- The kinds of lost data the host is warned about, per table, and a tenant
+-- a write named for a tenant-free table, which was not stored.
+enum FailureKind { queue_full | oversize | invalid | store_failed | shutdown | tenant_dropped }
 
 ------------------------------------------------------------
 -- Entities and Variants
@@ -287,6 +288,7 @@ entity TableCounters {
     accepted: Integer
     stored: Integer
     unattributed: Integer
+    tenant_dropped: Integer         -- accepted writes that named a tenant for this tenant-free table
     rejected_queue_full: Integer
     rejected_oversize: Integer
     rejected_invalid: Integer
@@ -302,6 +304,7 @@ entity TableCounters {
     store_failed_rows: rows where status = lost_store_failed
     shutdown_rows: rows where status = lost_shutdown
     unattributed_rows: rows where attribution = unattributed
+    tenant_dropped_rows: rows where tenant_dropped = true
 
     queued_now: queued_rows.count
     has_room: queued_now < table.capacity
@@ -325,6 +328,7 @@ entity Row {
     client_time: Timestamp          -- the client's clock when the row was written; for a keyed value, when it was last written
     attribution: Attribution
     tenant: String?
+    tenant_dropped: Boolean         -- Derived: the write named a tenant and none was stored; not handed over
     values: RowValues
     status: queued | in_hand | stored | replaced | purged | lost_store_failed | lost_shutdown
 
@@ -362,7 +366,9 @@ entity Row {
 
 -- What a fake core keeps for one write made while it is in force. The
 -- attribution and tenant are those the write resolved to when it was
--- accepted, and absent otherwise.
+-- accepted, and absent otherwise. Derived: tenant_dropped says an accepted
+-- write named a tenant for a tenant-free table, so a test can assert that
+-- none did; it is false for every write not accepted.
 entity RecordedWrite {
     run: Run
     table: Table
@@ -370,11 +376,12 @@ entity RecordedWrite {
     outcome: WriteOutcome
     attribution: Attribution?
     tenant: String?
+    tenant_dropped: Boolean
 }
 
--- One kind of lost data for one table within one run: opened by the first
--- loss, and reported with its total when establish ends (open question 22
--- asks what else ends one).
+-- One kind of lost data, or of dropped tenants, for one table within one
+-- run: opened by the first occurrence, and reported with its total when
+-- establish ends (open question 22 asks what else ends one).
 entity FailureEpisode {
     run: Run
     counters: TableCounters
@@ -393,7 +400,7 @@ entity LogRecord {
     counters: TableCounters
     kind: FailureKind
     phase: onset | total
-    count: Integer                  -- losses of this kind for this table so far in the run
+    count: Integer                  -- occurrences of this kind for this table so far in the run
 }
 
 ------------------------------------------------------------
@@ -455,7 +462,7 @@ rule OpenCountersForLateTable {
     requires: table.confluence.has_run
     ensures: TableCounters.created(
         run: table.confluence.latest_run, table: table,
-        accepted: 0, stored: 0, unattributed: 0,
+        accepted: 0, stored: 0, unattributed: 0, tenant_dropped: 0,
         rejected_queue_full: 0, rejected_oversize: 0, rejected_invalid: 0,
         lost_store_failed: 0, lost_shutdown: 0, purged: 0
     )
@@ -505,7 +512,7 @@ rule AttachRun {
         for table in run.confluence.tables:
             TableCounters.created(
                 run: run, table: table,
-                accepted: 0, stored: 0, unattributed: 0,
+                accepted: 0, stored: 0, unattributed: 0, tenant_dropped: 0,
                 rejected_queue_full: 0, rejected_oversize: 0, rejected_invalid: 0,
                 lost_store_failed: 0, lost_shutdown: 0, purged: 0
             )
@@ -565,7 +572,8 @@ rule CloseClientHandle {
 -- closing; the row does not fit; the row is too large; the queue is full;
 -- accepted. Each is counted once. None fails, none blocks and none returns
 -- anything to the caller. A write that names a tenant for a tenant-free
--- table, and would otherwise be accepted, matches no rule: open question 19.
+-- table is accepted like any other write to it: the row stores no tenant,
+-- and the write is also counted as tenant_dropped and logged.
 
 rule DiscardWriteThroughClosedHandle {
     when: ApplicationWrites(app, handle, table, values, tenant?)
@@ -658,10 +666,10 @@ rule AcceptRow {
     let bound = tenant ?? handle.tenant
     requires: handle.status = open
     requires: handle.confluence.is_established
+    let drops_tenant = not table.is_tenant_scoped and tenant != null
     requires: run.core = production
     requires: fits(table.definition, values)
     requires: size_of(values) <= table.max_row_size
-    requires: table.is_tenant_scoped or tenant = null
     let counters = TableCounters{run, table}
     requires: counters.has_room
     ensures:
@@ -672,12 +680,17 @@ rule AcceptRow {
                 else if bound != null: attributed
                 else: unattributed,
             tenant: if table.is_tenant_scoped: bound else: null,
+            tenant_dropped: drops_tenant,
             values: values, status: queued
         )
         run.last_position = run.last_position + 1
         counters.accepted = counters.accepted + 1
         if table.is_tenant_scoped and bound = null:
             counters.unattributed = counters.unattributed + 1
+        if drops_tenant:
+            counters.tenant_dropped = counters.tenant_dropped + 1
+        if drops_tenant:
+            FailureCounted(counters: counters, kind: tenant_dropped)
 }
 
 -- Derived: under a fake core an accepted row is counted and recorded, and
@@ -688,22 +701,27 @@ rule AcceptRowOnFakeCore {
     let bound = tenant ?? handle.tenant
     requires: handle.status = open
     requires: handle.confluence.is_established
+    let drops_tenant = not table.is_tenant_scoped and tenant != null
     requires: run.core = fake
     requires: fits(table.definition, values)
     requires: size_of(values) <= table.max_row_size
-    requires: table.is_tenant_scoped or tenant = null
     let counters = TableCounters{run, table}
     ensures:
         counters.accepted = counters.accepted + 1
         if table.is_tenant_scoped and bound = null:
             counters.unattributed = counters.unattributed + 1
+        if drops_tenant:
+            counters.tenant_dropped = counters.tenant_dropped + 1
+        if drops_tenant:
+            FailureCounted(counters: counters, kind: tenant_dropped)
         RecordedWrite.created(
             run: run, table: table, values: values, outcome: accepted,
             attribution:
                 if not table.is_tenant_scoped: untenanted
                 else if bound != null: attributed
                 else: unattributed,
-            tenant: if table.is_tenant_scoped: bound else: null
+            tenant: if table.is_tenant_scoped: bound else: null,
+            tenant_dropped: drops_tenant
         )
 }
 
@@ -715,7 +733,7 @@ rule FakeCoreRecordsWrite {
     requires: run.core = fake
     ensures: RecordedWrite.created(
         run: run, table: table, values: values, outcome: outcome,
-        attribution: null, tenant: null
+        attribution: null, tenant: null, tenant_dropped: false
     )
 }
 
@@ -909,15 +927,15 @@ rule FinishClosing {
 
 -- Host log records -------------------------------------------
 
--- The first loss of a kind for a table is logged at once. After that
--- nothing is logged for that kind and table until it stops or establish
--- ends, when one record gives the total. What counts as stopped is open
--- question 22, so the only total these rules give is the one at the end
--- of establish. Derived: a loss at shutdown follows the same rule, so it
--- has an onset record when establish begins to end and a total when it
--- has ended. One loss is answered by one of the two rules that count it,
--- never both: the first loss of a kind opens its episode at one, and
--- every later loss adds one.
+-- The first occurrence of a kind for a table is logged at once. After
+-- that nothing is logged for that kind and table until it stops or
+-- establish ends, when one record gives the total. What counts as stopped
+-- is open question 22, so the only total these rules give is the one at
+-- the end of establish. Derived: a loss at shutdown follows the same rule,
+-- so it has an onset record when establish begins to end and a total when
+-- it has ended. One occurrence is answered by one of the two rules that
+-- count it, never both: the first occurrence of a kind opens its episode
+-- at one, and every later occurrence adds one.
 rule OpenFailureEpisode {
     when: FailureCounted(counters, kind)
     requires: not exists FailureEpisode{counters, kind}
@@ -1022,6 +1040,7 @@ invariant CountersMatchTheRows {
             and c.stored = c.kept_rows.count
             and c.purged = c.purged_rows.count
             and c.unattributed = c.unattributed_rows.count
+            and c.tenant_dropped = c.tenant_dropped_rows.count
 }
 
 invariant TheRunInForceIsTheLatest {
@@ -1157,9 +1176,8 @@ surface Writing {
     @guarantee EveryWriteIsCountedOnce
         -- A write that is not accepted is counted once, in the counter its
         -- outcome names. A write that is accepted is counted as accepted.
-        -- The exceptions are the two writes open questions 19 and 24 leave
-        -- without an outcome: until those are decided, this module does
-        -- not count them.
+        -- The exception is the write open question 24 leaves without an
+        -- outcome: until it is decided, this module does not count it.
 
     @guarantee ClockNeverMovesBackwards
         -- Within one process the client's clock never moves backwards.
@@ -1295,6 +1313,7 @@ surface RunDiagnostics {
             c.accepted
             c.stored
             c.unattributed
+            c.tenant_dropped
             c.rejected_queue_full
             c.rejected_oversize
             c.rejected_invalid
@@ -1320,7 +1339,8 @@ surface HostLog {
     @guarantee StandardFacade
         -- Records go through the language's standard logging facade, under
         -- the client's own logger name. The client installs no handlers.
-        -- Records are structured, and lost data is logged at WARNING.
+        -- Records are structured, and lost data and dropped tenants are
+        -- logged at WARNING.
 
     @guarantee OnsetThenTotal
         -- The first occurrence of a kind of failure for a table is logged
@@ -1342,6 +1362,7 @@ surface FakeCoreRecords {
             write.outcome
             write.attribution
             write.tenant
+            write.tenant_dropped
 }
 
 ------------------------------------------------------------
@@ -1366,7 +1387,6 @@ open question "15. How is the hand-over carried, as a push or a pull, and in wha
 open question "16. What are the default queue capacity and maximum row size, and how is a table given its own? Which values are valid, and what refuses one that is not: a negative capacity would break QueueDepthWithinCapacity. Settled: an identical redeclaration matches in everything, so once a declaration can carry its own capacity and maximum row size, those must match too. Until decided, both come from configuration with no default, every table takes the configured values, and neither is taken to be negative."
 open question "17. Must the one-process rule hold per container if collection is a pull?"
 open question "18. Are confluence, establish and core the final names? Confluence is a well-known product, and core already names the libtransect crate here."
-open question "19. What happens to a write that names a tenant for a tenant-free table: stored without a tenant and counted, or refused? Until decided, this module gives that write no outcome: it is not counted, it does not fail, it does not block, and no tenant is stored for a tenant-free table."
 open question "20. What makes a declaration valid: which table, namespace and column names are allowed, which columns may form a keyed table's key and whether their order matters, and what happens to a column name that collides with a field the client adds? Until decided, the only declarations refused are one that omits the tenant scope and one that conflicts with an earlier declaration."
 open question "21. How is a row's size measured against the maximum row size?"
 open question "22. When does a kind of failure for a table count as stopped, so that its total is logged before establish ends, and are unattributed rows and the confluence-wide discards logged? Until decided, a total is logged only when establish ends, and those two are counted and not logged."
