@@ -7,8 +7,8 @@
 
 ## How the sources were checked
 
-- Each comparable was read from its official documentation, a specification, or source code at a named tag or commit. GitHub links are pinned to a tag or a commit, except issue and pull request threads, which have no version. Apache JIRA issues are linked by their browse URL, Confluence pages (Kafka KIPs) by page id, and Apache mailing-list messages by their thread URL. The AWS documentation is unversioned; its pages were read as the Markdown rendition the site serves.
-- Every blockquote sits under the `Source:` line it was copied from. Each was checked as a substring of raw source text the researcher fetched again: GitHub files from `raw.githubusercontent.com`, GitHub threads through the GitHub API, JIRA issues through the JIRA REST API, Confluence pages through the Confluence REST API, and mailing-list messages through the Apache mail archive's API. 263 quotations were checked; 258 match exactly, and 5 match only once whitespace is collapsed (two issue bodies with different line endings, three code comments whose indentation differs).
+- Each comparable was read from its official documentation, a specification, or source code at a named tag or commit. GitHub links are pinned to a tag or a commit, except issue and pull request threads, which have no version. Apache JIRA issues are linked by their browse URL, Confluence pages (Kafka KIPs) by page id, and Apache mailing-list messages by their thread URL. The AWS documentation is unversioned; its pages were read as the Markdown rendition the site serves. The Redis `RESTORE` command page on redis.io, the Firebase pages on firebase.google.com, the systemd journal's design document (a published Google Doc) and the 0pointer.net post that links it are unversioned too, and were read as HTML; the systemd man page is the HTML that freedesktop.org serves for version 260. QOS.ch JIRA issues are linked by their browse URL, except two quotations found only in an issue's REST rendition (a comment, and a description in JIRA wiki markup), which are linked by that REST URL.
+- Every blockquote sits under the `Source:` line it was copied from. Each was checked as a substring of raw source text the researcher fetched again: GitHub files from `raw.githubusercontent.com`, GitHub threads through the GitHub API, Apache JIRA issues through the JIRA REST API, Confluence pages through the Confluence REST API, mailing-list messages through the Apache mail archive's API, and the HTML pages above, including the QOS.ch JIRA's browse pages, with their tags stripped. 362 quotations were checked; 351 match exactly, and 11 match only once whitespace is collapsed (two issue bodies with different line endings, three code comments whose indentation differs, and six passages of the systemd man page, whose HTML wraps lines).
 - A quotation inside a sentence was checked the same way.
 - What no primary source confirmed is marked "Unverified". A reason the researcher worked out, and no author stated, is marked "Inferred".
 
@@ -25,7 +25,7 @@ For each comparable the survey asks:
 - which clock stamps it, where that is documented;
 - and the reasons its authors gave for each of those choices.
 
-Two families, as the maintainer asked: application logging frameworks and collection systems for time series tables (T1 to T12), and comparable keyed-state systems for keyed state tables (K1 to K9). Kafka appears in both: T12 covers who stamps a record, K4 what a compacted topic and a KTable do with that time.
+Two families, as the maintainer asked: application logging frameworks and collection systems for time series tables (T1 to T13), and comparable keyed-state systems for keyed state tables (K1 to K11). Kafka appears in both: T12 covers who stamps a record, K4 what a compacted topic and a KTable do with that time.
 
 ### Summary: time series
 
@@ -39,10 +39,11 @@ Two families, as the maintainer asked: application logging frameworks and collec
 | Rust `tracing` | Each subscriber or layer, when it formats | No: events carry no timestamp | Formatter-defined | Not applicable | `SystemTime::now()` by default; `Uptime` uses `Instant` |
 | Elastic Common Schema | Source or pipeline (`@timestamp`), agent (`event.created`), store (`event.ingested`) | `@timestamp` is the source's time | `date`, three fields | Order expected `@timestamp` < `event.created` < `event.ingested` | Not specified |
 | Fluentd / Fluent Bit | Input plugin, a parser (`time_key`), or the sending client | Yes: forward protocol and logger libraries carry the client's time | `EventTime` (sec + ns) or integer seconds | Not checked | `Time.now` (Fluentd); `timespec_get(TIME_UTC)` (Fluent Bit) |
-| Grafana Loki | Client (push API) | Yes; the push format has a timestamp slot in every entry (Inferred: required) | ns since Unix epoch, as a string in JSON | Rejected if older than `reject_old_samples_max_age` (1w) or beyond `creation_grace_period` (10m); out of order accepted by default since 2.4, within a window | Bounds are relative to the current time (Inferred: the server's clock) |
+| Grafana Loki | Client (push API) | Yes; the push format has a timestamp slot in every entry (Inferred: required) | ns since Unix epoch, as a string in JSON | Rejected if older than `reject_old_samples_max_age` (1w) or beyond `creation_grace_period` (10m); out of order accepted by default since 2.4, back to the stream's newest entry minus `max_chunk_age`/2 (1 h by default) | Bounds are relative to the current time (Inferred: the server's clock) |
 | InfluxDB | Client, or server when absent | Optional per point | Unix timestamp, default ns, `precision` parameter | Points outside retention rejected; same series and timestamp merges fields | Server host clock (UTC) when absent |
-| Prometheus | Server at scrape time | Exposition format allows it; docs say not to; `client_golang` exposes it with caveats | `int64` ms since epoch | Out of order rejected unless `out_of_order_time_window` > 0 | Server |
+| Prometheus | Server at scrape time | Exposition format allows it; docs say not to; `client_golang` exposes it with caveats | `int64` ms since epoch | Out of order rejected unless `out_of_order_time_window` > 0; on scrape, a sample more than 10 min ahead of the server is dropped | Server |
 | Apache Kafka | Producer (`CreateTime`) or broker (`LogAppendTime`), per topic | Yes: `ProducerRecord` timestamp | `int64` ms since epoch | Bounded by `message.timestamp.before.max.ms` / `after.max.ms`; whole batch rejected | `System.currentTimeMillis()` in the producer |
+| systemd journal | Journal daemon on receipt (`__REALTIME_TIMESTAMP`, `__MONOTONIC_TIMESTAMP`, `__SEQNUM`); a trusted source time when known (`_SOURCE_REALTIME_TIMESTAMP`) | No for the journal's own stamps or trusted fields; `SYSLOG_TIMESTAMP` is accepted unvalidated | µs: realtime since Unix epoch, monotonic per boot id | No validation found (Unverified) | `CLOCK_REALTIME` and `CLOCK_MONOTONIC` at reception |
 
 ### Summary: keyed state
 
@@ -51,12 +52,14 @@ Two families, as the maintainer asked: application logging frameworks and collec
 | Cassandra | Driver (client side) since Java driver 3.0; coordinator if no client time | Yes: `USING TIMESTAMP`, per-statement, pluggable generator | cell `WRITETIME`, int64 microseconds since Unix epoch (by convention) | Accepted; last write wins; optional guardrail since 5.0 rejects outside a window | Yes, extensive (CASSANDRA-6178, -6106, -4947, -18352) |
 | HBase | RegionServer | Yes (`Put` with explicit timestamp); docs advise against | cell timestamp, int64 milliseconds since Unix epoch (server `currentTimeMillis`) | Accepted; highest timestamp is the "latest"; future deletes mask later puts | Yes (HBASE-10247, -14070, -18642, -9905) |
 | Flink state TTL | Flink runtime (`TtlTimeProvider`) | No (processing time only; the provider is internal) | `lastAccessTimestamp`, long ms from `System.currentTimeMillis()` | n/a (no supplied time) | Partly: event-time TTL debated (FLINK-12005, dev thread), never landed |
-| Kafka (compacted topic / KTable) | Producer library (`CreateTime`) or broker (`LogAppendTime`), per topic | Yes (`ProducerRecord` timestamp) under `CreateTime` | record timestamp, int64 ms since Unix epoch | Broker rejects outside `before/after.max.ms` (future default 1 h since 4.0); compaction keeps highest offset, not highest timestamp | Yes (KIP-32, KIP-937, KIP-258, KIP-280, KIP-914) |
-| Redis | Server LRU clock (access, not write) | No | 24-bit LRU field, 1 s resolution, wraps | n/a | No stated rationale found |
+| Kafka (compacted topic / KTable) | Producer library (`CreateTime`) or broker (`LogAppendTime`), per topic; in Kafka Streams the `TimestampExtractor` decides what a KTable stores (processing time with `WallclockTimestampExtractor`) | Yes (`ProducerRecord` timestamp) under `CreateTime` | record timestamp, int64 ms since Unix epoch | Broker rejects outside `before/after.max.ms` (future default 1 h since 4.0); compaction keeps highest offset, not highest timestamp | Yes (KIP-32, KIP-937, KIP-258, KIP-280, KIP-914) |
+| Redis | Server eviction clock: on access and write (LRU), on write only (LRM, 8.6+); LFU data under LFU | Not on the write path; `RESTORE … IDLETIME` sets it (K5) | 24-bit `lru` field, 1 s resolution, wraps | n/a | For LRM's purpose only (PR 14624); none for omitting a general write time |
 | etcd | Server (Raft-ordered revision counter, not time) | No | `create_revision`, `mod_revision`, int64 logical | n/a | Revisions documented as a logical clock; no stated reason for omitting wall time found |
 | Kubernetes | API server (`creationTimestamp`, `managedFields[].time`); kubelet for `lastHeartbeatTime`, Lease `renewTime` | `creationTimestamp`: no. Heartbeat/renew: the writing client stamps | RFC 3339 seconds (`Time`) or microseconds (`MicroTime`), UTC | Node controller ignores the writer's clock for liveness; uses its own local observation time | Yes (node lifecycle controller comment; KEP-589 for the Lease move) |
-| DynamoDB | No item write time at all; stream records stamped by the service | Item attributes: application only. Stream time: no | `ApproximateCreationDateTime`: seconds (Streams), ms or µs (Kinesis destination) | Global tables: last writer wins on an internal timestamp; TTL ignores > 5 years past | No stated rationale found |
+| DynamoDB | No item write time at all; stream records stamped by the service | Item attributes: the application, or opt-in stamping by the Java SDK v2 Enhanced Client on a tagged attribute. Stream time: no | `ApproximateCreationDateTime`: seconds (Streams), ms or µs (Kinesis destination) | Global tables: last writer wins on an internal timestamp under MREC (the default); MRSC rejects a concurrent write; TTL ignores > 5 years past | No stated rationale found |
 | OpenTelemetry metrics (Gauge) | SDK at measurement / collection | No (requested and declined) | `time_unix_nano`, fixed64 ns since Unix epoch | n/a | Yes (spec issue #4343) |
+| ZooKeeper | Server (the leader's wall clock, in the transaction header) | No | `mtime`/`ctime`: int64 ms since Unix epoch; `mzxid`/`czxid`: transaction ids | n/a | No, for keeping wall time beside the zxid; ZOOKEEPER-1366 records keeping `mtime` on wall time |
+| Cloud Firestore | Service (`create_time`, `update_time`) | No (output only); a write may ask for the server's time in an application field (`REQUEST_TIME`) | `update_time`, `google.protobuf.Timestamp`, RFC 3339 over REST; preconditions microsecond aligned | n/a (no supplied time) | No stated rationale found |
 
 ## Time series
 
@@ -487,18 +490,55 @@ Linux; LOG4J2-2791 records an ordering regression in `JsonLayout` between 2.10.0
   > fix SLF4J-546, Fluent logging API doesn't populate timestamp with Reload4JLogger
 
 **Stated why.** No stated rationale found for why the SLF4J API offers no caller-supplied
-time, or for Logback's move to `Instant` in 1.3. Looked at: `qos-ch/slf4j` and
-`qos-ch/logback` issues with `timestamp` in the title, `qos-ch/slf4j` issues mentioning
-`setTimeStamp`, `qos-ch/logback` commits mentioning `instant`, and
-https://logback.qos.ch/news.html (no match for `Instant`, `getInstant` or
-`nanosecond`). The old QOS.ch JIRA was not reachable as a
-source (Unverified whether it holds a discussion).
+time. Looked at: `qos-ch/slf4j` and `qos-ch/logback` issues with `timestamp` in the
+title, `qos-ch/slf4j` issues mentioning `setTimeStamp`, `qos-ch/logback` commits
+mentioning `instant`, and https://logback.qos.ch/news.html (no match for `Instant`,
+`getInstant` or `nanosecond`).
+
+For Logback's move to `Instant` and sub-millisecond precision in 1.3, the request and the
+change are on the QOS.ch JIRA, read through its REST API. The reason was given by the
+reporter, Oleksandr Gavenko, not by a maintainer: events sorted by a millisecond
+timestamp lose their order.
+
+Source: https://jira.qos.ch/browse/LOGBACK-1374
+> When sorting by @timestamp in ES events are ordered randomly within millisecond. In contrast writing to file at any precision preserves ordering.
+
+The maintainer, Ceki Gülcü, implemented it and resolved the issue in 1.3.0-alpha12.
+Neither his commit message nor his resolving comment gives a reason of his own.
+
+Source: https://github.com/qos-ch/logback/commit/ce43569b0ffcb9430fc71fd7100065b3c022c7b0
+> added support for micro seconds in LoggingEvent
+
+Source: https://jira.qos.ch/rest/api/2/issue/LOGBACK-1374?fields=comment,description,summary
+> Logback now uses java.time.Instant to store event time
 
 **Constraints.** SLF4J is a facade over several backends, and each backend stamps its own
 events (Inferred from the reload4j commit and Logback's `Logger.java` above).
 
 **Costs and dissent.** Fluent-API events once reached the reload4j binding with no time
 at all, until the 2022 commit above (SLF4J-546).
+
+The first implementation (`ce43569`, shipped in 1.3.0-alpha11) made `getTimeStamp()`
+return seconds, which broke a user's layout (LOGBACK-1599, reporter Brett Kail). The fix
+(`18edd91`, 1.3.0-alpha12) kept the `Instant` and restored milliseconds.
+
+Source: https://jira.qos.ch/rest/api/2/issue/LOGBACK-1599?fields=comment,description,summary
+> the {{LoggingEvent.getTimeStamp}} method is returning seconds rather than milliseconds, which breaks our custom layout, which is currently compatible with both SLF4J 1.x and 2.x and used by projects that are using a mix of both.
+
+Source: https://github.com/qos-ch/logback/commit/18edd9168d105124d3dbb69d21db9e8d2996c7ea
+> Fix LOGBACK-1599
+
+> this.timeStamp = (epochSecond*1000)+(milliseconds);
+
+An open request (LOGBACK-1682, 2022, reporter Alonso Gonzalez; no comments on the JIRA
+issue on the date read) asks for a configurable clock, because the application cannot
+influence the stamp. It contrasts Logback with Log4j's pluggable `Clock` (T4). This is a
+user's request, not the maintainers' position.
+
+Source: https://jira.qos.ch/browse/LOGBACK-1682
+> Thus the time of the server is used to generate the timestamp of an entry. In scenarios where this time is not correct, the application can not influence the timestamps.
+
+> Would it be possibe to use a configurable clock instead of Clock.systemUTC() in logback?
 
 ### T6. Rust `tracing` and `tracing-subscriber`
 
@@ -665,14 +705,37 @@ and wire protocol answer the same question. Family: time series.
   >             cur_time = int(time.time())
   >         return self.emit_with_time(label, cur_time, data)
 
-- Parsers take the time from a record field (`time_key`), falling back to the current time
-  when the field is absent (Fluentd docs at `cb3c4ca`).
+- Parsers take the time from a record field (`time_key`). When the field is absent they
+  use the current time only if `estimate_current_event` is true, which is the default;
+  with it false the parser returns no time (code at `v1.20.1`). The parser filter keeps
+  the incoming event's time when the parser returns none, and always when
+  `reserve_time` is set. The docs at `cb3c4ca` describe `estimate_current_event` as
+  applying "when `time_key` is specified", which reads differently from the code.
 
   Source: https://github.com/fluent/fluentd-docs-gitbook/blob/cb3c4ca464a9d0e47d820bf838803ba2a8827f21/configuration/parse-section.md
 
   > * **`time_key`** \(string\) \(optional\): Specify time field for event time. If
   >
   >   the event doesn't have this field, current time is used.
+
+  Source: https://github.com/fluent/fluentd/blob/v1.20.1/lib/fluent/plugin/parser.rb
+
+  > config_param :estimate_current_event, :bool, default: true
+
+  > elsif @estimate_current_event
+  >           Fluent::EventTime.now
+  >         else
+  >           nil
+
+  Source: https://github.com/fluent/fluentd/blob/v1.20.1/lib/fluent/plugin/filter_parser.rb
+
+  > config_param :reserve_time, :bool, default: false
+
+  > t.nil? ? time : t
+
+  Source: https://github.com/fluent/fluentd-docs-gitbook/blob/cb3c4ca464a9d0e47d820bf838803ba2a8827f21/filter/parser.md
+
+  > Keeps the original event time in the parsed result.
 
 - Fluentd stamps with Ruby's `Time.now` (`v1.20.1`); Fluent Bit with C11
   `timespec_get(..., TIME_UTC)` (`v5.2.0`).
@@ -752,6 +815,23 @@ entry, with server-side bounds on it. Family: time series.
 
   > `unordered_writes` and its related flag `-ingester.unordered-writes` are deprecated and will be removed in a future major release. Once removed, out-of-order writes will be accepted unconditionally, and this setting will no longer be configurable.
 
+- Separately, for out-of-order entries, a per-stream window relative to the stream's most
+  recent entry rather than to the clock. An entry is accepted only if it is no older
+  than half of `max_chunk_age` (ingester default `2h`) behind the newest entry already in
+  that stream: one hour by default. An entry within the one-week
+  `reject_old_samples_max_age` can still be rejected by this window.
+
+  Source: https://github.com/grafana/loki/blob/v3.7.10/docs/sources/shared/configuration.md
+
+  > `max_chunk_age` defaults to 2 hour.
+
+  > time_of_most_recent_line - (max_chunk_age/2)
+
+  > This means the allowed out-of-order window is half of the configured max_chunk_age.
+
+  > Log entries with timestamps that are after this earliest time are accepted.
+  > Log entries further back in time return an out-of-order error.
+
 **Stated why** for accepting out-of-order writes (design document, Owen Diehl, 2021-01-28):
 the in-order rule came from Cortex, pushed users toward high-cardinality labels, and lost
 logs from agents that retry batches independently.
@@ -824,14 +904,28 @@ as a value in the InfluxDB 2 getting-started page on writing data; its
 reference page was not read, so its full list of values is Unverified.
 Future timestamps: no rule found in the pages read (Unverified).
 
-**Stated why.** Only the documentation note quoted above (include the time if you want
-observation time, not receipt time). No further stated rationale found; looked at the
-line protocol, duplicate-points, troubleshooting and retention pages of `influxdata/docs-v2`
-at `df4a7d5`.
+**Stated why.** For who stamps: only the documentation note quoted above (include the
+time if you want observation time, not receipt time). No further stated rationale found;
+looked at the line protocol, duplicate-points, troubleshooting and retention pages of
+`influxdata/docs-v2` at `df4a7d5`.
+
+For precision, InfluxData's write guidance gives performance as the reason to write the
+coarsest precision the data needs (InfluxDB 2 page; the InfluxDB 1 FAQ says the same):
+
+Source: https://github.com/influxdata/docs-v2/blob/df4a7d5fcf18fe4b13277a4bdd6bc54e3f8e77d2/content/influxdb/v2/write-data/best-practices/optimize-writes.md
+> By default, InfluxDB writes data in nanosecond precision.
+> However if your data isn't collected in nanoseconds, there is no need to write at that precision.
+> For better performance, use the coarsest precision possible for timestamps.
 
 **Constraints.** None stated in the pages read.
 
-**Costs and dissent.** None found in the pages read.
+**Costs and dissent.** The InfluxDB 1 FAQ names the cost of coarse precision: points
+that collide on a timestamp overwrite each other, under the merge rule quoted above.
+
+Source: https://github.com/influxdata/docs-v2/blob/df4a7d5fcf18fe4b13277a4bdd6bc54e3f8e77d2/content/influxdb/v1/troubleshooting/frequently-asked-questions.md
+> To maximize performance, use the coarsest possible timestamp precision when writing data to InfluxDB.
+
+> The tradeoff is that identical points with duplicate timestamps, more likely to occur as precision gets coarser, may overwrite other points.
 
 ### T11. Prometheus
 
@@ -897,6 +991,28 @@ format's optional client timestamp is discouraged. Family: time series (metrics)
   > # of the sample is >= TSDB.MaxTime-out_of_order_time_window.
 
   > [ out_of_order_time_window: <duration> | default = 0s ]
+
+- On the scrape path, a sample timestamped more than ten minutes ahead of the scraping
+  server's clock is dropped as out of bounds. It is counted, and a warning is logged per
+  scrape; the other samples of the scrape are kept (Inferred from the per-sample
+  handling). The limit is a constant in the code, not a setting, and is independent of
+  `out_of_order_time_window`. The AppenderV2 path (`scrape/scrape_append_v2.go`)
+  applies the same limit. No stated rationale found for the ten-minute figure (searched
+  GitHub issues for `maxAheadTime`, and commits for `maxAheadTime` and for the phrase
+  "too far into the future").
+
+  Source: https://github.com/prometheus/prometheus/blob/v3.16.0/scrape/scrape.go
+
+  > const maxAheadTime = 10 * time.Minute
+
+  > maxTime:  timestamp.FromTime(time.Now().Add(maxAheadTime)),
+
+  > sl.l.Warn("Error on ingesting samples that are too old or are too far into the future", "num_dropped", appErrs.numOutOfBounds)
+
+  Source: https://github.com/prometheus/prometheus/blob/v3.16.0/scrape/target.go
+
+  > if t > app.maxTime {
+  > 		return 0, storage.ErrOutOfBounds
 
 **Stated why.**
 
@@ -984,6 +1100,22 @@ Family: time series (append-only log).
 - One out-of-bounds record rejects its whole batch (KIP-937, below). Out-of-order times
   within bounds are accepted; KIP-32 lists non-monotonic time as a known downside.
 
+- Under `LogAppendTime` the partition leader stamps each batch with its wall clock, read
+  once per append. `SystemTime` implements `time.milliseconds()` as
+  `System.currentTimeMillis()`. Neither `LogValidator.java` nor `UnifiedLog.java` at
+  4.4.0 clamps it against the previous append time; Kafka's other source files were not
+  searched.
+
+  Source: https://github.com/apache/kafka/blob/4.4.0/storage/src/main/java/org/apache/kafka/storage/internals/log/LogValidator.java
+
+  >         long now = time.milliseconds();
+
+  >                     batch.setMaxTimestamp(TimestampType.LOG_APPEND_TIME, now);
+
+  Source: https://github.com/apache/kafka/blob/4.4.0/clients/src/main/java/org/apache/kafka/common/utils/SystemTime.java
+
+  >         return System.currentTimeMillis();
+
 **Stated why.**
 
 - KIP-32 (accepted; the config was proposed as `max.message.time.difference.ms` and
@@ -1053,6 +1185,150 @@ Source: https://cwiki.apache.org/confluence/display/KAFKA/KIP-33+-+Add+a+time+ba
 future wish for both times in the record (quoted above), which would need a new message
 format. The future-time default changed from unbounded to one hour in 4.0.0 (KIP-1030,
 not read; the upgrade note is quoted above).
+
+KIP-32's "Monotonically increasing" is a listed advantage, not a guarantee the 4.4.0 code
+read was found to implement. KIP-32 describes the clamp that would keep the broker's time
+from going backwards when leadership moves, but only under the rejected Option 1:
+
+Source: https://cwiki.apache.org/confluence/display/KAFKA/KIP-32+-+Add+timestamps+to+Kafka+message
+
+> To handle leader migration where new leader has slower clock than old leader, all the leader should append max(lastAppendedTimestamp, currentTimeMillis) as the timestamp
+
+A user report on the users@ list (2026-08-18) says the broker's time can go backwards after
+a leader election. Its sender was not found by name in the Kafka project's committer
+roster. A PMC member replied asking for a JIRA and a KIP, without confirming or disputing
+the behaviour; no JIRA or KIP on it was found on the date read. The report is Unverified
+as observed behaviour; the code quoted under "What it does" is consistent with it
+(Inferred). Inferred, not checked: because the stamp is the host's wall clock, a clock
+step on one broker could also lower it.
+
+Source: https://lists.apache.org/thread/267c522t0tfhl38o0qorjnl6jvqkkg9g
+
+> After a leader election, the new leader’s clock may be behind the previous leader’s clock. In that case, newly appended records can receive a lower LogAppendTime than preceding records in the partition.
+
+The PMC member's reply (2026-09-06):
+
+Source: https://lists.apache.org/thread/s87r82g1l2c6wo54d0xdp8ft1vnfb9no
+
+> It's interesting and worth mulling it over. Would you mind opening a jira and KIP to propose this change?
+
+### T13. The systemd journal
+
+**Analogy.** A local log collector: one daemon receives entries from processes on the
+same machine and stamps each entry itself. Family: time series.
+
+**What it does.** systemd `v260`: the `systemd.journal-fields(7)` man page for 260,
+`docs/JOURNAL_FILE_FORMAT.md` and `src/journal/journald-manager.c` at tag `v260`.
+
+- **Who stamps.** The journal daemon, on receipt, on two clocks: the wall clock
+  (`CLOCK_REALTIME`) and the monotonic clock (`CLOCK_MONOTONIC`, stored with the boot
+  id). Both are in microseconds, and each entry also gets a sequence number. They are
+  exported as `__REALTIME_TIMESTAMP`, `__MONOTONIC_TIMESTAMP` and `__SEQNUM`. They are
+  addressing metadata, not fields, and a client cannot write them.
+- **A second, trusted source time.** Underscore-prefixed fields are added by the
+  journal and cannot be altered by client code. Among them,
+  `_SOURCE_REALTIME_TIMESTAMP` is the earliest trusted time known for the message when
+  it differs from the reception time. For datagrams on the native and syslog sockets,
+  the daemon takes it from the kernel's `SCM_TIMESTAMP` socket timestamp. Its other
+  sources were not traced (Unverified).
+- **May the application supply a time.** Not one the journal stamps or trusts. A client
+  may send any field without an underscore, including the syslog `SYSLOG_TIMESTAMP`,
+  and the journal does not validate those.
+- **Field, precision, epoch.** Microseconds; the realtime stamp since the Unix epoch
+  (UTC), the monotonic stamp from the clock's own origin for that boot.
+- **Ordering.** Entries in a file are written in sequence-number order. Within one boot
+  the monotonic stamp is monotonic too, and so is the realtime stamp, apart from clock
+  corrections.
+- **Future, past or out of order.** No validation of a supplied time was found in the
+  pages read (Unverified).
+
+Source: https://www.freedesktop.org/software/systemd/man/260/systemd.journal-fields.html
+> Fields prefixed with an underscore are trusted fields, i.e. fields that are implicitly added by the journal and cannot be altered by client code.
+
+> The earliest trusted timestamp of the message, if any is known that is different from the reception time of the journal. The timestamp is the CLOCK_REALTIME time in microseconds, formatted as a decimal.
+
+> Note that these are not proper fields when stored in the journal but for addressing metadata of entries. They cannot be written as part of structured log entries via calls such as sd_journal_send(3).
+
+> The wallclock time (CLOCK_REALTIME) at the point in time the entry was received by the journal, in microseconds since the epoch UTC, formatted as a decimal. This has different properties from "_SOURCE_REALTIME_TIMESTAMP=", as it is usually a bit later but more likely to be monotonic.
+
+> The monotonic time (CLOCK_MONOTONIC) at the point in time the entry was received by the journal in microseconds, formatted as a decimal. To be useful as an address for the entry, this should be combined with the boot ID in "_BOOT_ID=".
+
+> the timestamp as specified in the original datagram.
+
+> Note that the journal service does not validate the values of any structured journal fields whose name is not prefixed with an underscore, and this includes any syslog related fields such as these.
+
+Source: https://github.com/systemd/systemd/blob/v260/docs/JOURNAL_FILE_FORMAT.md
+> In the file ENTRY objects are written ordered monotonically by sequence
+> number. For continuous parts of the file written during the same boot
+> (i.e. with the same boot_id) the monotonic timestamp is monotonic too. Modulo
+> wallclock time jumps (due to incorrect clocks being corrected) the realtime
+> timestamps are monotonic too.
+
+Source: https://github.com/systemd/systemd/blob/v260/src/journal/journald-manager.c
+> } else if (cmsg->cmsg_type == SCM_TIMESTAMP &&
+
+> xsprintf(source_time, "_SOURCE_REALTIME_TIMESTAMP=" USEC_FMT, timeval_load(tv));
+
+**Stated why.**
+
+The design document, which Lennart Poettering's post "Introducing the Journal"
+(2011-11-18) links as "the design document we put up on Google Docs", contrasts the
+journal with syslog: syslog stored the client's metadata, timestamp included,
+unverified; the journal adds its own trusted fields, which a client cannot set, and
+stamps every entry with both a wall-clock and a monotonic time, carrying the boot ID so
+the monotonic time is usable. It is a live Google Doc, so its 2011 text is Unverified.
+
+Source: https://0pointer.net/blog/projects/the-journal.html
+
+> check out the full explanation on what we have
+> implemented on the design
+> document we put up on Google Docs
+
+Source: https://docs.google.com/document/pub?id=1IC9yOXj7j6cdLLxWEBAGRL6wl97tFxgjLUEHIX3MSTs
+
+> These properties are passed in from the client, not verified and usually stored away as-is.
+
+> This service will augment the entry with a number of meta fields. The values of these trusted fields are determined by the journal service itself and cannot be faked by the client side.
+
+> All entries are implicitly timestamped with the realtime (i.e. wallclock) and monotonic clock. To make the monotonic timestamps useful all messages also carry the boot ID of the running Linux kernel (i.e. /proc/sys/kernel/random/boot_id). The accuracy is 1usec, and the wallclock is stored in usec since the epoch UTC in order to avoid the timezone problems syslog is suffering by.
+
+The trusted-fields passage covers the `_`-prefixed fields. The reception timestamps
+`__REALTIME_TIMESTAMP` and `__MONOTONIC_TIMESTAMP` are addressing metadata, which the
+manual says cannot be written as part of an entry (quoted under "What it does").
+
+The documentation also states three reasons for its clocks:
+
+- why the reception time is kept beside the source time: it is
+  "more likely to be monotonic" (quoted above);
+- why the monotonic stamp needs the boot id: to be useful as an address (quoted above);
+- why entries carry a sequence number:
+
+Source: https://github.com/systemd/systemd/blob/v260/docs/JOURNAL_FILE_FORMAT.md
+> This should guarantee a monotonic stream
+> of sequential numbers for easy interleaving even if entries are distributed
+> among several files, such as the system journal and many per-user journals.
+
+No stated rationale found for refusing a client-set reception time in particular: the
+design document's reason covers the trusted fields, and the manual states the rule for
+the reception timestamps without giving one. Looked at: the 260 man page,
+`JOURNAL_FILE_FORMAT.md` at `v260`, the design document, and the post that links it.
+
+**Constraints.**
+
+- One daemon per machine receives from many local processes over sockets (Inferred from
+  the socket handling in `journald-manager.c`; not stated as a rule in what was read).
+- That daemon numbers every entry it writes from one sequence (Inferred from
+  `JOURNAL_FILE_FORMAT.md`, which says files from the same daemon instance carry the
+  same `seqnum_id`).
+- Wall-clock jumps happen, so the realtime stamp is monotonic only between them (quoted
+  above).
+
+**Costs and dissent.**
+
+- The reception stamp is "usually a bit later" than the source time (quoted above).
+- A client's own time survives only as an unvalidated field (`SYSLOG_TIMESTAMP`) that the
+  journal does not use to order entries (Inferred from the ordering rule quoted above).
+- Dissent was not searched for.
 
 ## Keyed state
 
@@ -1524,8 +1800,9 @@ Source: https://issues.apache.org/jira/browse/FLINK-12005?focusedCommentId=17121
 - A KTable materialises it as keyed state.
 - Each record carries one timestamp, and the KTable stores the latest record's
   timestamp with its value (KIP-258).
-- **Caveat.** The stamp is a record (event) time, not a last-written-to-the-table
-  time.
+- **Caveat.** By default the stamp is the record's embedded time (producer or broker),
+  not a last-written-to-the-table time. A Kafka Streams application can change which
+  time a KTable stores through its `TimestampExtractor` (below).
 
 **What it does.**
 
@@ -1533,6 +1810,19 @@ Source: https://issues.apache.org/jira/browse/FLINK-12005?focusedCommentId=17121
   - `CreateTime` (default): the producer library stamps `System.currentTimeMillis()`
     unless the application passes a timestamp.
   - `LogAppendTime`: the broker overwrites with its local time.
+- **Who stamps, in Kafka Streams.** A KTable stores the timestamp its
+  `TimestampExtractor` assigns, which need not be the record's embedded one.
+  - The default, `FailOnInvalidTimestamp`, returns the embedded timestamp: event time
+    under `CreateTime`, ingestion time under `LogAppendTime`.
+  - `WallclockTimestampExtractor` returns `System.currentTimeMillis()` when the record
+    is processed: processing time. That is not documented as the instant of the store
+    write.
+  - A custom extractor may compute any time from the record.
+  - The extractor is set for the application (`default.timestamp.extractor`) or per
+    source (`Consumed.with(...)`).
+  - When the KTable is materialised, a record whose timestamp is older than the stored
+    one is logged as an out-of-order update and still handed to the store, which keeps
+    what its own rule says (above: by offset, or by timestamp for a versioned store).
 - **Field.** Record timestamp, int64 milliseconds since the Unix epoch. Negative values
   are rejected by the client.
 - **Future and too old (`CreateTime` only).** The broker rejects the whole batch with
@@ -1572,6 +1862,34 @@ Source: https://github.com/apache/kafka/blob/4.4.0/docs/design/design.md
 
 Source: https://cwiki.apache.org/confluence/pages/viewpage.action?pageId=247827010
 > returns the latest record by timestamp rather than the latest record by offset.
+
+Source: https://github.com/apache/kafka/blob/4.4.0/streams/src/main/java/org/apache/kafka/streams/processor/WallclockTimestampExtractor.java
+>  * Using this extractor effectively provides <i>processing-time</i> semantics.
+
+>         return System.currentTimeMillis();
+
+Source: https://github.com/apache/kafka/blob/4.4.0/streams/src/main/java/org/apache/kafka/streams/processor/FailOnInvalidTimestamp.java
+>  * If the embedded metadata timestamp represents <i>CreateTime</i> (cf. Kafka broker setting
+>  * {@code message.timestamp.type} and Kafka topic setting {@code log.message.timestamp.type}),
+>  * this extractor effectively provides <i>event-time</i> semantics.
+>  * If <i>LogAppendTime</i> is used as broker/topic setting to define the embedded metadata timestamps,
+>  * using this extractor effectively provides <i>ingestion-time</i> semantics.
+
+Source: https://github.com/apache/kafka/blob/4.4.0/streams/src/main/java/org/apache/kafka/streams/StreamsConfig.java
+>     public static final String DEFAULT_TIMESTAMP_EXTRACTOR_CLASS_CONFIG = "default.timestamp.extractor";
+
+>                     FailOnInvalidTimestamp.class.getName(),
+
+Source: https://github.com/apache/kafka/blob/4.4.0/docs/streams/core-concepts.md
+> Kafka Streams assigns a **timestamp** to every data record via the `TimestampExtractor` interface.
+
+Source: https://github.com/apache/kafka/blob/4.4.0/streams/src/main/java/org/apache/kafka/streams/processor/internals/RecordQueue.java
+> timestamp = timestampExtractor.extract(deserialized, partitionTime);
+
+Source: https://github.com/apache/kafka/blob/4.4.0/streams/src/main/java/org/apache/kafka/streams/kstream/internals/KTableSource.java
+>                                 "Detected out-of-order KTable update for {}, "
+
+>                 putReturnCode = store.put(record.key(), record.value(), record.timestamp(), new RecordHeaders());
 
 **Stated why.**
 
@@ -1634,6 +1952,13 @@ unmerged on 2024-12-23, and `TopicConfig` at 4.4.0 has no `compaction.strategy` 
 (https://github.com/apache/kafka/blob/4.4.0/clients/src/main/java/org/apache/kafka/common/config/TopicConfig.java,
 searched). https://issues.apache.org/jira/browse/KAFKA-7061 remains In Progress.
 
+Kafka Streams documentation (why the time a stream uses is pluggable):
+
+Source: https://github.com/apache/kafka/blob/4.4.0/docs/streams/core-concepts.md
+> Concrete implementations of the `TimestampExtractor` interface will then provide different semantics to the stream time definition.
+
+> Developers can thus enforce different notions of time depending on their business needs.
+
 **Constraints.**
 
 - Retention and segment rolling are driven by record timestamps, so bad future stamps
@@ -1646,21 +1971,38 @@ searched). https://issues.apache.org/jira/browse/KAFKA-7061 remains In Progress.
   mistakes through (KIP-937). The default was tightened only for future stamps, at a major version.
 - Compaction by offset keeps the "wrong" value when producers race (KIP-280). The fix
   was voted but never landed.
+- KIP-32's monotonic `LogAppendTime`, quoted above as a stated advantage, is not clamped
+  across a change of leader in the 4.4.0 code read (T12, Costs and dissent).
 
 ### K5. Redis
 
-**Analogy.** Loose. Keyed store with no per-key write time. The only per-key time is an
-LRU access clock used for eviction, and it is set on access as well as write. Included
-because it is the case with no last-written field at all.
+**Analogy.** Loose. Keyed store with no general per-key write time. The only per-key time
+is an eviction clock in the object's 24-bit `lru` field. Under the LRU policies it is set
+on access as well as write; under the LRM policies (Redis 8.6 and later) on writes only;
+under the LFU policies the field holds LFU data instead. Included because none of these
+is a documented last-written field: each is an eviction clock with one-second resolution
+that wraps.
 
 **What it does.**
 
-- **Who stamps.** The server, into the 24-bit `lru` field of the object.
+- **Who stamps.** The server, into the 24-bit `lru` field of the object, from its own
+  wall clock (`mstime()`, which reads `gettimeofday`). Which operations stamp it depends
+  on `maxmemory-policy`:
+  - LRU policies, and the policies that are neither LFU nor LRM: reads and writes.
+  - LRM policies (`volatile-lrm`, `allkeys-lrm`; added in 8.6, checked against
+    `redis.conf` at tags `8.4.0` and `8.6.0`): writes only.
+  - LFU policies: the field holds LFU data instead.
 - **Resolution and range.** 1 second, wrapping at 2^24 s.
-- **Under LFU.** The field holds LFU data instead.
-- **Reading it.** `OBJECT IDLETIME` returns the time since last access, not since last
-  write.
-- **May the application supply it.** No.
+- **Reading it.** `OBJECT IDLETIME` is documented as the time since the last access. The
+  command is refused only under LFU. Under LRM reads do not stamp the field, so it returns
+  the time since the last write (Inferred from `object.c` and `evict.c` at 8.12.0; not
+  documented).
+- **May the application supply it.** Not on the ordinary write path. `RESTORE … IDLETIME
+  seconds` (since 5.0), which recreates a key from a `DUMP` payload, sets the field to
+  the current LRU clock minus the given idle time. It is documented "for LRU eviction",
+  but the code applies it under every policy that is not LFU. Under LRM it therefore
+  sets the write clock too (Inferred from `cluster.c` and `object.c` at 8.12.0). It
+  restores eviction metadata; it is not an API for a last-write time.
 
 Version: `8.12.0`.
 
@@ -1681,9 +2023,69 @@ Source: https://github.com/redis/redis/blob/8.12.0/src/evict.c
 > /* Given an object returns the min number of milliseconds the object was never
 >  * requested, using an approximated LRU algorithm. */
 
+Source: https://github.com/redis/redis/blob/8.12.0/redis.conf
+> # LRM means Least Recently Modified (only write operations update the timestamp)
+
+> # LRU vs LRM: Both use similar eviction logic based on access time, but:
+> # - LRU updates the timestamp on both read (GET) and write (SET) operations
+> # - LRM only updates the timestamp on write (SET, INCR, etc.) operations
+
+Source: https://github.com/redis/redis/blob/8.12.0/src/db.c
+> /* Update LRM when an object is modified. */
+> void updateLRM(robj *o) {
+>     if (o->refcount == OBJ_SHARED_REFCOUNT)
+>         return;
+>     if (server.maxmemory_policy & MAXMEMORY_FLAG_LRM) {
+>         o->lru = LRU_CLOCK();
+>     }
+> }
+
+> /* LRM policy should NOT update timestamp on reads. */
+
+Source: https://github.com/redis/redis/blob/8.12.0/src/evict.c
+> return (mstime()/LRU_CLOCK_RESOLUTION) & LRU_CLOCK_MAX;
+
+Source: https://github.com/redis/redis/blob/8.12.0/src/server.c
+> mstime_t mstime(void) {
+>     return ustime()/1000;
+> }
+
+> gettimeofday(&tv, NULL);
+
+Source: https://github.com/redis/redis/blob/8.12.0/src/commands/restore.json
+> "Added the `IDLETIME` and `FREQ` options."
+
+The `RESTORE` command page on redis.io (unversioned page, read 2026-11-24):
+
+Source: https://redis.io/docs/latest/commands/restore/
+> Set the key's idle time (for LRU eviction) to this many seconds.
+
+Source: https://github.com/redis/redis/blob/8.12.0/src/cluster.c
+> /* RESTORE key ttl serialized-value [REPLACE] [ABSTTL] [IDLETIME seconds] [FREQ frequency] */
+
+> objectSetLRUOrLFU(kv, lfu_freq, lru_idle, lru_clock, 1000);
+
+Source: https://github.com/redis/redis/blob/8.12.0/src/object.c
+>  * The lru_idle and lru_clock args are only relevant if policy
+>  * is MAXMEMORY_FLAG_LRU.
+
+> } else if (lru_idle >= 0) {
+
 **Stated why.**
 
-**No stated rationale found** for omitting a per-key write time. Where I looked:
+For the LRM policies, the pull request that added them (redis/redis#14624, by sundb,
+merged 2026-01-06 as `0cb1ee0`) and the shipped `redis.conf` state the purpose:
+evicting keys by when they were last written, whatever their reads.
+
+Source: https://github.com/redis/redis/pull/14624
+> LRM (Least Recently Modified) is similar to LRU but only updates the timestamp on write operations, not read operations. This makes it useful for evicting keys that haven't been modified recently, regardless of how frequently they are read.
+
+Source: https://github.com/redis/redis/blob/8.12.0/redis.conf
+> # This makes LRM useful when you want to evict keys that haven't been updated
+> # recently, regardless of how often they are read.
+
+**No stated rationale found** for omitting a general, readable per-key write time, as
+opposed to an eviction clock. Where I looked:
 
 - redis/redis#1258, titled `no command to find when a key was last modified/set` (2013). It
   was closed with no maintainer answer; the user replies only suggest TTL arithmetic.
@@ -1704,6 +2106,9 @@ share one idle time (antirez, redis/redis#4403):
 
 Source: https://github.com/redis/redis/issues/4403#issuecomment-340387689
 > Every integer object has *a single* shared idle time. So every string set to "5" will be like sharing the same idle time. So if you set a string to a new integer, the result is that you see the idle time that the number you set happen to have.
+
+`updateLRM` returns early for shared objects (quoted above), so under LRM too a key set
+to a shared integer does not get its own stamp.
 
 Source: https://github.com/redis/redis/issues/8399#issuecomment-869139727
 > so 1 second resolution is not ideal for a small db which can replace the entire keyspace in one second.
@@ -1895,9 +2300,21 @@ Source: https://github.com/kubernetes/enhancements/blob/cac930cb9d7c701920168654
 
 **Costs and dissent.**
 
-KEP-589 records that clients reading `LastHeartbeatTime` frequency broke when the
-NodeStatus period lengthened (its Risks and Mitigations list). The API conventions say
-historical condition info is best-effort:
+KEP-589's Risks and Mitigations section warns that updating NodeStatus less often
+"may potentially break clients" relying on frequent updates. Its author read client
+code that uses `LastHeartbeatTime` and found a few places incompatible with leases,
+which "would already be broken" by the then-current one-minute frequency. These are
+incompatibilities found by reading code, not reported incidents.
+
+Source: https://github.com/kubernetes/enhancements/blob/cac930cb9d7c70192016865425f943c339414011/keps/sig-node/589-efficient-node-heartbeats/README.md
+> Increasing default frequency of NodeStatus updates may potentially break clients
+> relying on frequent Node object updates.
+
+> There are couple places that
+> are incompatible with node leases, but they would already be broken by current
+> 1m frequency, e.g.:
+
+The API conventions say historical condition info is best-effort:
 
 Source: https://github.com/kubernetes/community/blob/175f04bc631df9d949b1d4b9265f7b631041ac32/contributors/devel/sig-architecture/api-conventions.md
 > Historical information status (e.g., last transition time, failure counts) is
@@ -1910,20 +2327,52 @@ Source: https://github.com/kubernetes/community/blob/175f04bc631df9d949b1d4b9265
 - Keyed store (item per primary key).
 - It records **no** last-modified time on items. Nothing in the developer guide pages
   read describes one; this absence is inferred from those pages, not stated by AWS.
-- Applications that want one write an ordinary attribute themselves.
+- Applications that want one write an ordinary attribute themselves, or have AWS's Java
+  SDK v2 Enhanced Client stamp a tagged attribute for them (opt-in; below).
 - The service stamps change-stream records instead.
 
 **What it does.**
 
-- **Item attributes.** Application-set only. TTL is an application-written Number
-  attribute, epoch seconds.
+- **Item attributes.** The service sets none; every attribute is written by the caller.
+  TTL is an application-written Number attribute, epoch seconds.
+- **SDK stamping (Java SDK v2 Enhanced Client, opt-in).**
+  `AutoGeneratedTimestampRecordExtension` stamps each attribute the application tags,
+  which must be an `Instant`, on every write made through the Enhanced Client. It is not
+  loaded by default. Pull request 2757's description pairs it with
+  `@DynamoDbUpdateBehavior(WRITE_IF_NOT_EXISTS)` to keep the first stamp, for a creation
+  time; that combination was not checked in the code (Unverified). The clock is
+  `Clock.systemUTC()` unless the application configures a `baseClock`. In the source
+  read, the stamp replaces any value the application put in the tagged attribute (read
+  from the code, not run). Writes made through other clients or the low-level API are
+  not stamped (Inferred). How the `Instant` is stored follows the attribute's converter
+  (Unverified). Version `2.59.8`.
+
+  Source: https://github.com/aws/aws-sdk-java-v2/blob/2.59.8/services-custom/dynamodb-enhanced/src/main/java/software/amazon/awssdk/enhanced/dynamodb/extensions/AutoGeneratedTimestampRecordExtension.java
+
+  >  * This extension enables selected attributes to be automatically updated with a current timestamp every time they are written
+  >  * to the database.
+
+  >  *     This extension is not loaded by default when you instantiate a
+  >  *     {@link software.amazon.awssdk.enhanced.dynamodb.DynamoDbEnhancedClient}. Thus you need to specify it in custom extension
+  >  *     while creating the enhanced client.
+
+  >         this.clock = builder.baseClock == null ? Clock.systemUTC() : builder.baseClock;
+
+  >         itemToTransform.put(key, converter.transformFrom(instant));
+
 - **DynamoDB Streams.** `StreamRecord.ApproximateCreationDateTime` is stamped by the
   service, epoch seconds, rounded down.
 - **Kinesis Data Streams destination.** The same field in milliseconds by default, or
   microseconds if configured (`ApproximateCreationDateTimePrecision`). It is documented
   as the way to order and de-duplicate records that may arrive out of order.
-- **Global tables.** Concurrent writes in different Regions are resolved by "the latest
-  internal timestamp" (last writer wins). No API to supply that timestamp appears in the pages read (Inferred).
+- **Global tables.** Two consistency modes, chosen when the global table is created and
+  not changeable afterwards.
+  - Multi-Region eventual consistency (MREC, the default): concurrent writes in
+    different Regions are resolved by "the latest internal timestamp" (last writer
+    wins). No API to supply that timestamp appears in the pages read (Inferred).
+  - Multi-Region strong consistency (MRSC): writes replicate synchronously. A write to
+    an item being modified in another Region fails with
+    `ReplicatedWriteConflictException` and may be retried. No timestamp decides it.
 - **Too-old TTL values.** Ignored when more than five years in the past.
 
 Pages read from `docs.aws.amazon.com/amazondynamodb/latest/...` as `.md` renditions
@@ -1941,12 +2390,23 @@ Source: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/kds.htm
 Source: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_HowItWorks.html
 > If the same item is modified in multiple Regions simultaneously, DynamoDB will resolve the conflict by using the modification with the latest internal timestamp on a per-item basis, referred to as a "last writer wins" conflict resolution method.
 
+Source: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_HowItWorks.html
+> If you do not specify a consistency mode when creating a global table, the global table defaults to multi-Region eventual consistency (MREC). A global table cannot contain replicas configured with different consistency modes. You cannot change a global table's consistency mode after creation.
+
+> A write operation fails with a `ReplicatedWriteConflictException` when it attempts to modify an item that is already being modified in another Region. Writes that fail with the `ReplicatedWriteConflictException` can be retried and will succeed if the item is no longer being modified in another Region.
+
 Source: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/time-to-live-ttl-before-you-start.html
 > The computed expiration time must be in epoch format, in seconds. To be considered for expiry and deletion, the TTL can't be more than five years in the past. If you use any other format, the TTL processes ignore the item.
 
 **Stated why.**
 
-**No stated rationale found.** Where I looked:
+For the choice between the two global-table modes, AWS states the trade-off:
+
+Source: https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/V2globaltables_HowItWorks.html
+> The key criteria for choosing a multi-Region consistency mode is whether your application prioritizes lower latency writes and strongly consistent reads, or prioritizes global strong consistency.
+
+**No stated rationale found** for the absence of an item write time or for the stream
+time's precision. Where I looked:
 
 - the StreamRecord, EnableKinesisStreamingConfiguration, Kinesis Data Streams, TTL
   (three pages), global tables how-it-works and core components pages;
@@ -1956,14 +2416,27 @@ None was found, so the launch date is **Unverified**. A search summary claimed a
 page gives microseconds as the default. That contradicts `kds.md`, which says
 milliseconds, and was not verified: **Unverified**, not relied on.
 
+For the SDK extension, the stated reason is parity with SDK v1, not a reason for stamping
+in the library rather than the service. No stated rationale was found for that choice;
+where I looked: issue 1920 and its comments, pull request 2757, and the v1
+`@DynamoDBAutoGeneratedTimestamp` Javadoc at `1.12.797`.
+
+Source: https://github.com/aws/aws-sdk-java-v2/issues/1920
+
+> V1 can automatically generate timestamps for newly created or updated records with the @DynamoDBAutoGeneratedTimestamp annotation. This could be added as an extension to V2.
+
 **Constraints.**
 
 - Managed, multi-tenant service; the application never sees server clocks except
   through stream records.
-- Multi-Region replication needs a conflict rule; the service uses its own internal
-  timestamp for it (global tables page).
+- Multi-Region replication needs a conflict rule. Under MREC, the default, the service
+  uses its own internal timestamp (last writer wins); under MRSC it replicates
+  synchronously and rejects the conflicting write (global tables page). The mode is fixed
+  when the table is created.
 - Change streams can deliver out of order and more than once (Kinesis destination), so
   the service-stamped time is offered as the ordering and de-duplication key.
+- The SDK extension stamps from the writing host's clock, so items written by different
+  hosts carry times from different clocks (Inferred).
 
 **Costs and dissent.**
 
@@ -2033,13 +2506,191 @@ and later reported it did not work; the issue stays closed as not planned.
 (OpenTelemetry logs and spans, where a caller-supplied timestamp is allowed, are T1 and
 T2.)
 
+### K10. Apache ZooKeeper
+
+**Analogy.** Each znode is a value at a path, and its stat records when it was created and
+last modified twice over: as transaction ids from one total order, and as wall-clock
+milliseconds. Keyed state.
+
+**What it does.** Tag `release-3.9.4`.
+
+- **Fields.** `czxid` and `mzxid` (transaction ids, int64), `ctime` and `mtime`
+  (milliseconds since the Unix epoch), with version counters, in the node's stat.
+- **Who stamps.** The server. The request processor that turns a request into a
+  transaction stamps the transaction header with its wall clock
+  (`Time.currentWallTime()`, which is `System.currentTimeMillis()`). In a quorum that
+  processor runs on the leader. Every server applies the header's time, so a change has
+  one `mtime` on every replica.
+- **May the application supply it.** No: the create and set-data requests carry no time.
+- **Future and out of order.** Not applicable, since no time is supplied. Whether
+  `mtime` can move backwards when leadership passes to a server with a slower clock is
+  not documented (Unverified).
+
+Source: https://github.com/apache/zookeeper/blob/release-3.9.4/zookeeper-docs/src/main/resources/markdown/zookeeperProgrammers.md
+> This exposes the total ordering of all changes to ZooKeeper. Each
+>   change will have a unique zxid and if zxid1 is smaller than zxid2
+>   then zxid1 happened before zxid2.
+
+>   ZooKeeper doesn't use real time, or clock time, at all except
+>   to put timestamps into the stat structure on znode creation and
+>   znode modification.
+
+>   The time in milliseconds from epoch when this znode was last
+>   modified.
+
+Source: https://github.com/apache/zookeeper/blob/release-3.9.4/zookeeper-jute/src/main/resources/zookeeper.jute
+>     class SetDataRequest {
+>         ustring path;
+>         buffer data;
+>         int version;
+>     }
+
+Source: https://github.com/apache/zookeeper/blob/release-3.9.4/zookeeper-server/src/main/java/org/apache/zookeeper/server/PrepRequestProcessor.java
+> Time.currentWallTime(), type));
+
+Source: https://github.com/apache/zookeeper/blob/release-3.9.4/zookeeper-server/src/main/java/org/apache/zookeeper/common/Time.java
+>     public static long currentWallTime() {
+>         return System.currentTimeMillis();
+>     }
+
+Source: https://github.com/apache/zookeeper/blob/release-3.9.4/zookeeper-server/src/main/java/org/apache/zookeeper/server/quorum/LeaderZooKeeperServer.java
+>  * processors: PrepRequestProcessor -&gt; ProposalRequestProcessor -&gt;
+
+Source: https://github.com/apache/zookeeper/blob/release-3.9.4/zookeeper-server/src/main/java/org/apache/zookeeper/server/DataTree.java
+>             n.stat.setMtime(time);
+>             n.stat.setMzxid(zxid);
+
+**Stated why.**
+
+No stated rationale found for keeping a wall-clock time beside the zxid. Where I looked:
+
+- the programmer's guide at `release-3.9.4` ("Time in ZooKeeper" and "ZooKeeper Stat
+  Structure");
+- Apache JIRA, `project = ZOOKEEPER AND text ~ "mtime"` (43 issues, titles read).
+
+The one related author statement comes from ZOOKEEPER-1366 (fixed in 3.5.1 and 3.6.0).
+That issue moved timers from wall time to elapsed time, after the reporter, Ted Dunning,
+showed that a clock change expired every session at once. Reviewing it, Benjamin Reed
+asked that the time used for `mtime` stay wall time, and proposed `Time.currentWallTime()`
+to mark each remaining wall-clock use:
+
+Source: https://issues.apache.org/jira/browse/ZOOKEEPER-1366
+> If you want to wreak havoc on a ZK based system just do [date -s "+1hour"] and watch the mayhem as all sessions expire at once.
+
+> The absolute times are subject to adjustment when the clock is set while a timer is not subject to this problem.
+
+> in ZooKeeperServer.java getTime() should return the wall time since that is used for the mtime.
+
+> after crawling through everything, i think it would be nice if Time also had Time.currentWallTime() that did System.currentMillis(). that way if we saw an instance of System.currentMillis() in the code it would be a flag that the use should be reviewed.
+
+**Constraints.**
+
+- One leader orders every write, and the zxid exposes the total order. The guide says
+  real time is used for nothing except the stat timestamps (quoted above). That the
+  wall-clock stamp plays no part in ordering is Inferred from that.
+- The stamp is taken once and replicated in the transaction header, so replicas agree on
+  it (code quoted above).
+
+**Costs and dissent.**
+
+- Using wall time for elapsed-time measures cost mass session expiry on a clock change
+  (ZOOKEEPER-1366). The fix moved timers to elapsed time and kept `mtime` on wall time.
+- No dissent about `mtime` itself was found in the JIRA titles searched.
+
+### K11. Cloud Firestore
+
+**Analogy.** Close in shape: a document store that records, for each document, when it
+was last changed, stamped by the service and never by the caller. Family: keyed state. A
+managed database service, not an embedded library.
+
+**What it does.** `googleapis/googleapis` at `9c0bfc06db6841da058b88c7054153ac22fc2465`,
+and the Firebase REST reference (unversioned; read 2026-11-24).
+
+- **Who stamps.** The service, into `create_time` and `update_time` on every document.
+- **May the application supply it.** No: both are output only. Separately, a write may ask
+  the service to put its own time into an application field (`REQUEST_TIME`, millisecond
+  precision).
+- **What counts as a change.** A write that does not change the document leaves
+  `update_time` as it was.
+- **Field, precision, epoch.** `google.protobuf.Timestamp`; RFC 3339 over REST, with 0, 3,
+  6 or 9 fractional digits. A precondition on `update_time` must be microsecond aligned,
+  which suggests microsecond precision (Inferred).
+- **Ordering.** `update_time` increases with each change to a document, and is documented
+  as comparable across documents and with a query's `read_time`.
+- **Future, too old, out of order.** Not applicable: no supplied time.
+
+Source: https://firebase.google.com/docs/firestore/reference/rest/v1/projects.databases.documents
+
+> Uses RFC 3339, where generated output will always be Z-normalized and use 0, 3, 6 or 9 fractional digits.
+
+Source: https://github.com/googleapis/googleapis/blob/9c0bfc06db6841da058b88c7054153ac22fc2465/google/firestore/v1/document.proto
+
+>   // Output only. The time at which the document was last changed.
+>   //
+>   // This value is initially set to the `create_time` then increases
+>   // monotonically with each change to the document. It can also be
+>   // compared to values from other documents and the `read_time` of a query.
+>   google.protobuf.Timestamp update_time = 4;
+
+Source: https://github.com/googleapis/googleapis/blob/9c0bfc06db6841da058b88c7054153ac22fc2465/google/firestore/v1/write.proto
+
+>   // The last update time of the document after applying the write. Not set
+>   // after a `delete`.
+>   //
+>   // If the write did not actually change the document, this will be the
+>   // previous update_time.
+
+>       // The time at which the server processed the request, with millisecond
+>       // precision. If used on multiple fields (same or different documents) in
+>       // a transaction, all the fields will get the same server timestamp.
+>       REQUEST_TIME = 1;
+
+Source: https://github.com/googleapis/googleapis/blob/9c0bfc06db6841da058b88c7054153ac22fc2465/google/firestore/v1/common.proto
+
+>     // When set, the target document must exist and have been last updated at
+>     // that time. Timestamp must be microsecond aligned.
+>     google.protobuf.Timestamp update_time = 2;
+
+**Stated why.**
+
+**No stated rationale found** for making `update_time` service-only. Where I looked: the
+three protos above and their commit history (synchronisation commits with no message
+body), the Firebase `Document` REST reference, the "Add data" guide's section on server
+timestamps, the "Transaction serializability and isolation" page (quoted below), the
+"Transactions" guide, and Cloud Firestore "Best practices".
+
+**Inferred why.** `update_time` doubles as the document's version: a write can be made
+conditional on it, and the mobile and web SDKs build their transactions on preconditions
+on document versions. A caller-set value could not serve as that version. Inferred; no
+author states it.
+
+Source: https://firebase.google.com/docs/firestore/transaction-data-contention
+
+> Mobile and web SDKs emulate optimistic concurrency transactions using write
+> preconditions on document versions.
+
+**Constraints.**
+
+- Managed service; every write passes through it, so it can stamp every change (Inferred).
+- The stamp is used for conditional writes (`Precondition.update_time`, quoted above).
+- What clock produces the stamp, and how cross-document comparability is achieved, is
+  not documented in the pages read (Unverified).
+
+**Costs and dissent.** None found in the pages read.
+
 ## Comparables that chose otherwise
 
-Most comparables let application code supply a time and stamp only when it does not: OpenTelemetry logs (T1), Log4j 2 through `TimestampMessage` (T4), Fluentd's clients (T8), Loki (T9), InfluxDB (T10), Kafka under `CreateTime` (T12, K4), Cassandra (K1) and HBase (K2). These chose otherwise, each with a stated why:
+The comparables named here let application code supply a time, and differ in what happens when it does not:
+
+- **The same field is stamped instead:** Log4j 2 through `TimestampMessage` (T4), Fluentd's clients (T8), InfluxDB (T10), Kafka under `CreateTime` (T12, K4), Cassandra (K1) and HBase (K2).
+- **That field stays unset, and a separate field is stamped:** OpenTelemetry logs (T1) leave `Timestamp` unset and fill `ObservedTimestamp`.
+- **A time is expected in every entry, and no fallback is documented:** Loki's push API (T9). Its shipping agents can assign one instead (T9, "Costs and dissent").
+
+These chose otherwise, each with a stated why:
 
 - **Rust `tracing` (T6): the event carries no time at all, and each consumer stamps it.** A timestamp in the core would cost every layer that does not want one, and would force `std` time on `no_std` users.
 - **Prometheus (T11): the server stamps at scrape, and client timestamps are discouraged.** Different times within one scrape break features that assume one, and most users who asked for client timestamps did not need them.
-- **Kafka topics set to `LogAppendTime` (T12, K4): the broker overwrites the producer's time.** The broker is more robust, its time increases monotonically, and retention behaves deterministically.
+- **Kafka topics set to `LogAppendTime` (T12, K4): the broker overwrites the producer's time.** KIP-32 lists the broker as more robust, its time as monotonically increasing, and retention as deterministic. The monotonic claim is the KIP's stated rationale; the 4.4.0 code read does not clamp the time across a change of leader, and a user has reported it going backwards (T12, Costs and dissent).
 - **OpenTelemetry metrics (K9): a gauge's measurement takes no caller-supplied time.** A request for one was declined, because each SDK would have to bucket measurements by time and decide when an old bucket is final.
 - **Kubernetes' node lifecycle controller (K7): the reader does not trust the writer's stamp for liveness.** It records its own local time when it sees a newer heartbeat, "to avoid the problem with time skew across the cluster".
 
@@ -2048,13 +2699,18 @@ Within those that accept a supplied time, two moved the default stamper in oppos
 - **Cassandra (K1) moved it from the server to the client library**, in Java driver 3.0, so that one client thread's writes stay in order and a retry keeps its first timestamp. Server stamping stays available, because of resistance to removing it.
 - **HBase (K2) proposed moving it the other way**: a server-stamped hybrid logical clock, with client timestamps deprecated. Users who supply event-time timestamps objected, and the deprecation has not proceeded.
 
-Python `logging` (T3) and Logback with SLF4J (T5) also give a logging call no time parameter, but no stated rationale was found for either. Flink's state TTL (K3) accepts no supplied time; event-time TTL was discussed and never built, with no stated rejection. Redis (K5), etcd (K6) and DynamoDB (K8) record no wall-clock write time on a key at all, and no stated rationale was found for any of the three.
+Python `logging` (T3) and Logback with SLF4J (T5) also give a logging call no time parameter, but no stated rationale was found for either. Flink's state TTL (K3) accepts no supplied time; event-time TTL was discussed and never built, with no stated rejection.
+
+etcd (K6) and DynamoDB (K8) record no wall-clock write time on a key. Redis (K5) records one only as an eviction clock under its LRM policies, at one-second resolution and wrapping. No stated rationale was found, in any of the three, for omitting a general write time. For DynamoDB that holds for the service; AWS's Java SDK v2 can stamp a tagged attribute client side, opt-in (K8).
+
+ZooKeeper (K10) and Cloud Firestore (K11) are the reverse case: the server stamps each change itself, and callers cannot set the time. ZooKeeper stamps a wall-clock `mtime` beside its transaction id; no stated rationale was found for keeping the wall time, beyond ZOOKEEPER-1366's decision to leave `mtime` on it. Firestore stamps each document's last change; no stated rationale was found.
+
+The systemd journal (T13) also takes no client-set time for its own stamps: it stamps every entry on receipt on a wall clock and a monotonic clock, and keeps a client's syslog timestamp only as an unvalidated field. Its design document gives the reason for the trusted fields a client cannot set: syslog stored the client's metadata, timestamp included, unverified. Its documentation states why it keeps the reception time, the boot id and a sequence number; no rationale specific to refusing a client-set reception time was found.
 
 ## Candidates not examined, or dropped
 
 - **The OpenTelemetry Collector's `filelog` receiver.** Covered through the issue that led to `ObservedTimestamp` (T1), which drew on it; not read separately.
 - **Telegraf, StatsD and Graphite.** Not reached.
-- **The systemd journal.** OpenTelemetry added a journal mapping in 2026 (pull request 4995, title only); not read.
 - **Java's `java.util.logging`.** Not read, so not reported.
 - **Prometheus's design document for out-of-order ingestion.** Hosted on Google Docs and not fetchable as raw text (Unverified).
 - **Kafka KIP-1030**, which made the one-hour future bound the default. Known only from the upgrade note quoted in T12 (Unverified beyond that note).
