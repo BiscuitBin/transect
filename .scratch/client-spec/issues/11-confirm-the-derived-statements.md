@@ -4,13 +4,12 @@
 
 A "Derived" statement follows from the maintainer's answers during the elicitation but was never put to them directly. Search the specification for "Derived" to find them: there were 29 such lines when this ticket was last revised, and some hold more than one statement. The handbook's page on working with the specifications says to confirm a Derived statement before building on it.
 
-Eight were listed in the plan the maintainer approved before the specification was written, and were not corrected then. They are still marked, because not correcting a list is weaker than confirming each item:
+Eight were listed in the plan the maintainer approved before the specification was written, and were not corrected then. They are still marked, because not correcting a list is weaker than confirming each item. Two of them, on the stamp and the position, are now one: open question 11 has since decided where a row's time comes from (pull request 6), which leaves only when it is taken:
 
 - Nesting establish inside an open establish fails loudly. One after another is fine; each is a new run.
 - The fake core applies the same declaration, row and tenant rules as the production core and records every write with its outcome. It has no data writer, no local databases and no queue bound.
 - A client handle may be used from several threads or tasks at once.
-- Every accepted row is stamped from the client's clock when it is written.
-- Positions are assigned when a row is accepted, so a row lost after that leaves a visible gap.
+- A row's position and its observed time are both taken when it is accepted, so a row lost afterwards leaves a visible gap.
 - A tenant-scoped keyed state table holds the latest value per tenant and key. Unattributed rows form their own group.
 - A row exactly at the maximum row size is accepted.
 - A declared table lasts as long as its confluence. Nothing removes one.
