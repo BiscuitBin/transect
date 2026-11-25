@@ -44,7 +44,7 @@ Standing guidance from the same elicitation: where practice exists, follow it ra
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done: question 19 decided and adopted in PR #5
 
 - [x] The survey covers at least three comparables at the broader system level and at least three at the framework and client level, each read from its official documentation or source code
 - [x] For each comparable the findings state what happens to the write (stored without the scope, refused, raised as an error, or stored with it), and whether and how the mismatch is made visible
@@ -57,11 +57,11 @@ Standing guidance from the same elicitation: where practice exists, follow it ra
 - [x] Proposed wording for the specification is given for the recommended option, as text for the maintainer to accept or change
 - [x] The findings, options, recommendation and proposed wording are written to the research file; a "Hand-back" section appended to this ticket summarises them and points to it, and both are committed
 - [x] The adversarial review ran at each key moment as `REVIEW.md` says, with reviewers that could open the sources, and the hand-back lists every finding with its verdict, its resolution and the reviewing model
-- [x] Question 19 is still open in the specification, no tracked file other than this ticket and its research file is changed, and no code is added
+- [x] Question 19 is still open in the specification, no tracked file other than this ticket and its research file is changed, and no code is added (true at hand-back; the maintainer has since decided question 19, and pull request 5 adopted it in the specification (commit `2d563fd`))
 
 ## Hand-back
 
-The work is in `research/02-a-tenant-named-for-a-tenant-free-table.md`, beside the issues folder. This section summarises it. Question 19 is still open: nothing here decides it.
+The work is in `research/02-a-tenant-named-for-a-tenant-free-table.md`, beside the issues folder. This section summarises it. Question 19 was still open at hand-back: nothing in the research decides it. The maintainer has since decided it, and pull request 5 adopted it in the specification: see "The maintainer's answers".
 
 ### Findings
 
@@ -199,7 +199,7 @@ Before the first review, a preflight confirmed that Codex ran `gpt-6-astra` and 
 
   > All checks passed and the worktree is unchanged.
 
-- **Changed files:** `git diff main --stat` shows only this ticket and its research file. The specification is unchanged, and open question 19 is still in it. No code was added.
+- **Changed files:** `git diff main --stat` shows only this ticket and its research file. The specification is unchanged, and open question 19 is still in it. No code was added. This held at hand-back; the maintainer has since decided question 19, and pull request 5 adopted it in the specification (commit `2d563fd`).
 - **`git status --short`** shows only `?? notes_2.md`, the user's own file, which this ticket did not touch.
 
 ### The maintainer's answers
@@ -209,7 +209,7 @@ Put to the maintainer after the hand-back, on 2026-11-24 (UTC), and answered as 
 - **What happens to a write that names a tenant for a tenant-free table?** The maintainer chose "A2: keep, count, log (Recommended)": the row is stored untenanted, a `tenant_dropped` counter counts the write, and its onset and total are logged at WARNING. This accepts the keyed-state cost the research names.
 - **Is a named tenant part of the row, or a separate parameter?** The maintainer chose "Separate parameter (Recommended)": `fits` never sees the tenant, so the rule for a row that does not fit does not apply.
 
-These answers decide question 19 in substance. The specification still carries it as open, and removing it is a separate change: the wording in the research file, its renumbering and the handbook's count of open questions.
+These answers decide question 19 in substance. The specification still carries it as open, and removing it is a separate change: the wording in the research file, its renumbering and the handbook's count of open questions. That change has since been made: pull request 5 (commit `2d563fd`) adopted A2, removed question 19 without reusing its number, and updated the handbook's count and the glossary.
 
 ### Acceptance
 
@@ -224,4 +224,4 @@ These answers decide question 19 in substance. The specification still carries i
 - [x] Proposed wording for the recommended option, and for C.
 - [x] Written to the research file, summarised here, and committed.
 - [x] Adversarial review at both key moments, with reviewers that opened the sources; every finding listed above.
-- [x] Question 19 still open, no other tracked file changed, and no code added.
+- [x] Question 19 still open, no other tracked file changed, and no code added: true at hand-back. The maintainer has since decided question 19, and pull request 5 adopted it in the specification.
