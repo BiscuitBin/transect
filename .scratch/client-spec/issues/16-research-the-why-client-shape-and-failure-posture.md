@@ -335,9 +335,9 @@ The resolution column gives the triage's solution. There, `r:` and a number give
 - **After the draft**, at `7ccfb0b`, the same.
 - **`just check-docs`** passed after every round.
 - **`/code-review`** (low, on `main...HEAD`) reported nothing: the diff holds only Markdown, with no code for it to check.
-- **Final**, at FINAL_COMMIT, the research file and this hand-back as reviewed and fixed. The commit that records this line changes only the line itself.
+- **Final**, at `edee66a`, the research file and this hand-back as reviewed and fixed. The commit that records this line changes only the line itself.
 
-  > FINAL_LINE
+  > All checks passed and the worktree is unchanged.
 
 - **Changed files:** `git diff main...HEAD --stat`, against the merge base `90f0abb`, shows only this ticket and its research file. `main` has since moved on (pull request #7, which closed tickets 01 and 02 and narrowed ticket 11); this branch does not touch those files. The specification is unchanged, and open question 18 is still in it. No code was added.
 
