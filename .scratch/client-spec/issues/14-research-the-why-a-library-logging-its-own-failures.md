@@ -95,9 +95,10 @@ Every quotation was checked by machine against the author's own re-fetch of its 
     - a stable name per kind of event: only OTel Rust and OTel .NET have one;
     - OTel Python's 20 s: a fixed bucket remembering only the last record, with the queue-full warning now logged on every drop.
   - **Corrected in part:** the standard facade, WARNING for dropped data, and the first occurrence logged at once, then throttled.
+  - **Confirmed in part:** records are structured, in OTel Rust, OTel Go, OTel .NET, the Collector and Vector; the Python libraries and OTel Java format a text message.
 - **Is the rule common? It is one library's rule.**
-  - Of the twelve, one, OTel Rust, logs the first occurrence at once, nothing more while it continues, and one total at the end. It does so only for a full queue.
-  - No library read applies it to a failed store or export.
+  - Of the twelve, one, OTel Rust, logs the first occurrence at once, nothing more while it continues, and one total at the end. It does so in its default processors, and only for a full queue.
+  - None of the twelve applies it to a failed store or export.
   - Two more have two of its three parts: OTel .NET, a total at shutdown with no onset, and OTel JS, an onset at Debug with a total when drops stop.
   - No rule is used by a majority.
 - **What the rule costs.**
@@ -124,7 +125,7 @@ Every review ran on Codex, codex-cli 0.172.0, with `gpt-6.2-sol`. That was the u
 - Before the first review, a preflight confirmed that Codex ran `gpt-6.2-sol` and could open a URL.
 - Each key moment ran two rounds, with two reviewers per round, one per lens.
 - Every finding was triaged, independently, by two fresh Claude Code subagents on Claude Opus 5.5 (`claude-opus-5-5`). Neither was the author or a reviewer.
-- In every round the two triage judges agreed on each verdict.
+- The two judges never split a finding between valid and invalid. Six times one judged a finding valid and the other valid only in part, or with a sub-point invalid. The table records the narrower verdict each time.
 
 The reviews, triage files and prompts are under `ai_tmp/client-spec-review/14/`, which is not committed.
 
@@ -256,7 +257,7 @@ For the maintainer. None is decided here.
 - [x] Every field under "Citing a comparable" for each system, L1 to L12 and G1 to G3, with fit under "Fit".
 - [x] Comparables that chose otherwise, with their why, under "Comparables that chose otherwise".
 - [x] The count of libraries read, and the plain answer, under "Is the rule common?": one library's rule.
-- [x] One verdict for each of `StandardFacade` and `OnsetThenTotal`, under "Verdicts".
+- [x] One verdict for each of `StandardFacade` and `OnsetThenTotal`, under "Verdicts". `StandardFacade`'s verdict excepts one clause, so whether it meets this box is subject to open point 5.
 - [x] Proposed wording where a verdict is not the first: for `OnsetThenTotal`, and for `StandardFacade`'s excepted clause. The specification is not edited.
 - [x] What the evidence bears on open question 22, with no recommendation; the question is still open, and the register's entry is untouched.
 - [x] This hand-back, pointing to the research file, both committed.
