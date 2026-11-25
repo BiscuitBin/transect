@@ -3,7 +3,7 @@
 - **Ticket:** `issues/14-research-the-why-a-library-logging-its-own-failures.md`. It covers the guarantees `StandardFacade` and `OnsetThenTotal` on the surface `HostLog` of `docs/specs/transect-client.allium`, the rules `OpenFailureEpisode`, `LogOnset`, `CountIntoEpisode`, `ReportEpisodesAtEnd` and `LogTotal`, and open question 22.
 - **Sources read:** every source on 2026-11-25 (UTC), which was 2026-11-24 in the researcher's local time.
 - **Web research:** authorised by the maintainer on 2026-11-24 for this ticket, for the agent working it, for its survey and triage subagents, and for its reviewers.
-- **State of this file:** draft for the first adversarial review, with its first round's findings applied. The findings are written, up to "Candidates not examined, or dropped". Fit, the answer to "is the rule common?", the costs argument, the two verdicts, any proposed wording and what the findings bear on are not written yet. They follow the first review.
+- **State of this file:** draft for the first adversarial review, with both of its rounds' findings applied. The findings are written, up to "Candidates not examined, or dropped". Fit, the answer to "is the rule common?", the costs argument, the two verdicts, any proposed wording and what the findings bear on are not written yet. They follow the first review.
 
 ## How the sources were checked
 
@@ -66,16 +66,16 @@ The elicitation's survey kept no links. Each claim below was checked against the
 | Common practice is the standard logging facade | **Corrected in part.** The four Python libraries use the standard `logging` module and OTel Java uses `java.util.logging`. Rust has no standard facade, only two de facto ones, and OTel Rust uses `tracing`, not `log`. OTel Go uses its own `ErrorHandler` and a `logr` logger, OTel .NET uses `EventSource`, and OTel JS its own `diag` API. | L1 to L10, G1, G2 |
 | A library-named logger | **Confirmed** where the facade has names: every Python library, OTel Java, and OTel Rust (its `tracing` target). OTel Go and OTel JS have no logger name. | L1 to L10 |
 | No handlers installed | **Corrected.** It is the Python guidance, and urllib3, OTel Python, OTel Java and OTel Rust follow it. ddtrace and sentry-python each add a `StreamHandler` at import, and OTel Go's defaults write to standard error. | L1, L6, L9, G1 |
-| WARNING for dropped data | **Corrected in part.** WARNING for a full queue in ddtrace, OTel Java (spans), OTel Python, OTel Rust, OTel .NET and urllib3. But OTel Go logs span drops only at Debug and log-record drops at a Warn its default logger hides. OTel JS logs the onset at Debug. sentry-python logs nothing by default. The Collector logs at Error. Vector logs a drop it did not intend at Error, and a full buffer's drops, which happen only with `drop_newest`, at debug. ddtrace logs a failed send at ERROR. | L1 to L12 |
-| A stable name per kind of event | **Corrected.** Only OTel Rust (named events), OTel .NET (numeric event IDs) and Vector (named internal events) have one. The others log a message template. OTel Rust's own maintainer calls stable names an aim it has "not there yet" reached. | L5, L7, L12 |
-| The first occurrence logged at once, then throttled | **Corrected in part.** True of ddtrace, OTel Python, the kernel, OTel Rust, the Collector, and Vector for a drop it did not intend. OTel Rust's record is collected only once the application installs a `tracing` subscriber. urllib3 logs the first occurrence at once but never throttles, so it bears out only the first half, and its `NullHandler` keeps the record silent until the application configures logging. Not true of OTel Java (spans: at the next export), OTel Go, OTel .NET (only at shutdown), sentry-python (nothing by default), OTel JS, whose onset is at Debug, or Vector's full buffer, reported at debug. | L1 to L12 |
+| WARNING for dropped data | **Corrected in part.** WARNING for a full queue in ddtrace, OTel Java (spans), OTel Python, OTel Rust, OTel .NET and urllib3. But OTel Go logs span drops only at Debug and log-record drops through a `Warn` helper that `logr` receives as `V(1)` Info, which its default logger hides. OTel JS logs the onset at Debug. sentry-python logs nothing by default. The Collector logs at Error. Vector logs a drop it did not intend at Error, and a full buffer's drops, which happen only with `drop_newest`, at debug. ddtrace logs a failed send at ERROR. | L1 to L12 |
+| A stable name per kind of event | **Corrected.** Only OTel Rust (named events) and OTel .NET (numeric event IDs) have one. Vector's internal event types do not put their name on the record. The others log a message template. OTel Rust's own maintainer calls stable names an aim it has "not there yet" reached. | L5, L7, L12 |
+| The first occurrence logged at once, then throttled | **Corrected in part.** True of ddtrace, OTel Python (unless another processor's identical warning came last in the same 20 s bucket), the kernel, OTel Rust, the Collector, and Vector for a drop it did not intend. OTel Rust's record is collected only once the application installs a `tracing` subscriber. urllib3 logs the first occurrence at once but never throttles, so it bears out only the first half, and its `NullHandler` keeps the record silent until the application configures logging. Not true of OTel Java (spans: at the next export), OTel Go, OTel .NET (only at shutdown), sentry-python (nothing by default), OTel JS, whose onset is at Debug, or Vector's full buffer, reported at debug. | L1 to L12 |
 | Records are structured | **Confirmed in part.** Key-value fields in OTel Rust, OTel Go (key-value arguments to `logr`), the Collector (zap fields), Vector and OTel .NET (event payloads). The Python libraries and OTel Java format a text message. | L1 to L12 |
 | ddtrace: one record per call site per 60 s, with "[N skipped]" | **Confirmed, with two corrections.** The key is the logger name, level, file and line. The count is a suffix on the next record that passes, never a record of its own, so if no record follows it is never written. | L1 |
 | OTel Java: 5 per minute, then 1 | **Confirmed for `ThrottlingLogger`**, read as a token bucket: a burst of 5 refilled at 5 a minute, then, for good, a bucket of 1 refilled at 1 a minute. But that class throttles the exporters and the metrics SDK, not the batch processors. The span processor logs a count per export cycle, and the log-record processor logs no drop at all. Until `v1.48.0` a bug let 5 a minute through when throttled. | L2 |
 | OTel Python: identical repeats suppressed within 20 s | **Corrected.** The filter remembers only the last record, and the 20 s is a fixed wall-clock bucket. The queue-full warning was logged once per processor until `v1.33.0`, was absent from `v1.34.0` to `v1.39.0`, and is logged on every drop since `v1.40.0`, subject only to that filter. | L3 |
 | Linux kernel: 10 per 5 s, then "N callbacks suppressed" | **Confirmed.** Per call site. The count is printed on the next call after the window, or never if none comes. | L4 |
-| OTel Rust: the onset once, and a total at shutdown | **Confirmed for queue-full drops only**, in the default batch span and batch log processors. The experimental async-runtime processors apply it to any failed send. Every other kind of failure, including a failed export, is logged on every occurrence. The total is written when the processor's shutdown begins, before the worker stops, and a provider's `Drop` also starts that shutdown. | L5 |
-| Separate periodic summary logs are uncommon | **Recorded by trigger; ruled on under "Fit".** A count separate from the failure record is written by OTel Java's span processor at each non-empty export, which runs on its schedule or when a batch fills, at WARNING. OTel Go's log processor writes one at each export tick (1 s by default), on a full batch, on flush and at shutdown, at a Warn its default logger hides. Vector writes one every 2 s at debug, only with `drop_newest`. sentry-python sends its count to its own service on later sends, not to the host's log. Outside the count, dd-trace-go writes an aggregate 60 s after the first error. | L2, L6, L9, L12, A1 |
+| OTel Rust: the onset once, and a total at shutdown | **Confirmed for queue-full drops only**, in the default batch span and batch log processors. The experimental async-runtime processors apply it to any failed send. A failed export is logged on every occurrence. A `force_flush` timeout is returned with no log, and records lost when shutdown times out are not counted. The total is written when the processor's shutdown begins, before the worker stops, and a provider's `Drop` also starts that shutdown. | L5 |
+| Separate periodic summary logs are uncommon | **Recorded by trigger; ruled on under "Fit".** A count separate from the failure record is written by OTel Java's span processor at each non-empty export, which runs every 5 s or at 512 spans by default, and on flush and shutdown, at WARNING. OTel Go's log processor writes one each time its worker wakes (1 s by default), on a full batch, on flush and at shutdown, through a `Warn` helper its default logger hides. Vector writes one every 2 s at debug, only with `drop_newest`. sentry-python sends its count to its own service on later sends, not to the host's log. Outside the count, dd-trace-go writes an aggregate 60 s after the first error. | L2, L6, L9, L12, A1 |
 
 ## The specification's text at the time of reading
 
@@ -308,17 +308,17 @@ What each writes to the host's log for lost data, at the tag read. "At once" mea
 | # | Library | Rule for a full queue | Key | Numbers | Other failures | Facade, name | Installs a handler | Level | Stable name | At once |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | L1 | ddtrace | rate limit, count on the next record | logger, level, file, line | 1 per 60 s | failed send: same limit, at ERROR | `logging`, module name | yes, `StreamHandler` | WARNING | no | yes |
-| L2 | OTel Java | spans: count per cycle; log records: none | per processor | once per export | export failure: rate limit (`ThrottlingLogger`) | `java.util.logging`, class name | no | WARNING | no | no |
-| L3 | OTel Python | every occurrence, through a duplicate filter | last record, per logger | 20 s bucket | export failure: ERROR, same filter | `logging`, module name | no (opt-in only) | WARNING | no | yes |
+| L2 | OTel Java | spans: count per cycle; log records: none | per processor | spans: once per non-empty export (5 s or 512 spans by default; flush; shutdown) | export failure: rate limit (`ThrottlingLogger`) | `java.util.logging`, class name | no | WARNING | no | no |
+| L3 | OTel Python | every occurrence, through a duplicate filter | last record, per logger | 20 s bucket | export failure: ERROR, same filter | `logging`, module name | no (opt-in only) | WARNING | no | yes, unless another processor's identical warning passed last in the same 20 s bucket |
 | L4 | Linux kernel | rate limit, count on the next call | call site | 10 per 5 s | — | `printk`, caller's level | n/a | caller's | no | yes |
-| L5 | OTel Rust | **onset then total** | per processor | once, then at shutdown | export failure: every occurrence, ERROR | `tracing`, target `opentelemetry_sdk` | no | WARN | yes | yes, but collected only once the application installs a `tracing` subscriber |
-| L6 | OTel Go | spans: none at default level; log records: count per cycle, hidden by default | per processor | once per export (1 s) | export failure: every occurrence | `ErrorHandler` and `logr`, no name | yes, standard error | Debug; Warn | no | no |
+| L5 | OTel Rust | **onset then total** | per processor | once, then a snapshot when shutdown begins | export failure: every occurrence, ERROR; flush timeout: not logged | `tracing`, target `opentelemetry_sdk` | no | WARN | yes | yes, but collected only once the application installs a `tracing` subscriber |
+| L6 | OTel Go | spans: none at default level; log records: count per cycle, hidden by default | per processor | log records: each worker wake (1 s timer, full batch, flush, shutdown) | export failure: every occurrence to the error handler; returned to the caller on flush, and on log-record shutdown | `ErrorHandler` and `logr`, no name | yes, standard error | Debug; `V(1)` Info, named Warn | no | no |
 | L7 | OTel .NET | total at shutdown only | per processor | once, at shutdown | export failure: every occurrence, Error | `EventSource` `OpenTelemetry-Sdk` | no output by default | Warning | yes, event ID | no |
 | L8 | OTel JS | spans: onset at Debug, total at recovery; log records: none | per processor | once per episode | export failure: every occurrence | `diag`, no name | no (no-op) | Debug, then Warn | no | no |
-| L9 | sentry-python | none in the host log; a count to Sentry, carried on later sends | category and reason | at the next send, after 30 s or 60 s; at once on flush | — | `logging`, `sentry_sdk.errors` | yes, gated by `debug` | — | no | no |
+| L9 | sentry-python | none in the host log; a count to Sentry, carried on later sends | category and reason | at the next send, after 30 s or 60 s; on flush, queued without the time test, best effort | — | `logging`, `sentry_sdk.errors` | yes, gated by `debug` | — | no | no |
 | L10 | urllib3 | every occurrence (a discarded connection) | — | — | retry: every occurrence | `logging`, module name | `NullHandler` only | WARNING | no | yes, but silent until the application configures logging (`NullHandler`) |
-| L11 | OTel Collector | sampling, no count | level and message | 10 per 10 s, then 1 in 100 | the same sampling | zap, per component | yes; it is the host | Error | no | yes |
-| L12 | Vector | blocks by default; with `drop_newest`, a count every 2 s at debug, through the rate limit | buffer and stage; then call site and component in the limiter | 2 s tick; limit 1 per 10 s | a drop it did not intend: rate limit, count on the next event, at Error | `tracing` | yes; it is the host | debug (full buffer); Error (a drop it did not intend) | yes, named event | no for a full buffer (debug); yes for a drop it did not intend |
+| L11 | OTel Collector | sampling, no count | level and message | 10 per 10 s, then 1 in 100 | the same sampling | zap, per component | yes; it is the host | Error | no | usually; not when its counter is already spent, by the same message for another reason or by a message hashed to the same counter |
+| L12 | Vector | blocks by default; with `drop_newest`, a count every 2 s at debug, through the rate limit | buffer and stage; then call site and component in the limiter | 2 s tick; limit 1 per 10 s | a drop it did not intend: rate limit, count on the next event, at Error | `tracing` | yes; it is the host | debug (full buffer); Error (a drop it did not intend) | no; a fixed message and fields | no for a full buffer (debug); yes for a drop it did not intend |
 
 urllib3's record is a connection discarded from a full pool, not lost telemetry. It is the closest thing urllib3 has, and is counted with that caveat.
 
@@ -328,7 +328,7 @@ urllib3's record is a connection discarded from a full pool, not lost telemetry.
 
 **What it does.** Read at `v4.17.2`.
 
-- Every internal logger gets a filter that lets one record per key through per 60 s, configurable by `DD_TRACE_LOGGING_RATE`. 0 turns the limit off. A record logged the plain way, as the writer's are, is keyed on its logger name, level, file and line. A record that carries a `product` in `extra` is keyed on its message, whose rate `set_tag_rate_limit` can change. When the logger's effective level is DEBUG, the filter passes every record, at every level, with no limit.
+- Every internal logger gets a filter that lets one record per key through per 60 s, configurable by `DD_TRACE_LOGGING_RATE`. 0 turns the limit off. A record logged the plain way, as the writer's are, is keyed on its logger name, level, file and line. A record that carries a `product` in `extra` is keyed on its message. For any record, `set_tag_rate_limit` can set the interval for its message, even when `DD_TRACE_LOGGING_RATE` is 0; at this tag only appsec and dynamic instrumentation call it, not the writer. When the logger's effective level is DEBUG, the filter passes every record, at every level, with no limit.
 
   Source: https://github.com/DataDog/dd-trace-py/blob/v4.17.2/ddtrace/internal/logger.py
 
@@ -409,6 +409,12 @@ No stated rationale was found for the 60 s, nor for WARNING on a full buffer and
   >             "BatchSpanProcessor dropped "
   >                 + dropped
   >                 + " span(s) since the last export because the queue is full"
+
+  Source: https://github.com/open-telemetry/opentelemetry-java/blob/v1.68.0/sdk/trace/src/main/java/io/opentelemetry/sdk/trace/export/BatchSpanProcessorBuilder.java
+
+  >   static final long DEFAULT_SCHEDULE_DELAY_MILLIS = 5000;
+
+  >   static final int DEFAULT_MAX_EXPORT_BATCH_SIZE = 512;
 
 - **A full log-record queue** is not logged at all: only an internal metric is recorded. Checked by `git grep -n -E 'logger\.log' -- sdk/logs/src/main/java/io/opentelemetry/sdk/logs/export/BatchLogRecordProcessor.java` on a clone at `6700a70` (`v1.68.0`), which finds only "Exporter failed" at FINE and "Exporter threw an Exception" at WARNING.
 - **`ThrottlingLogger`** spends from a token bucket that starts full at 5 and refills at 5 a minute, one token every 12 s. The first time a record finds the bucket empty, the instance switches for the rest of its life to a bucket of 1 that refills at 1 a minute. That bucket is emptied at the switch. The logger logs that it is throttling, and logs the record too. So 5 records can pass at once, more can pass in the first minute if they are spaced out, and a logger that never outruns the refill is never throttled. It wraps the OTLP exporters and parts of the metrics SDK, not the batch processors.
@@ -513,7 +519,7 @@ Source: https://github.com/open-telemetry/opentelemetry-java/pull/8167#pullreque
   >             # it filters out useful logs.
   >             time.time() // 20,
 
-- Inferred from the code: any other record in between resets the filter, two repeats on either side of a bucket boundary both pass, and nothing counts what was suppressed.
+- Inferred from the code: any other record in between resets the filter, two repeats on either side of a bucket boundary both pass, and nothing counts what was suppressed. The logger and its one filter are module-level and shared by every batch processor in the process, and the signal is a formatting argument, not part of the template. So one processor's drop warning can suppress another's first, for spans or log records, in the same bucket.
 - **History.** The span processor logged the full queue once per processor, until `v1.33.0`:
 
   Source: https://github.com/open-telemetry/opentelemetry-python/blob/v1.33.0/opentelemetry-sdk/src/opentelemetry/sdk/trace/export/__init__.py
@@ -589,7 +595,7 @@ Source: https://github.com/open-telemetry/opentelemetry-python/issues/4323#issue
 
 - The shared `printk_ratelimit()` uses one state for every caller, and the header says not to use it.
 
-**Stated why.** A code comment, of unknown date:
+**Stated why.** For rate limiting `printk` at all, a code comment of unknown date on the shared limiter, `__printk_ratelimit`:
 
 Source: https://github.com/torvalds/linux/blob/v7.3/kernel/printk/printk.c
 
@@ -603,6 +609,14 @@ Source: https://github.com/torvalds/linux/commit/5f97a5a8799b8d7d0afdb9d68a50a4e
 > Due to the rcupreempt.h WARN_ON trigged, I got 2G syslog file.  For some
 > serious complaining of kernel, we need repeat the warnings, so here I isolate
 > the ratelimit part of printk.c to a standalone file.
+
+For a state per call site, the header that declares the shared limiter:
+
+Source: https://github.com/torvalds/linux/blob/v7.3/include/linux/printk.h
+
+>  * Please don't use printk_ratelimit(), because it shares ratelimiting state
+>  * with all other unrelated printk_ratelimit() callsites.  Instead use
+>  * printk_ratelimited() or plain old __ratelimit().
 
 No stated rationale was found for 10 and 5 s themselves, which predate git. Searched the 33 commits on `lib/ratelimit.c` up to `v7.3`.
 
@@ -653,12 +667,15 @@ Source: https://github.com/torvalds/linux/commit/6b1d174b0c27b5de421eda55c2731f3
 
   > default = ["trace", "metrics", "logs", "internal-logs"]
 
-- **In the default processors, every other kind is logged on every occurrence.** A failed export is ERROR each time, and so is a shutdown timeout. A record emitted after shutdown is a WARN each time.
+- **In the default processors, a failed export is ERROR each time**, and so is a shutdown timeout. The shutdown timeout's own comment says records still queued or mid-export are then lost uncounted. A record emitted after shutdown is a WARN each time. A `force_flush` timeout is returned to the caller with no log, and a full control channel is logged only at debug.
 
   Source: https://github.com/open-telemetry/opentelemetry-rust/blob/opentelemetry_sdk-0.33.1/opentelemetry-sdk/src/logs/batch_log_processor.rs
 
   >             otel_error!(
   >                 name: "BatchLogProcessor.ExportError",
+
+  >                             // TODO: When shutdown times out, log records still
+  >                             // in the queue or mid-export are silently lost.
 
   The metrics reader has no queue and no drop counter, and its failed exports are ERROR each time. Checked by `git grep -n -i -E 'thrott|rate.?limit|log_once|Once::new' -- '*.rs'` at `372ebbc`. It finds no throttling helper for internal logs, only a TODO in the async log processor.
 - **When the total is written.** Inside the processor's shutdown. A provider's `Drop` calls shutdown when its last reference goes. Inferred: if neither happens, as with a provider held in a `static` or a process that ends by `std::process::exit` or a signal, no total is written.
@@ -771,11 +788,14 @@ Source: https://github.com/open-telemetry/opentelemetry-rust/blob/opentelemetry_
 
   > 			// There are no more enqueued spans. Make final export.
 
-- **Log records.** The count since the last export is logged at Warn before each export, at flush and at shutdown. Exports run every second by default.
+- **Log records.** The count since the last check is logged through the SDK's `Warn` helper each time the worker wakes: on its timer (1 s by default), on a full batch, at flush and at shutdown. It is logged whether or not there is a batch to export. The same goroutine makes the export call, so a slow export delays the next count.
 
   Source: https://github.com/open-telemetry/opentelemetry-go/blob/v1.47.0/sdk/log/batch.go
 
   > 		global.Warn("dropped log records", "dropped", d)
+
+  > func (b *BatchProcessor) exportBatch(buf []Record) {
+  > 	b.logDroppedRecords()
 
 - **The default logger shows only errors**, so neither line appears unless the application sets a logger:
 
@@ -786,7 +806,18 @@ Source: https://github.com/open-telemetry/opentelemetry-rust/blob/opentelemetry_
 
   > func Warn(msg string, keysAndValues ...any) {
 
-- **A failed export** goes to the error handler, which by default prints every error to standard error:
+  > 	GetLogger().V(1).Info(msg, keysAndValues...)
+
+  `Warn` is not a warning level: `logr` has none, and the helper logs at `V(1)` Info.
+
+- **A failed export** on the timer or full-batch path goes to the error handler, which by default prints every error to standard error. In the log processor, one during `ForceFlush` or `Shutdown` is returned to the caller instead, and so is a failed span export during `ForceFlush`:
+
+  Source: https://github.com/open-telemetry/opentelemetry-go/blob/v1.47.0/sdk/log/batch.go
+
+  > 			case req := <-b.flush:
+  > 				err := b.flushExporter(req.ctx)
+  > 				req.respond(err)
+
 
   Source: https://github.com/open-telemetry/opentelemetry-go/blob/v1.47.0/handler.go
 
@@ -895,7 +926,7 @@ Source: https://github.com/open-telemetry/opentelemetry-dotnet/issues/3881#issue
 
 - Inferred: if no span is accepted after the drops, as at shutdown, the Warn is never written.
 - Log records are dropped with a metric and no log.
-- The `diag` logger is a no-op until the application sets one. Since pull request #6668, `startNodeSDK()` sets a console logger at INFO by default.
+- The `diag` logger is a no-op until the application sets one. Since pull request #6668, `startNodeSDK()` sets a console logger at INFO by default. At `v3.1.1` it is deprecated and delegates to `startNodeSdk()`, which also defaults to INFO.
 
 **Stated why.** By the pull request's author, a contributor (#3610, merged 2023). The review discussed the onset line:
 
@@ -927,7 +958,7 @@ Source: https://github.com/open-telemetry/opentelemetry-js/pull/3610#discussion_
 
 **What it does.** Read at `3.0.0`.
 
-- A full transport queue writes no log line. It records a lost event, which the SDK reports to Sentry itself as a client report, aggregated by category and reason. Client reports are on by default. No timer sends one. A pending report is attached to the next envelope sent once 30 s have passed since the last report, is sent as an envelope of its own after a send once 60 s have passed, and is sent whatever the time on `flush`:
+- A full transport queue writes no log line. It records a lost event, which the SDK reports to Sentry itself as a client report, aggregated by category and reason. Client reports are on by default. No timer sends one. A pending report is attached to the next envelope sent once 30 s have passed since the transport last checked, and is sent as an envelope of its own after a send once 60 s have passed. Each check that passes the time test restarts the clock, even when there is nothing to report. `flush` with a positive timeout queues a report that skips the time test, but ignores whether the worker accepted it, so a full queue can lose it. A timeout of 0 queues nothing:
 
   Source: https://github.com/getsentry/sentry-python/blob/3.0.0/sentry_sdk/transport.py
 
@@ -940,7 +971,20 @@ Source: https://github.com/open-telemetry/opentelemetry-js/pull/3610#discussion_
 
   >         client_report = self._fetch_pending_client_report(force=force, interval=60)
 
+  >         if timeout > 0:
   >             self._worker.submit(lambda: self._flush_client_reports(force=True))
+
+  >         discarded_events = self._discarded_events
+  >         self._discarded_events = defaultdict(int)
+  >         self._last_client_report_sent = time.time()
+  >
+  >         if not discarded_events:
+  >             return None
+
+  Source: https://github.com/getsentry/sentry-python/blob/3.0.0/sentry_sdk/worker.py
+
+  >         except FullError:
+  >             return False
 
 - Its logger `sentry_sdk.errors` gets a `StreamHandler` at import and a filter that passes records only when `debug` is on. Inferred from the filter sitting on the logger: with `debug` off, the application's own handlers see nothing either.
 
@@ -1020,7 +1064,7 @@ Source: https://github.com/urllib3/urllib3/issues/3167
 
 **What it does.** Read at `v0.166.0`, with zap `v1.28.0`.
 
-- Every log the Collector writes about itself goes through zap's sampler, on by default: per level and message, the first 10 in each 10 s pass, then one in 100. Nothing records what was sampled out.
+- Every log the Collector writes about itself goes through zap's sampler, on by default: per level and message, the first 10 in each 10 s pass, then one in 100. Nothing records what was sampled out. Counters are kept 4,096 per level and chosen by a hash of the message, so two messages can share one, and a message seen for the first time can be sampled out.
 
   Source: https://github.com/open-telemetry/opentelemetry-collector/blob/v0.166.0/service/telemetry/otelconftelemetry/factory.go
 
@@ -1035,11 +1079,17 @@ Source: https://github.com/urllib3/urllib3/issues/3167
   > // each tick. If more Entries with the same level and message are seen during
   > // the same interval, every Mth message is logged and the rest are dropped.
 
+  > 	_countersPerLevel = 4096
+
+  > 	j := fnv32a(key) % _countersPerLevel
+
 - A request refused by a full queue is logged at Error, with the count of rejected items, through that sampler:
 
   Source: https://github.com/open-telemetry/opentelemetry-collector/blob/v0.166.0/exporter/exporterhelper/internal/base_exporter.go
 
   > 		be.Set.Logger.Error("Exporting failed. Rejecting data."+be.ExportFailureMessage,
+
+  The message does not change with the reason, which is in an error field, so a rejection by a full queue shares its counter with the same exporter's other rejections.
 
 **Stated why.** The configuration's own comment, then two pull requests by members (#2020, 2020; #9282, 2024):
 
@@ -1073,7 +1123,7 @@ Source: https://github.com/open-telemetry/opentelemetry-collector/pull/8134#disc
 
 > I do not think merely passing a single sampled logger to every component to be used for every message is good enough since it can result in critical one-off messages being lost.
 
-The Collector's documentation also lists, as events it logs, both when dropping begins and when it stops:
+The Collector's documentation also lists, as events it logs, both when dropping begins and when it stops. The page names no version. At `v0.166.0` the memory limiter logs such a pair, with no count: a Warn when it starts refusing data and an Info when it resumes. The exporter queue in the table logs each rejection and no stop. The project's own observability document lists start and stop events among the aspects that "need to be observable":
 
 Source: https://opentelemetry.io/docs/collector/internal-telemetry/
 
@@ -1081,11 +1131,22 @@ Source: https://opentelemetry.io/docs/collector/internal-telemetry/
 > saturation, downstream saturation, downstream unavailable, etc.
 > Data dropping due to throttling stops.
 
+Source: https://github.com/open-telemetry/opentelemetry-collector/blob/v0.166.0/internal/memorylimiter/memorylimiter.go
+
+> 		ml.logger.Warn("Memory usage is above soft limit. Refusing data.", memstatToZapField(ms))
+
+> 			ml.logger.Info("Memory usage back within limits. Resuming normal operation.", memstatToZapField(ms))
+
+Source: https://github.com/open-telemetry/opentelemetry-collector/blob/v0.166.0/docs/observability.md
+
+>   - For start or stop events, an appropriate hysteresis must be defined to avoid
+>     generating too many events.
+
 ### L12. Vector: a rate limit per call site and component
 
 **What it does.** Read at `v0.62.0`.
 
-- A layer over its `tracing` output, on by default: per call site and component, the first event in a 10 s window passes, the second is replaced by a notice that suppression has begun, and the rest are silent. If the window saw a second event, the next event after it brings a count first, and the count includes the event the notice replaced.
+- A layer over its `tracing` output, on by default: per call site and component, the first event in a 10 s window passes, the second is replaced by a notice that suppression has begun, and the rest are silent. If the window saw a second event, the next event after it brings a count first, and the count includes the event the notice replaced. It counts suppressed log records, not the events they reported: a suppressed drop record's own count of dropped events is not carried into it.
 
   Source: https://github.com/vectordotdev/vector/blob/v0.62.0/lib/tracing-limit/src/lib.rs
 
@@ -1099,13 +1160,22 @@ Source: https://opentelemetry.io/docs/collector/internal-telemetry/
 
   >             if previous_count > 1 {
 
-- Unintended dropped events are logged at error, as a named internal event with a count field. Intended drops are logged at debug.
+  >                     "Internal log [{}] has been suppressed {} times.",
+
+- Unintended dropped events are logged at error, as an internal event type with a count field, whose name is not on the record. Intended drops are logged at debug.
 
   Source: https://github.com/vectordotdev/vector/blob/v0.62.0/lib/vector-common/src/internal_event/component_events_dropped.rs
 
   >         let message = "Events dropped";
 
-- **A full buffer** blocks by default, and loses nothing. Only with `when_full` set to `drop_newest` does it drop. Then a reporter task checks every 2 s and, when the count has changed, emits a `BufferEventsDropped` event with the delta, at debug. An unintended drop of unprocessable events is the same event at error. The event then passes through the same level filter and rate limiter as every other. The 2 s is the reporter's tick, not how often a line reaches the log. At the default level, info, the debug line is not shown.
+  Source: https://github.com/vectordotdev/vector/blob/v0.62.0/lib/vector-common/src/internal_event/mod.rs
+
+  > #[cfg(not(any(test, feature = "test")))]
+  > pub fn emit(event: impl InternalEvent) {
+  >     event.emit();
+  > }
+
+- **A full buffer** blocks by default, and loses nothing. Only with `when_full` set to `drop_newest` does it drop. Then a reporter task checks every 2 s and, when the count has changed, emits a `BufferEventsDropped` event with the delta, at debug. An unintended drop of unprocessable events is the same event at error. On Vector's standard output and error, the event then passes through the same level filter and rate limiter as every other. The `internal_logs` source, which feeds Vector's own pipeline, applies the level filter and no rate limit unless `--internal-logs-source-rate-limit` is set. The 2 s is the reporter's tick, not how often a line reaches the log. At the default level, info, the debug line is not shown.
 
   Source: https://github.com/vectordotdev/vector/blob/v0.62.0/lib/vector-buffers/src/lib.rs
 
@@ -1124,6 +1194,8 @@ Source: https://opentelemetry.io/docs/collector/internal-telemetry/
   Source: https://github.com/vectordotdev/vector/blob/v0.62.0/src/trace.rs
 
   >             RateLimitedLayer::new(formatter).with_default_limit(internal_log_rate_limit);
+
+  >     // The broadcast layer feeds the internal_logs source. By default it is NOT rate limited so
 
 **Stated why.** Both by contributors: issue #418 (2019) and pull request #971 (2019).
 
@@ -1229,7 +1301,7 @@ Source: https://github.com/apache/logging-log4j2/blob/rel/2.26.1/log4j-api/src/m
 
 >     static final Level DEFAULT_FALLBACK_LISTENER_LEVEL = Level.ERROR;
 
-In the discussion that led to it, LOG4J2-1080 (2015), one commenter asked for a start and a stop event, and the patch's author agreed. No stated rationale was found for logging only the start. The issue was read through Jira's REST API.
+In the discussion that led to it, LOG4J2-1080 (2015), one commenter asked for a start and a stop event, and the reporter, who attached the first patch, agreed. The policy that shipped was written later by another participant. No stated rationale was found for logging only the start. The issue was read through Jira's REST API.
 
 Source: https://issues.apache.org/jira/browse/LOG4J2-1080
 
@@ -1258,7 +1330,7 @@ Source: https://issues.apache.org/jira/browse/LOG4J2-1080
 
 These bear on what a total at the end can reach. They are facts about the platform and the runtimes, not comparables.
 
-- **Graceful termination.** If a container defines a `preStop` hook, the kubelet runs it first. The runtime then sends the stop signal: typically TERM, or the image's `STOPSIGNAL` where it sets one. A stop signal set in the container's lifecycle is alpha and off by default. After the grace period, 30 s by default and shared with the hook, it sends SIGKILL.
+- **Graceful termination.** If a container defines a `preStop` hook, the kubelet runs it first. The runtime then sends the stop signal: typically TERM, or the image's `STOPSIGNAL` where it sets one. A stop signal set in the container's lifecycle is alpha and off by default. After the grace period, 30 s by default and shared with the hook, it sends SIGKILL. The stop signal goes to process 1 in each container. If a `preStop` hook is still running when the grace period ends, the kubelet extends it once, by 2 s.
 
   Source: https://kubernetes.io/docs/concepts/workloads/pods/pod-termination/
 
@@ -1273,6 +1345,9 @@ These bear on what a total at the end can reach. They are facts about the platfo
   > hook and the terminationGracePeriodSeconds
   > in the Pod spec is not set to 0, the kubelet runs that hook inside of the container.
 
+  > If the preStop hook is still running after the grace period expires, the kubelet requests
+  > a small, one-off grace period extension of 2 seconds.
+
 - **Node-pressure eviction.** Hard eviction allows no grace period.
 
   Source: https://kubernetes.io/docs/concepts/scheduling-eviction/node-pressure-eviction/
@@ -1280,6 +1355,21 @@ These bear on what a total at the end can reach. They are facts about the platfo
   > A hard eviction threshold has no grace period. When a hard eviction threshold is
   > met, the kubelet kills pods immediately without graceful termination to reclaim
   > the starved resource.
+
+  In the kubelet at `v1.36.0`, a hard eviction passes a grace period of 1 s, and the kubelet raises any grace period under 2 s to 2 s before asking the runtime to stop the container. containerd `v2.2.0` sends the stop signal first and SIGKILL when that time is up. Other runtimes were not checked.
+
+  Source: https://github.com/kubernetes/kubernetes/blob/v1.36.0/pkg/kubelet/eviction/eviction_manager.go
+
+  > 	immediateEvictionGracePeriodSeconds = 1
+
+  Source: https://github.com/kubernetes/kubernetes/blob/v1.36.0/pkg/kubelet/kuberuntime/kuberuntime_manager.go
+
+  > 	// A minimal shutdown window for avoiding unnecessary SIGKILLs
+  > 	minimumGracePeriodInSeconds = 2
+
+  Source: https://github.com/containerd/containerd/blob/v2.2.0/internal/cri/server/container_stop.go
+
+  > 		// sigTermCtx was exceeded. Send SIGKILL
 
 - **An OOM kill.** The kernel's OOM killer sends SIGKILL. No kubernetes.io page found says so; the kernel source does.
 
@@ -1299,7 +1389,14 @@ These bear on what a total at the end can reach. They are facts about the platfo
 
   (line breaks collapsed)
 
-- **SIGTERM, unhandled, ends the process too.** Its default action is to terminate.
+- **SIGTERM, unhandled, ends the process, unless the process is its PID namespace's init, as a container's process 1 is.** Its default action is to terminate. But a signal from an ancestor namespace reaches init only if init has a handler for it, SIGKILL and SIGSTOP excepted. So a host running as process 1 that handles no TERM keeps running until SIGKILL.
+
+  Source: https://man7.org/linux/man-pages/man7/pid_namespaces.7.html
+
+  > a process in an ancestor namespace can—subject to the usual permission checks described in kill(2)—send signals to the "init" process of a child PID namespace only if the "init" process has established a handler for that signal.
+
+  (line breaks collapsed)
+
   - Python installs no SIGTERM handler, and its exit handlers do not run when a signal it does not handle kills it:
 
     Source: https://docs.python.org/3.15/library/signal.html
@@ -1322,7 +1419,7 @@ These bear on what a total at the end can reach. They are facts about the platfo
 
     (line breaks collapsed)
 
-  Inferred from the above: a total still pending when the pod is told to stop is written only if the host ends establish before SIGKILL arrives. On a graceful termination, that means the host acts on the stop signal, or a `preStop` hook leads it to shut down in order, within the grace period. Once SIGKILL is sent, nothing more runs in that process and the pending total is never written. SIGKILL is sent at the end of the grace period, at a hard eviction, and when the OOM killer picks the host's own process.
+  Inferred from the above: a total still pending when the pod is told to stop is written only if the host ends establish before SIGKILL arrives. On a graceful termination, that means the host acts on the stop signal, or a `preStop` hook leads it to shut down in order, within the grace period. Once SIGKILL is sent, nothing more runs in that process and the pending total is never written. SIGKILL is sent at the end of the grace period; at a hard eviction, about 2 s after the stop signal, with containerd; and at once when the OOM killer picks the host's own process.
 
 ## Candidates not examined, or dropped
 
@@ -1336,4 +1433,4 @@ Not written yet. It follows the first adversarial review. So do the answer to "i
 
 ## Quotation check
 
-Run on 2026-11-25 (UTC) by `check_quotes.py`, against the author's own fetch of every source and not the survey agents' copies. Every quotation is a substring of its source, except the four marked "(line breaks collapsed)". Those come from rendered web pages, match only once runs of whitespace are collapsed, and their wording is verbatim. Every blockquote has a `Source:` line above it, which the check enforces.
+Run on 2026-11-25 (UTC) by `check_quotes.py`, against the author's own fetch of every source and not the survey agents' copies. Every quotation is a substring of its source, except the five marked "(line breaks collapsed)". Those come from rendered web pages, match only once runs of whitespace are collapsed, and their wording is verbatim. Every blockquote has a `Source:` line above it, which the check enforces.
