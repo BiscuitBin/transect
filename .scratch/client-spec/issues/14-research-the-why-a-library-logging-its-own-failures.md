@@ -243,9 +243,9 @@ For the maintainer. None is decided here.
 
   > All checks passed and the worktree is unchanged.
 
-- **Final**, at FINAL_COMMIT, the research file and this hand-back as reviewed and fixed:
+- **Final**, at `073a69e`, the research file and this hand-back as reviewed and fixed:
 
-  > FINAL_LINE
+  > All checks passed and the worktree is unchanged.
 
 - **Changed files:** `git diff main...HEAD --stat`, against the merge base `90f0abb`, shows only this ticket and its research file. `main` has moved on since this branch was cut, by pull request #7, which closed tickets 01 and 02. So a two-dot `git diff main` also shows those files' changes on `main`, which this branch did not make. The specification is unchanged, and open question 22 is still in it. `docs/project/open-decisions.md` is unchanged. No code was added.
 - **`git status --short`** is empty.
