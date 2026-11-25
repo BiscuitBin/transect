@@ -98,7 +98,7 @@ The vocabulary below follows the specification. A **run** is "one establish". A 
   >             if duplicates:
   >                 raise DuplicateTimeseries(duplicates)
 
-- **client_python's multiprocess mode merges per-process files with no check across processes.** It is the one place in this survey where Prometheus code merges data that separate processes wrote to local files. The first file that names a metric sets its help and type, and samples from every other file are added to it. That a worker with a different definition is merged under the first one seen, without an error, is Inferred from the code. Files from earlier runs are not reconciled: the directory must be wiped.
+- **client_python's multiprocess mode merges per-process files with no check across processes.** It is the one place in this survey where Prometheus code merges data that separate processes wrote to local files. The first file that names a metric sets its help and type, and samples from every other file are added to it. That a worker with a different definition is merged under the first one seen is Inferred from the code, and so is the absence of an error, with one exception found in the same code. When the first file read for a name is a histogram's, every sample with an `le` label is parsed as a bucket bound. A gauge does not reserve `le`, so another worker's gauge may carry one that is not a number, and collection then raises `ValueError`. That path was read, not run. Files from earlier runs are not reconciled: the directory must be wiped.
 
   Source: https://github.com/prometheus/client_python/blob/v0.26.0/prometheus_client/multiprocess.py#L74-L77 (quoted as prometheus-35)
 
@@ -111,6 +111,15 @@ The vocabulary below follows the specification. A **run** is "one establish". A 
 
   > This directory must be wiped
   > between process/Gunicorn runs (before startup is recommended).
+
+  Source: https://github.com/prometheus/client_python/blob/v0.26.0/prometheus_client/multiprocess.py#L132-L133 (quoted as author-75)
+
+  > if l[0] == 'le':
+  >                             bucket_value = float(l[1])
+
+  Source: https://github.com/prometheus/client_python/blob/v0.26.0/prometheus_client/metrics.py#L613 (quoted as author-76)
+
+  > _reserved_labelnames = ['le']
 
 - **The guidelines that bind every official client** intend metrics as file-static globals that register implicitly, while requiring registries to allow `register()` and `unregister()`.
 
@@ -246,7 +255,7 @@ Source: https://github.com/prometheus/docs/blob/31957d4da93dd215cad8c91be3e52051
   > When Prometheus scrapes a target, it attaches some labels automatically to the
   > scraped time series which serve to identify the scraped target:
 
-  A scrape configuration can give this up. With `honor_labels` set to true, which federation and scraping the Pushgateway use, the labels a target exposes win over the ones the server attaches. Inferred: two targets that expose the same name and labels then write one series. What the server does with them then was not examined.
+  A scrape configuration can give this up. With `honor_labels` set to true, which federation and scraping the Pushgateway use, the labels a target exposes win over the ones the server attaches. Inferred: two targets then write one series only if each exposes the same name and the same values for every label that would otherwise tell them apart, `instance` among them, because a server-side label a target does not expose is still attached. What the server does with such a series was examined only as far as one path in the scrape loop: a sample with a different value but the same timestamp as one already stored is dropped, counted and logged as a warning. Inferred: two writers reach that path only when they write the same timestamp. Whatever else happens to such a series was not examined.
 
   Source: https://github.com/prometheus/prometheus/blob/v3.16.0/docs/configuration/configuration.md#L381-L382 (quoted as author-2)
 
@@ -258,6 +267,10 @@ Source: https://github.com/prometheus/docs/blob/31957d4da93dd215cad8c91be3e52051
   > # Setting honor_labels to "true" is useful for use cases such as federation and
   > # scraping the Pushgateway, where all labels specified in the target should be
   > # preserved.
+
+  Source: https://github.com/prometheus/prometheus/blob/v3.16.0/scrape/scrape.go#L2073-L2075 (quoted as author-77)
+
+  > sl.l.Warn("Error on ingesting samples with different value but same timestamp", "num_dropped", appErrs.numDuplicates)
 
 - **Metadata is held per target in a scrape cache, keyed by name, and is overwritten when a target changes it.** It is not stored in the time-series database by default; storing it is an open proposal, issue #12608.
 
@@ -510,7 +523,7 @@ The check costs time on large gateways, as the passage quoted above (author-8) s
   > Note that violations of the Single-Writer principle are not semantic
   > errors, generally they result from misconfiguration.
 
-- **A duplicate registration returns a working instrument**, which must export data even if that causes a semantic error. The SDK warns unless a View corrects the conflict, and what the warning says depends on the conflict. A description set through a View avoids the warning. A conflict that a View selector can tell apart gets a renaming View recipe in the warning. Otherwise, as with differing units, the SDK reports both `Metric` objects with a generic warning.
+- **A duplicate registration returns a working instrument**, which must export data even if that causes a semantic error. The rest is recommended, not required: the SDK SHOULD warn unless a View corrects the conflict, and what the warning SHOULD say depends on the conflict. A description set through a View SHOULD avoid the warning. A conflict that a View selector can tell apart SHOULD get a renaming View recipe in the warning. Otherwise, as with differing units, the SDK SHOULD report both `Metric` objects with a generic warning. SDKs differ in how far they follow it (below).
 
   Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63.0/specification/metrics/sdk.md (quoted as otel-16, otel-17)
 
@@ -579,7 +592,7 @@ The check costs time on large gateways, as the passage quoted above (author-8) s
 
   The remedy jack-berg proposed in that comment was a no-op instrument and a logged error; pull request #2317 instead required a functional instrument (otel-16).
 
-- **Shared instrumentation cannot guarantee one registration per name, and a strict check is routinely switched off.** anuraaga (contributor):
+- **Shared instrumentation cannot guarantee one registration per name, and in one contributor's experience a strict check was switched off almost everywhere.** anuraaga (contributor), from one internal framework:
 
   Source: https://github.com/open-telemetry/opentelemetry-specification/issues/2226#issuecomment-1023854851 (quoted as otel-23, otel-24)
 
@@ -816,7 +829,7 @@ Source: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/3
 
   > Validation can also fail if the schema is not available, such as when you forgot to add it to the production schema registry before putting the tracking code live.
 
-- **An unreachable schema registry now crashes Enrich instead.** The trigger is a resolution "system error", which the code names RepoFailure or ClientFailure (server unavailability, connection issues). A schema that does not exist still yields a failed event. The failed-events page still lists the outage as a cause of failed events; the current code and its commit say otherwise. The change was committed in December 2025 and released in Enrich 6.5.0 on 2026-01-09. Its stated reason is the code comment it adds (registries-29, below). The issue number it names, #157, resolves in the public repository to an unrelated issue of 2020.
+- **An unreachable schema registry now crashes Enrich instead.** The trigger is a resolution "system error", which the code names RepoFailure or ClientFailure (server unavailability, connection issues). A schema that does not exist still yields a failed event, unless the lookup also failed outright: the resolver counts a system error when any custom repository returned only failures, or every Iglu Central mirror did, even if another repository answered that the schema was not found. That was read in iglu-scala-client `4.3.1`, the version Enrich `6.15.0` pins, from its Maven Central sources jar, because it has no public tag (author-88, author-89, below). The failed-events page still lists the outage as a cause of failed events; the current code and its commit say otherwise. The change was committed in December 2025 and released in Enrich 6.5.0 on 2026-01-09. Its stated reason is the code comment it adds (registries-29, below). The issue number it names, #157, resolves in the public repository to an unrelated issue of 2020.
 
   Source: https://docs.snowplow.io/docs/fundamentals/failed-events/ (quoted as registries-20)
 
@@ -841,6 +854,12 @@ Source: https://github.com/open-telemetry/opentelemetry-collector-contrib/pull/3
   Source: https://github.com/snowplow/enrich/blob/6.15.0/CHANGELOG#L162-L169 (quoted as author-16)
 
   > 6.5.0 (2026-01-09)
+
+  Source: https://repo1.maven.org/maven2/com/snowplowanalytics/iglu-scala-client_2.13/4.3.1/iglu-scala-client_2.13-4.3.1-sources.jar!/com.snowplowanalytics.iglu/client/resolver/Resolver.scala (quoted as author-88, author-89)
+
+  > val customUnavailable = custom.values.exists(hasOnlyFatalErrors)
+
+  > igluCentral.nonEmpty && igluCentral.values.forall(hasOnlyFatalErrors)
 
 **Stated why.**
 
@@ -1169,6 +1188,29 @@ Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63
 
   > I see a lot of operation timeouts or network glitches in our cluster (atleast once in 2 weeks) with the schema-registry which could be resolved much easier with a retry solution and will not require our intervention.
 
+  rayokota (member) closed the issue in 2024 with a pull request that adds retries to the client's REST calls:
+
+  Source: https://github.com/confluentinc/schema-registry/issues/928 (quoted as registries-61)
+
+  > Fixed by https://github.com/confluentinc/schema-registry/pull/3424
+
+  Source: https://github.com/confluentinc/schema-registry/pull/3424 (quoted as author-72)
+
+  > We implement exponential backoff with full jitter
+
+  At `v8.4.1` the client retries a failed connection and the responses 408, 429, 500, 502, 503 and 504, three times by default, after random waits that grow with each attempt. Inferred: a registry outage shorter than that window no longer fails a send that misses the cache, and a longer one still does.
+
+  Source: https://github.com/confluentinc/schema-registry/blob/v8.4.1/client/src/main/java/io/confluent/kafka/schemaregistry/client/SchemaRegistryClientConfig.java#L44-L48 (quoted as author-73)
+
+  > public static final int MAX_RETRIES_DEFAULT = 3;
+
+  Source: https://github.com/confluentinc/schema-registry/blob/v8.4.1/client/src/main/java/io/confluent/kafka/schemaregistry/client/rest/RestService.java#L745-L748 (quoted as author-74)
+
+  > boolean isClientErrorToIgnore =
+  >         status == 408 || status == 429;
+  >     boolean isServerErrorToIgnore =
+  >         status == 500 || status == 502 || status == 503 || status == 504;
+
 **Fit.** Not yet written: it follows the first review.
 
 ### C9. Apache Pulsar: a schema registry inside the broker
@@ -1267,7 +1309,7 @@ Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63
 
 ### C10. AWS Glue Schema Registry and Apicurio Registry (brief)
 
-**What it does.** Both refuse at the moment a schema is registered. Neither was shown to validate each message. Read at `aws-glue-schema-registry` `v3.0.1` and Apicurio Registry `3.3.5`.
+**What it does.** Both refuse at the moment a schema is registered. With auto-registration on, which Glue's README says is off by default, registration happens in the producer's serializer, so a refusal can reach the producer while it serializes a record. AWS's guide says Glue's serializer throws for a record whose schema does not match a registered one, and the record is not sent. Apicurio's guide says that with auto-registration the registry applies its compatibility rules, and that "the SerDes" throws on incompatible versions, without saying which side; that a producer's send fails is Inferred. Neither path was traced in either system's code. Read at `aws-glue-schema-registry` `v3.0.1` and Apicurio Registry `3.3.5`, and AWS's developer guide read live.
 
 Source: https://github.com/awslabs/aws-glue-schema-registry/blob/v3.0.1/README.md (quoted as registries-105, registries-106)
 
@@ -1285,7 +1327,35 @@ Source: https://github.com/Apicurio/apicurio-registry/blob/3.3.5/docs/modules/RO
 
 > If not, {registry} reports the reason why in an HTTP error response.
 
-**Stated why.** No stated rationale found for refusing at produce time. Only the Glue README and client, and Apicurio's documentation on rules and serializers, were read.
+Source: https://docs.aws.amazon.com/glue/latest/dg/schema-registry-works.html (quoted as author-52, author-53, author-51)
+
+> When auto-registration is turned on in the serializer settings, automatic registration of the schema will be performed.
+
+> If the schema exists but the serializer is using a new version that doesn’t exist, the Schema Registry will check the schema reference a compatibility rule to ensure the new version is compatible before registering it as a new version.
+
+> If the schema of the record does not match a registered schema, the serializer will return an exception and the application will fail to deliver the record to the destination.
+
+Source: https://github.com/Apicurio/apicurio-registry/blob/3.3.5/docs/modules/ROOT/pages/getting-started/assembly-schema-lifecycle-best-practices.adoc#L606 (quoted as author-54)
+
+> when enabled, the serializer registers new schemas automatically, and {registry} applies the configured compatibility rules.
+
+Source: https://github.com/Apicurio/apicurio-registry/blob/3.3.5/docs/modules/ROOT/pages/getting-started/assembly-schema-lifecycle-best-practices.adoc#L539 (quoted as author-55)
+
+> If the schema versions are incompatible, the SerDes throws an exception.
+
+**Stated why.** For Glue, AWS's launch post, by Brian Likosar (a solutions architect at AWS) and Larry Heathcote (a product marketing manager at AWS), 2021-01-13:
+
+Source: https://aws.amazon.com/blogs/big-data/validate-evolve-and-control-schemas-in-amazon-msk-and-amazon-kinesis-data-streams-with-aws-glue-schema-registry/ (quoted as author-56)
+
+> If it isn’t, the data producer receives an exception from the serializer. This ensures that potentially breaking changes are found earlier in development cycles, and can also help prevent unintentional schema changes due to human error.
+
+For Apicurio, no stated rationale was found for refusing at produce time. Its lifecycle guide gives a reason for checking before deployment instead:
+
+Source: https://github.com/Apicurio/apicurio-registry/blob/3.3.5/docs/modules/ROOT/pages/getting-started/assembly-schema-lifecycle-best-practices.adoc#L540 (quoted as author-57)
+
+> Pre-registration catches breaking changes during the build rather than at runtime.
+
+Looked in the Glue README, client and developer guide, AWS's launch post, and Apicurio's documentation on rules, serializers and the schema lifecycle.
 
 **Constraints, costs and dissent.** Not looked for beyond the files cited. Glue's client keeps a local cache, with a 24-hour default:
 
@@ -1302,7 +1372,7 @@ Source: https://github.com/awslabs/aws-glue-schema-registry/blob/v3.0.1/README.m
 
 ### C11. Apache Iceberg: field ids
 
-**What it does.** Read at `apache-iceberg-1.12.0`. Every field has an integer id, unique in the table's schema, and readers select a data file's columns by id, not by name or position. Table metadata keeps `last-column-id`, so a new column always gets an unused id. A dropped column's values stay in old data files and become unreachable. A column added again under the same name gets a new id, so the old values read as null.
+**What it does.** Read at `apache-iceberg-1.12.0`. Every field has an integer id, unique in the table's schema, and readers select a data file's columns by id, not by name or position. Table metadata keeps `last-column-id`, so a new column always gets an unused id. A dropped column's values stay in old data files and become unreachable. A column added again under the same name gets a new id, so a data file written with field ids does not supply the old values for it: in such a file it reads as null or, from format v3, as the new field's initial default.
 
 Source: https://github.com/apache/iceberg/blob/apache-iceberg-1.12.0/format/spec.md (quoted as ids-2, ids-3, ids-5, ids-6)
 
@@ -1314,7 +1384,16 @@ Source: https://github.com/apache/iceberg/blob/apache-iceberg-1.12.0/format/spec
 
 > An integer; the highest assigned column ID for the table. This is used to ensure columns are always assigned an unused ID when evolving schemas.
 
-Reading and writing differ. On read, an id a data file lacks reads as null or, from format v3, as the field's initial default. On write, format v3 forbids omitting a known field: the writer fills in the field's write default, and if a required field has none, the writer must fail. What earlier format versions require of a writer was not checked.
+Reading and writing differ. On read, the value for an id a data file lacks is taken, in order: from partition metadata, for an identity partition; through the table's name mapping, for a file written without field ids; from the field's initial default, from format v3; and otherwise it is null.
+
+Source: https://github.com/apache/iceberg/blob/apache-iceberg-1.12.0/format/spec.md#L402-L407 (quoted as author-64)
+
+> * Return the value from partition metadata if an [Identity Transform](#partition-transforms) exists for the field and the partition value is present in the `partition` struct on `data_file` object in the manifest. This allows for metadata only migrations of Hive tables.
+> * Use `schema.name-mapping.default` metadata to map field id to columns without field id as described below and use the column if it is present.
+> * Return the default value if it has a defined `initial-default` (See [Default values](#default-values) section for more details).
+> * Return `null` in all other cases.
+
+On write, format v3 forbids omitting a known field: the writer fills in the field's write default, and if a required field has none, the writer must fail. What earlier format versions require of a writer was not checked.
 
 Source: https://github.com/apache/iceberg/blob/apache-iceberg-1.12.0/format/spec.md#L333 (quoted as author-25)
 
@@ -1324,7 +1403,11 @@ Source: https://github.com/apache/iceberg/blob/apache-iceberg-1.12.0/format/spec
 
 > Default values are added to struct fields in v3.
 
-**The rule is stated, though not in the words "never reused".** The specification at `apache-iceberg-1.12.0` was searched for `reuse`, `re-use`, `never`, `unique`, `last-column-id` and `field id`. The phrase "never reused" does not appear. The rule does: `last-column-id` exists "to ensure columns are always assigned an unused ID when evolving schemas" (ids-6), and "Adding a new field assigns a new ID" (ids-3). The documentation page on evolution gives the purpose (ids-12, below).
+**The rule is stated, though not in the words "never reused".** The specification at `apache-iceberg-1.12.0` was searched for `reuse`, `re-use`, `never`, `unique`, `last-column-id` and `field id`. The phrase "never reused" does not appear. The rule does: `last-column-id` exists "to ensure columns are always assigned an unused ID when evolving schemas" (ids-6), and "Adding a new field assigns a new ID" (ids-3). The documentation page on evolution gives the purpose (ids-12, below). The sentence of ids-6 is already in the specification of the `0.7.0-incubating` release, tagged on 2019-10-25, and in `apache/iceberg` from the commit of 2019-06-23 that moved the specification to the project's site (`601de88`), so it was written no later than that:
+
+Source: https://github.com/apache/iceberg/blob/apache-iceberg-0.7.0-incubating/site/docs/spec.md#L354 (quoted as author-61)
+
+> An integer; the highest assigned column ID for the table. This is used to ensure columns are always assigned an unused ID when evolving schemas.
 
 **Which changes the ids were written to survive.** The specification's goals name add, drop, reorder and rename:
 
@@ -1338,7 +1421,26 @@ Source: https://github.com/Netflix/iceberg/blob/a5eb3f6ba171ecfc517a4f09ae9654e7
 
 > **Schema evolution**: Columns are tracked by ID to support add/drop/rename.
 
-Type widening is supported, but no source read ties the ids to it.
+The code at the same commit gives a new column the id after the table's last assigned one, and commits that counter with the new schema:
+
+Source: https://github.com/Netflix/iceberg/blob/a5eb3f6ba171ecfc517a4f09ae9654e7d8ae0291/core/src/main/java/com/netflix/iceberg/SchemaUpdate.java#L175-L184 (quoted as author-59, author-60)
+
+> TableMetadata update = base.updateSchema(apply(), lastColumnId);
+
+> int next = lastColumnId + 1;
+>     this.lastColumnId = next;
+
+Type widening is supported. An author ties it to the ids in 2021, four years after the first release, which makes this a later explanation and not a statement of the original design's goals. rdblue (Ryan Blue), on Iceberg's development list, 2021-05-18:
+
+Source: https://www.mail-archive.com/dev@iceberg.apache.org/msg02227.html (quoted as author-62, author-63)
+
+> From the IDs, you can see that field 1 was
+> renamed and promoted to long, field 2 was deleted, and field 3 was added
+> with field 2's original name.
+
+> Casting or promoting data is done by strict rules in Iceberg. This is
+> affected by ID because we know that a field is the same across files, like
+> in my example above.
 
 **Stated why.** The documentation page on evolution, first committed by rdblue on 2019-06-26 and unchanged in substance at `1.12.0`:
 
@@ -1396,7 +1498,7 @@ So the stated reason ties ids to adding a column (tracking by name can bring a d
 
 ### C12. Protocol Buffers: field numbers and `reserved`
 
-**What it does.** Documentation read at commit `7712b0c` of `protocolbuffers.github.io`. The wire format identifies a field only by its number. The `reserved` statement makes the compiler reject reuse of a deleted field's number or name. Nothing checks at run time: a number reused with another meaning is decoded under the reader's definition.
+**What it does.** Documentation read at commit `7712b0c` of `protocolbuffers.github.io`. The wire format identifies a field only by its number. The `reserved` statement makes the compiler reject reuse of a deleted field's number or name. Nothing checks at run time that writer and reader agree: a number reused with another meaning is decoded under the reader's definition, and the guide lists the outcomes as a parse or merge error at best, leaked personal data, or corrupted data (ids-28).
 
 Source: https://github.com/protocolbuffers/protocolbuffers.github.io/blob/7712b0c36f911534ef07b755900aa142efc39b9f/content/programming-guides/proto3.md (quoted as ids-24, ids-25)
 
@@ -1566,7 +1668,7 @@ The ticket asks which system the idea came from. The elicitation's record is not
 
 - **For message field numbers**, the earliest primary source found that states a non-reuse rule is the Protocol Buffers language guide, captured on 2008-07-11 (ids-33). Its current wording is "should never be reused" (ids-25), and `reserved` has enforced it at compile time since 2015 (ids-34). It is about message fields, not table columns.
 - **Ids used for versioning without a reuse rule** came earlier or alongside: the Thrift paper of 2007 (ids-37) and Parquet's `field_id` in 2014. Meta's fork of Thrift states a never-reuse rule in public documentation from 2022 (C13).
-- **Column ids in a table format**: Iceberg's first public release, 2017 (ids-16), and Delta's column mapping, 2021 (ids-52). Neither uses the words "never reused". Iceberg's specification states the rule as the purpose of its counter: columns are "always assigned an unused ID" (ids-6). When that sentence was first written was not established. Delta's protocol states a counter that only increases (ids-50).
+- **Column ids in a table format**: Iceberg's first public release, 2017 (ids-16), and Delta's column mapping, 2021 (ids-52). Neither uses the words "never reused". Iceberg's specification states the rule as the purpose of its counter: columns are "always assigned an unused ID" (ids-6). The sentence was written no later than 2019-06-23 (author-61); when it was first written was not established. The code of the 2017 release already gives each new column the id after the table's last one (author-59, author-60). Delta's protocol states a counter that only increases (ids-50).
 - **A connection stated by an author:** only Delta's design document, which names Iceberg as a competitor, not as a source (ids-54). No Iceberg source read names Protocol Buffers or Thrift. That Iceberg's ids descend from either is Inferred, from a shared mechanism.
 - The sentence "The cheapest upgrade: a declared version or definition hash, and column ids that are never reused" was not found in any source. "Cheapest" is a claim no source makes. Its wording, "never reused", matches the Protocol Buffers documentation and not Iceberg's.
 
@@ -1749,6 +1851,11 @@ Prometheus's clients are covered under C1: both register a metric whenever its c
 
   > <p>NOTE: This does not result in the {@link #set(OpenTelemetry)} side effects of {@link
   >    * #get()}.
+
+  Source: https://github.com/open-telemetry/opentelemetry-java/blob/v1.68.0/api/all/src/main/java/io/opentelemetry/api/GlobalOpenTelemetry.java#L38-L39 (quoted as author-58)
+
+  > <p>Native instrumentation should use {@link #getOrNoop()} as the default {@link OpenTelemetry}
+  >  * instance, and expose APIs for setting a custom instance.
 
   Source: https://github.com/open-telemetry/opentelemetry-java/blob/v1.68.0/sdk-extensions/autoconfigure/src/main/java/io/opentelemetry/sdk/autoconfigure/AutoConfiguredOpenTelemetrySdk.java#L34 (quoted as author-39)
 
@@ -2012,7 +2119,7 @@ Source: https://github.com/micrometer-metrics/micrometer/issues/4920#issuecommen
 
 ### C20. .NET `System.Diagnostics.Metrics` (brief)
 
-**What it does.** Read at `dotnet/runtime` `v10.0.15`. An instrument may be created at any time. A second request returns the cached instrument only when type, unit, description and tags all match; otherwise a second instrument of the same name is created beside the first, with no error and no warning.
+**What it does.** Read at `dotnet/runtime` `v10.0.15`. An instrument may be created at any time. For a counter, gauge, histogram or up-down counter, a second request returns the cached instrument only when type, unit, description and tags all match; otherwise a second instrument of the same name is created beside the first, with no error and no warning. An observable instrument is not cached: each request constructs a new one.
 
 Source: https://github.com/dotnet/runtime/blob/v10.0.15/src/libraries/System.Diagnostics.DiagnosticSource/src/System/Diagnostics/Metrics/Meter.cs (quoted as late-33)
 
@@ -2023,7 +2130,21 @@ Source: https://github.com/dotnet/runtime/blob/v10.0.15/src/libraries/System.Dia
 
 > instrumentList.Add(newInstrument);
 
-**Stated why.** No stated rationale found for keeping differing instruments side by side. Looked in `Meter.cs` and the instrumentation documentation; issue #77514 was found and not read.
+Source: https://github.com/dotnet/runtime/blob/v10.0.15/src/libraries/System.Diagnostics.DiagnosticSource/src/System/Diagnostics/Metrics/Meter.cs#L20 (quoted as author-78)
+
+> private Dictionary<string, List<Instrument>> _nonObservableInstrumentsCache = new();
+
+Source: https://github.com/dotnet/runtime/blob/v10.0.15/src/libraries/System.Diagnostics.DiagnosticSource/src/System/Diagnostics/Metrics/Meter.cs#L348-L349 (quoted as author-79)
+
+> new ObservableCounter<T>(this, name, observeValue, unit, description, tags: null);
+
+**Stated why.** For caching an identical instrument, the API proposal that introduced the cache, issue #77514 (opened by dpk83 in 2022; its body says it was edited by tarekgh), gives the purpose:
+
+Source: https://github.com/dotnet/runtime/issues/77514 (quoted as author-80)
+
+> The Meter will now cache non-Observable instruments internally to prevent re-creation when attempting to recreate the same instrument with identical parameters such as name, unit, tags, and generic type.
+
+No stated rationale found for keeping differing instruments side by side, or for leaving observable instruments uncached. Looked in `Meter.cs`, the instrumentation documentation and the body of issue #77514; its comments were not read.
 
 **Constraints, costs and dissent.** Not looked for.
 
@@ -2043,7 +2164,7 @@ Source: https://github.com/hibernate/hibernate-orm/blob/7.4.17/hibernate-core/sr
 >  * fixed as soon as the {@code SessionFactory} is created. Of course, any
 >  * {@code SessionFactory} is threadsafe.
 
-**Stated why.** No stated rationale found for fixing the mapping when the factory is built. Looked in the `SessionFactory` Javadoc, the user guide's architecture chapter, the introduction, and Hibernate team answers on the project's forum. The passages below are the nearest the authors come, and none gives a reason for the fixing itself.
+**Stated why.** No stated rationale found for fixing the mapping when the factory is built. Looked in the `SessionFactory` Javadoc, the `SessionFactoryImpl` implementation note (quoted under "Constraints"), the user guide's architecture chapter, the introduction, and Hibernate team answers on the project's forum. The passages below are the nearest the authors come, and none gives a reason for the fixing itself.
 
 - **Why one factory per database, not why its mapping is fixed.** The user guide:
 
@@ -2069,7 +2190,14 @@ Source: https://github.com/hibernate/hibernate-orm/blob/7.4.17/hibernate-core/sr
 
 **Inferred why.** Inferred: an immutable model shared by every session needs no locks on the hot path, and a session can assume the mapping does not change under it.
 
-**Constraints.** One factory per database for the application's life, shared by many sessions and threads.
+**Constraints.** One factory per database for the application's life, shared by many sessions and threads. The implementation's own note states a concurrency constraint, though not as the reason the mapping is fixed:
+
+Source: https://github.com/hibernate/hibernate-orm/blob/7.4.17/hibernate-core/src/main/java/org/hibernate/internal/SessionFactoryImpl.java#L148-L151 (quoted as author-87)
+
+> @implNote This class must appear immutable to clients, even if it does
+>  *           all kinds of caching and pooling under the covers. It is crucial
+>  *           that the class is not only thread-safe, but also highly concurrent.
+>  *           Synchronization must be used extremely sparingly.
 
 **Costs and dissent.** A forum user said rebuilding the factory was not an option for a large mapping (saved, not quoted). What Hibernate does with two entities of the same name was not examined.
 
@@ -2094,6 +2222,16 @@ And the performance documentation, read live:
 Source: https://learn.microsoft.com/en-us/ef/core/performance/advanced-performance-topics (quoted as author-40)
 
 > Note that just creating a DbContext instance does not cause the EF model to be initialized.
+
+The cache is a memory cache with a size limit, and the model is an entry in it at high priority, rebuilt on a miss:
+
+Source: https://github.com/dotnet/EntityFramework.Docs/blob/ea9278e26d837ce9ceb7efc3c48fedf83aa0b4d3/entity-framework/core/performance/advanced-performance-topics.md#L329 (quoted as author-81)
+
+> By default, EF Core configures its own `IMemoryCache` with a size limit of 10240. For reference, a compiled query has a cache size of 10, while the built model has a cache size of 100.
+
+Source: https://github.com/dotnet/efcore/blob/v10.0.0/src/EFCore/Infrastructure/ModelSource.cs#L61-L77 (quoted as author-82)
+
+> cache.Set(runtimeKey, runtimeModel, new MemoryCacheEntryOptions { Size = 100, Priority = CacheItemPriority.High });
 
 **Constraints, costs and dissent.** Not looked for.
 
@@ -2294,7 +2432,7 @@ The ticket asks whether reasons given by libraries for metrics carry over to tab
 
   > With Delta Lake, the table's schema is saved in JSON format inside the transaction log.
 
-- **A write with a column the table lacks, or a different type, is refused whole.** A write that omits a column is accepted, and the column is null.
+- **A DataFrame batch write with a column the table lacks, or a column type that does not match, is refused whole.** A write that omits a nullable column is accepted, and the column is null. The rules quoted below are stated for DataFrame writes, and other paths cast first. Delta's analysis rule up-casts a SQL `INSERT` by name to the table's types, and not a DataFrame append by name (author-65). Its streaming sink merges the schemas with implicit conversions allowed and casts the data before writing (author-68, author-69). Databricks documents safe casts for SQL `INSERT` and `MERGE` in its product (author-70, author-71). Inferred: on those paths a type is refused whole only when the path cannot cast it. A column declared not nullable becomes a `NOT NULL` constraint that every write checks, and a missing one throws (author-66, author-67); that omitting such a column always fails the write is Inferred from the code, as the paths were not traced one by one.
 
   Source: https://www.databricks.com/blog/2019/09/24/diving-into-delta-lake-schema-enforcement-evolution.html (quoted as typed-2)
 
@@ -2305,6 +2443,36 @@ The ticket asks whether reasons given by libraries for metrics carry over to tab
   > DataFrame column data types must match the column data types in the target table. If they don't match, an exception is raised.
 
   > Columns present in the table but not in the DataFrame are set to null.
+
+  Source: https://github.com/delta-io/delta/blob/v4.4.1/spark/src/main/scala/org/apache/spark/sql/delta/DeltaAnalysis.scala#L111-L112 (quoted as author-65)
+
+  > // AppendData.byName is also used for DataFrame append so we check for the SQL origin text
+  >     // since we only want to up-cast for SQL insert into by name
+
+  Source: https://github.com/delta-io/delta/blob/v4.4.1/spark/src/main/scala/org/apache/spark/sql/delta/sources/DeltaSink.scala#L196-L201 (quoted as author-68, author-69)
+
+  > allowImplicitConversions = true,
+
+  > /** Casts columns in the given dataframe to match the target schema. */
+
+  Source: https://github.com/delta-io/delta/blob/v4.4.1/spark/src/main/scala/org/apache/spark/sql/delta/constraints/Invariants.scala#L78-L79 (quoted as author-66)
+
+  > case (parents, field) if !field.nullable =>
+  >         Constraints.NotNull(parents :+ field.name)
+
+  Source: https://github.com/delta-io/delta/blob/v4.4.1/spark/src/main/scala/org/apache/spark/sql/delta/constraints/DeltaInvariantCheckerExec.scala#L175-L177 (quoted as author-67)
+
+  > case n @ NotNull(column) =>
+  >           buildExtractor(output, column).getOrElse {
+  >             throw DeltaErrors.notNullColumnMissingException(n)
+
+  For Databricks, not the open-source release:
+
+  Source: https://docs.databricks.com/aws/en/tables/schema-enforcement (quoted as author-70, author-71)
+
+  > Databricks attempts to safely cast column data types to match the target table.
+
+  > If the data type in the source statement does not match the target column, MERGE tries to safely cast column data types to match the target table.
 
 - **A constraint violation aborts the whole transaction.** That the same holds for a column declared not nullable was not found in the protocol; the constraints documentation lists `NOT NULL` among the constraints whose violation throws.
 
@@ -2383,7 +2551,7 @@ Source: https://www.databricks.com/blog/2019/09/24/diving-into-delta-lake-schema
 
   > Accepts `true` (default) and `false`.
 
-- **With a data stream's failure store on, a refused document is kept apart, and the client is told it succeeded.** From 9.2 it is on by default for new data streams that match `logs-*-*`, through the built-in `logs` index template.
+- **With a data stream's failure store on, a document refused for its mapping or by an ingest pipeline is kept apart, and the client is told it succeeded, with a flag.** Failures from backpressure, security or version conflicts are still returned to the client, and so is the original error when the refused document cannot be stored. From 9.2 the failure store is on by default for new data streams that match `logs-*-*`, through the built-in `logs` index template.
 
   Source: https://github.com/elastic/docs-content/blob/96870a908ce76d263fa01d5f4c4e687be43e1c99/manage-data/data-store/data-streams/failure-store.md (quoted as typed-23, typed-24)
 
@@ -2394,6 +2562,14 @@ Source: https://www.databricks.com/blog/2019/09/24/diving-into-delta-lake-schema
   Source: https://github.com/elastic/docs-content/blob/96870a908ce76d263fa01d5f4c4e687be43e1c99/manage-data/data-store/data-streams/failure-store.md#L45 (quoted as author-44)
 
   > New logs data streams that match the `logs-*-*` pattern already have the failure store enabled through the built-in `logs` index template.
+
+  Source: https://github.com/elastic/docs-content/blob/96870a908ce76d263fa01d5f4c4e687be43e1c99/manage-data/data-store/data-streams/failure-store.md#L23 (quoted as author-83)
+
+  > Failure stores do not capture failures caused by backpressure, security issues, or document version conflicts. These failures are always returned as-is since they warrant specific action by the client.
+
+  Source: https://github.com/elastic/docs-content/blob/96870a908ce76d263fa01d5f4c4e687be43e1c99/manage-data/data-store/data-streams/failure-store.md#L272 (quoted as author-84)
+
+  > If the document was redirected to a data stream's failure store but that failed document could not be stored (for example, due to shard unavailability or a similar problem), then the `failure_store` field on the response will be `failed`, and the response will display the error for the original failure, as well as a suppressed error detailing why the failure could not be stored
 
 - **Two indices with different types for one field are kept side by side**, and queries across them see a conflict:
 
@@ -2541,7 +2717,7 @@ Source: https://www.databricks.com/blog/2019/09/24/diving-into-delta-lake-schema
 
 ### C29. Google BigQuery (brief)
 
-**What it does.** Documentation read live. A streaming insert with any invalid row fails the whole request by default; keeping the valid rows is opt-in. A field the table lacks is an error by default. A required column cannot be added to an existing table, and a column's mode may only be relaxed from required to nullable. The schema is not add-only: DDL can drop or rename a column and make certain changes to its type.
+**What it does.** Documentation read live. A streaming insert through `tabledata.insertAll` with any invalid row fails the whole request by default; keeping the valid rows is opt-in. Google's streaming page now calls that method the Storage Write API (REST) (author-85); BigQuery's other ingestion interfaces were not read. A field the table lacks is an error by default. A required column cannot be added to an existing table, except nested inside a new `RECORD` field, and a column's mode may only be relaxed from required to nullable. The schema is not add-only: DDL can drop or rename a column and make certain changes to its type.
 
 Source: https://cloud.google.com/bigquery/docs/reference/rest/v2/tabledata/insertAll (quoted as typed-62)
 
@@ -2559,13 +2735,19 @@ Source: https://cloud.google.com/bigquery/docs/managing-table-schemas (quoted as
 > The only supported modification you can make to a column's mode is
 > changing it from REQUIRED to NULLABLE.
 
-Source: https://docs.cloud.google.com/bigquery/docs/managing-table-schemas (quoted as author-47, author-48, author-49)
+Source: https://docs.cloud.google.com/bigquery/docs/managing-table-schemas (quoted as author-47, author-48, author-49, author-86)
 
 > You can delete a column from an existing table by using the ALTER TABLE DROP COLUMN DDL statement
 
 > To rename a column on a table, use the ALTER TABLE RENAME COLUMN DDL statement
 
 > You can use GoogleSQL to make certain changes to the data type of a column.
+
+> However, you can create a nested REQUIRED column as part of a new RECORD field.
+
+Source: https://docs.cloud.google.com/bigquery/docs/streaming-data-into-bigquery (quoted as author-85)
+
+> The BigQuery Storage Write API (REST), previously known as the legacy tabledata.insertAll method, lets you stream rows into BigQuery tables without running a load job.
 
 **Stated why.** For refusing to add a required column, Google's troubleshooting page gives the reason:
 
@@ -2598,24 +2780,24 @@ Each claim was recorded in `CONTEXT.md` with no link. Each is checked here again
 | Claim | Result | Where |
 | --- | --- | --- |
 | OpenTelemetry and Prometheus check nothing across processes | **Confirmed for their client libraries and SDKs**, which check only within one process: client_golang within one registry, the OpenTelemetry SDK within one Meter. **Wrong for Prometheus's Pushgateway**, which by default refuses a push whose type conflicts with another pusher's; with `--push.disable-consistency-check` it accepts the push, and its scrapes fail instead. | C1, C3, C4 |
-| ...and keep conflicting versions side by side downstream | **Partly wrong.** By default the Prometheus server keeps the series apart by `job` and `instance`, which `honor_labels` gives up, and its experimental metadata API lists the distinct versions among the targets currently scraped. But metadata was overwritten per name before remote write 2.0, federation drops type and help, the OpenTelemetry Collector's Prometheus exporter drops a metric whose type conflicts and keeps the first help while the name stays cached, OpenTelemetry lets a consumer reject a semantic error, and receivers should deduplicate two writers of one stream. Mimir keeps conflicting metadata as a set. | C2, C4, C5, C30 |
+| ...and keep conflicting versions side by side downstream | **Partly wrong.** By default the Prometheus server keeps the series apart by `job` and `instance`, which `honor_labels` gives up where a target exposes conflicting values for those labels itself, and its experimental metadata API lists the distinct versions among the targets currently scraped. But metadata was overwritten per name before remote write 2.0, federation drops type and help, the OpenTelemetry Collector's Prometheus exporter drops a metric whose type conflicts and keeps the first help while the name stays cached, OpenTelemetry lets a consumer reject a semantic error, and receivers should deduplicate two writers of one stream. Mimir keeps conflicting metadata as a set. In the client rather than downstream, client_python's multiprocess mode keeps one metric per name when it collects files that separate processes wrote: the first file to name a metric sets its help and type, and every other process's samples are added to it (Inferred from the code). | C1, C2, C4, C5, C30 |
 | Snowplow adds a declared version, validated downstream, with bad data quarantined | **Confirmed for self-describing events and entities, with two caveats.** Baked-in events, such as page views, carry no event schema. The stated reason is against dropping bad data, not against refusing it at the source. Since Enrich 6.5.0, released on 2026-01-09, Enrich crashes when schema resolution fails with a system error, such as an unreachable registry, instead of writing failed events; its stated reason is to keep infrastructure issues from creating bad rows. | C6 |
 | OpenTelemetry's schema URL adds a declared version, validated downstream, with bad data quarantined | **Declared version: confirmed. Validated downstream and quarantined: wrong.** The schema URL drives translation, and OTEP 0152 puts validation out of scope. The schema processor passes unmapped names through, logs and counts a failure for a Scope and carries on, and for a failure on a Resource returns an error and passes on none of the batch. No component that quarantines was found. Weaver's live check validates as a developer and CI tool. | C7 |
-| Only Confluent Schema Registry blocks a producer at write time | **Wrong.** Pulsar refuses a producer with an incompatible schema when it is created, and fails the send of a message whose new schema is incompatible (PIP-43). AWS Glue and Apicurio refuse at registration; whether that refusal reaches a producer's send was not established. Prometheus's Pushgateway refuses a conflicting push by default. Stores with typed columns refuse a write that does not fit at the store, which is blocking a producer only if a store's caller counts as one; the claim does not say. | C3, C8 to C10, C26 to C29 |
-| ...and it needs an always-available service | **Partly confirmed.** The serializer needs the registry on a cache miss, not on every write: a schema's first use under a subject by each registry client, or a use after the bounded cache has evicted it. Instances other than the primary serve reads and schemas already registered. Its authors call the dependency "a runtime requirement and potential source of failure", and users report outages. | C8 |
+| Only Confluent Schema Registry blocks a producer at write time | **Wrong.** Pulsar refuses a producer with an incompatible schema when it is created, and fails the send of a message whose new schema is incompatible (PIP-43). AWS Glue and Apicurio refuse at registration, which happens in the producer's serializer when auto-registration is on. AWS documents that Glue's serializer then throws and the record is not sent; for Apicurio, that the producer's send fails is Inferred from its documentation. Neither path was traced in code. Prometheus's Pushgateway refuses a conflicting push by default. Stores with typed columns refuse a write that does not fit at the store, which is blocking a producer only if a store's caller counts as one; the claim does not say. | C3, C8 to C10, C26 to C29 |
+| ...and it needs an always-available service | **Partly confirmed.** The serializer needs the registry on a cache miss, not on every write: a schema's first use under a subject by each registry client, or a use after the bounded cache has evicted it. Instances other than the primary serve reads and schemas already registered. Its authors call the dependency "a runtime requirement and potential source of failure", and users reported outages. Since 2024 the client retries a failed connection and some error responses with backoff, three times by default; Inferred from the code, a short outage no longer fails a send that misses the cache. | C8 |
 | "The cheapest upgrade: a declared version or definition hash, and column ids that are never reused" | **Unverified as a sentence: no source found.** "Cheapest" is a claim no source makes. Its parts exist: a declared version (Snowplow, OpenTelemetry's schema URL); a schema hash per stored entry, suggested by Avro's author in 2009 and specified in Avro's single-object encoding, which needs a store to resolve it; and a literal never-reuse rule for ids in Protocol Buffers, and later in Meta's fbthrift. Neither Iceberg nor Delta uses the words "never reused": Iceberg's specification states the rule as the purpose of its counter, "always assigned an unused ID", and Delta states a counter that only increases. | C6, C7, C11 to C15 |
-| Iceberg was named; find which system the idea of column ids came from | **Not established.** For table columns, Iceberg's specification states the unused-id rule; when that sentence was written was not established, and its first public release, 2017, already tracks columns by id. For message field numbers, the earliest source found is Protocol Buffers, 2008, which says nothing about table columns. The only author's statement connecting two of these systems is Delta's design document, which names Iceberg as a competitor. Where the elicitation's sentence came from cannot be checked: its record is not tracked. | C11 to C14, "Where 'column ids that are never reused' came from" |
+| Iceberg was named; find which system the idea of column ids came from | **Not established.** For table columns, Iceberg's specification states the unused-id rule, in a sentence written no later than 2019-06-23; when it was first written was not established. The mechanism is older: Iceberg's first public release, 2017, already tracks columns by id and gives each new column the id after a stored counter. For message field numbers, the earliest source found is Protocol Buffers, 2008, which says nothing about table columns. The only author's statement connecting two of these systems is Delta's design document, which names Iceberg as a competitor. Where the elicitation's sentence came from cannot be checked: its record is not tracked. | C11 to C14, "Where 'column ids that are never reused' came from" |
 | Prometheus clients register metrics whenever the code runs | **Confirmed.** Both clients register at any time, under a lock, and refuse a conflicting second registration. The client guidelines intend metrics as globals registered when the code loads. No stated rationale was found for allowing late registration. | C1 |
-| OpenTelemetry instruments can be created before or after the provider is set | **Confirmed for Go and Python; wrong for Java's global.** In Go and Python early instruments are rewired when the provider is set, and measurements in between are lost. In Java, `get()` before `set()` installs a global for good, a no-op or the autoconfigured SDK when autoconfigure is on, and a later `set()` throws either way. Since 1.57.0, `getOrNoop()` lets code take an early no-op without blocking a later `set()`, but instruments from it stay no-op. | C17 |
+| OpenTelemetry instruments can be created before or after the provider is set | **Confirmed that Go, Python and Java each let an instrument be created before or after the provider is set. Wrong for Java if the claim means that an early instrument starts working once the provider is set.** In Go and Python early instruments are rewired when the provider is set, and measurements in between are lost. Java does not rewire: an instrument taken from a no-op stays no-op. In Java, `get()` before `set()` also installs a global for good, a no-op or the autoconfigured SDK when autoconfigure is on, and a later `set()` throws either way. Since 1.57.0, `getOrNoop()`, which the class documentation tells native instrumentation to use, lets code take an early no-op without blocking a later `set()`; later calls get the instance that was set, but instruments taken before it stay no-op. | C17 |
 | Declaring at any time is the norm for telemetry libraries | **Confirmed for every library read**: Prometheus's two clients, OpenTelemetry's SDKs, Micrometer, the Rust `metrics` crate and .NET. Each fixes something early: Micrometer its filters, `metrics` its recorder, Java OpenTelemetry its global. | C1, C17 to C20 |
-| Frameworks that own a schema, such as object-relational mappers, fix everything at start-up | **Partly wrong.** Hibernate and grpc-go fix their definitions at start-up; grpc-go's team states why (a read path with no lock), and no stated reason was found for Hibernate's. Entity Framework Core fixes a model per cache key for the life of the process, but builds it on first use, not at start-up. Django fixes its set of applications, but its registry accepts a model defined later. SQLAlchemy lets a table be defined at any time and refuses a conflicting redefinition. | C21 to C25 |
+| Frameworks that own a schema, such as object-relational mappers, fix everything at start-up | **Partly wrong.** Hibernate and grpc-go fix their definitions at start-up; grpc-go's team states why (a read path with no lock), and no stated reason was found for Hibernate's. Entity Framework Core builds a model once per cache key, on first use rather than at start-up, and reuses it while it stays in its size-limited memory cache; whether a cached model is ever evicted and rebuilt was not established. Django fixes its set of applications, but its registry accepts a model defined later. SQLAlchemy lets a table be defined at any time. Unless told to keep or extend the first, it refuses a second definition of the same table that is given any arguments, identical or not. | C21 to C25 |
 
 ## Comparables that chose otherwise
 
 **Refusing a conflicting definition across writers.**
 
 - **Prometheus's Pushgateway refuses**, by default, a push whose type conflicts with another group's, because every push is exposed on one endpoint. A flag moves the check to scrape time, where one bad push fails every scrape (C3). Prometheus's server, in the same family, does not refuse.
-- **Confluent Schema Registry and Pulsar refuse a producer** whose schema is incompatible: Confluent in the client serializer, on a schema's first use under a subject, and Pulsar in the broker when the producer is created or a message brings a new schema. Confluent's authors give a stream with many independent readers as the reason, and Pulsar's documentation gives type safety on a message bus (C8, C9).
+- **Confluent Schema Registry and Pulsar refuse a producer** whose schema is incompatible: Confluent in the client serializer, on a schema's first use under a subject, and Pulsar in the broker when the producer is created or a message brings a new schema. Confluent's authors give a stream with many independent readers as the reason, and Pulsar's documentation gives type safety on a message bus (C8, C9). AWS Glue's serializer also throws, and AWS's launch post gives the reason that breaking changes are "found earlier in development cycles"; that concerns a producer with a registry too (C10).
 - **Within one process, client_golang refuses**, and its maintainer limits the guarantee to "the lifetime of a binary" (C1). OpenTelemetry once required an error too, and reversed it in 2022, because a duplicate cannot be avoided across libraries and an error raised while the program runs would be a crash (C4).
 
 **Fixing definitions at start-up.**
@@ -2623,7 +2805,7 @@ Each claim was recorded in `CONTEXT.md` with no link. Each is checked here again
 - **Hibernate** fixes its mapping when the factory is built. No stated rationale for the fixing was found; its documentation gives cost as the reason for one factory per database, and start-up validation as a benefit for named queries (C21). **Entity Framework Core** caches its model "for performance reasons", once per cache key, and builds it on first use rather than at start-up (C22).
 - **grpc-go** ends the process on a late registration, to avoid a lock on the read path; its team offered to reconsider for a real use case (C23).
 - **Django** loads every application at start-up so that loading is deterministic and the ORM sees every model, but still accepts a model defined later (C24).
-- **OpenTelemetry's Java global** makes a late SDK registration fail loudly rather than leave instruments silently no-op (C17).
+- **OpenTelemetry's Java global** makes a late SDK registration fail loudly after an early `get()`, rather than leave instruments silently no-op (C17). Since 1.57.0, `getOrNoop()`, which the class documentation tells native instrumentation to use, lets the late registration succeed, and instruments taken before it stay no-op without an error.
 
 **Typed columns refused at the store.**
 
