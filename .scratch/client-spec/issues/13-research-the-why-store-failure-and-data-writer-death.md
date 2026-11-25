@@ -231,4 +231,8 @@ Every review ran on Codex (codex-cli 0.172.0) with `gpt-6.2-sol`, which the main
 
   > All checks passed and the worktree is unchanged.
 
+- **Final**, at `62ad652`, the research file and this hand-back as reviewed and fixed. The commit that records this line changes only this section's lines.
+
+  > All checks passed and the worktree is unchanged.
+
 - **Changed files:** this ticket and its research file only. The specification is unchanged, and open questions 12 and 14 are still in it. No code was added.
