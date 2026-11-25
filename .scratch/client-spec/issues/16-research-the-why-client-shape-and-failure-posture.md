@@ -373,9 +373,9 @@ Put to the maintainer after the hand-back, on 2026-11-24, as four questions. The
 
 The note is placed before each ticket's "Research file" line, or, in ticket 11, which has none, before "Adversarial review". Before the notes were added, `main` (pull request #8, ticket 12) was merged into this branch, so that the notes sit on each ticket's current text.
 
-- **Gate after these changes**, at AFTER_COMMIT. The commit that records this line changes only the line itself.
+- **Gate after these changes**, at `d70dd7a`. The commit that records this line changes only the line itself.
 
-  > AFTER_LINE
+  > All checks passed and the worktree is unchanged.
 
 ### Acceptance
 
