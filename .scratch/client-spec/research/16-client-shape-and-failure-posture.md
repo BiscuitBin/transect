@@ -1,7 +1,7 @@
 # Research: the client's shape and failure posture
 
 - **Ticket:** `issues/16-research-the-why-client-shape-and-failure-posture.md`. It bears on open question 18 of `docs/specs/transect-client.allium` (whether confluence, establish and core are the final names), on the "Derived" statements that ticket 11 puts to the maintainer, and on the register's Product entries.
-- **Sources read:** on 2026-11-25 (UTC), from 01:10 to 02:10, which was 2026-11-24 in the maintainer's local time (UTC−8). The sections below give the local date, 2026-11-24.
+- **Sources read:** on 2026-11-25 (UTC), from 01:10 to 03:00, which was 2026-11-24 in the maintainer's local time (UTC−8). The sections below give the local date, 2026-11-24.
 - **Web research:** authorised by the maintainer on 2026-11-24 for this ticket, for the agent working it, for its research subagents and for its reviewers. All of it was read-only: nothing was posted, filed or sent.
 - **State of this file:** findings only. Fit, the verdict on each claim, the verdict on each stated behaviour and what the findings bear on are written after the first adversarial review.
 
@@ -60,18 +60,18 @@ Each cell is a summary of the section named. The sections hold the sources.
 | | Global entry point | Backend installed at the top level | Scoped override for tests |
 | --- | --- | --- | --- |
 | `log` 0.4.35 (A1) | **Holds.** An implicit process-wide `static`. Since 0.4.27 a macro may also name its own logger. | **Holds, by convention.** Once per process; a second call returns an error. Nothing enforces that the executable is the one to call it. | **Does not hold.** None, shown from the full item index and the source. Declined on request (issue 81, PR 450). |
-| `tracing` 0.1.44 (A2) | **Holds.** Process-wide statics: a global default and a thread-local default. | **Holds.** Once per process; a second call returns an error. The subscriber is leaked and cannot be cleared. | **Holds in part.** A closure and a guard, both thread-local. Open bugs: a `Send` guard that is unsafe to send, out-of-order drops, and interest-cache bugs that silence a scoped subscriber in parallel tests. |
-| `metrics` 0.24.6 (A3) | **Holds.** An implicit process-wide `static`, with a thread-local slot consulted first. | **Holds.** Once per process; a second call returns an error that hands the recorder back. The recorder is leaked. | **Holds, with limits.** A closure (0.22.0) and a `!Send` guard (0.24.0), both thread-local. Neither redirects a handle registered before it. |
-| OpenTelemetry Rust 0.33.1 (A4) | **Holds, as an option.** The application builds the provider and owns it; the global holds a clone. No global for logs. | **Holds in part.** Can be set any number of times; the last call wins. The global cannot be shut down. | **Does not hold.** None at 0.33.1. A guard existed up to 0.12 and was removed as "a common footgun". |
+| `tracing` 0.1.44 (A2) | **Holds.** Process-wide statics: a global default and a thread-local default. | **Holds.** Once per process; a second call returns an error. The subscriber is leaked and cannot be cleared. | **Holds, with limits.** A closure and a guard, both thread-local. Open bugs: a `Send` guard that is unsafe to send, out-of-order drops, and interest-cache bugs that silence a scoped subscriber in parallel tests. |
+| `metrics` 0.24.6 (A3) | **Holds.** An implicit process-wide `static`, with a thread-local slot consulted first. | **Holds.** Once per process; a second call returns an error that hands the recorder back. The recorder is leaked. | **Holds, with limits.** A closure (0.22.0) and a `!Send` guard (0.24.0), both thread-local. Neither redirects a handle registered before it, and nested guards restore correctly only when dropped innermost first (raised in PR #523, not addressed). |
+| OpenTelemetry Rust 0.33.1 (A4) | **Holds, as an option.** The application builds the provider and owns it; the global holds a clone. No global for logs. | **Holds, by convention.** The setters' docs say libraries should not call them and that they are intended for applications. Separately: they can be called any number of times (the last call wins), and the global cannot be shut down. | **Does not hold.** None at 0.33.1. A guard existed up to 0.12 and was removed as "a common footgun". |
 
 Four more questions were put to each facade, because the three parts of the claim do not answer them:
 
 | | Is the global an object the application creates and declares things against? | Can the top-level install end, or be repeated? | Does something obtained before install work after it? | Does the facade itself promise anything about a call failing or blocking? |
 | --- | --- | --- | --- | --- |
-| `log` (A1) | No: an implicit static. | No. Once per process; teardown was removed in 0.4.0. | Not applicable: there are no handles. Calls before install are dropped. | No. `Log::log` returns nothing; only the no-op path's cost is promised. |
-| `tracing` (A2) | No: implicit statics. The application builds a `Dispatch` but hands it over once. | Global: no. Scoped: yes, for its closure or guard. | Callsites cache interest; the cache is rebuilt when a `Dispatch` is created, and open bugs can leave a callsite muted. | No. No error channel and no `catch_unwind`. |
-| `metrics` (A3) | No: an implicit static. | Global: no. Scoped: yes. | **No.** A handle obtained before install stays a no-op for good; a fresh macro call after install records. | No. Only the no-op path's cost is promised. |
-| OpenTelemetry Rust (A4) | The provider is an object the application creates and owns; the global is optional. | Global: repeatable, not endable. Provider: ends with `shutdown`. | **No.** A tracer or meter obtained before a provider is set stays a no-op. | The global degrades to a no-op rather than panic (since 0.31), and the project's decision record says regular operation should not panic. Recording returns nothing. Whether it blocks depends on the processor the application chose: the simple processor exports on the calling thread. |
+| `log` (A1) | No: an implicit static. | No. Once per process; teardown was removed in 0.4.0. | Macro calls look the logger up each time, so a macro call after install works. The public `logger()` returns a `&'static dyn Log` that is the no-op logger before install, and a reference kept from then stays the no-op. Calls through the global before install are dropped; a call naming its own `logger:` reaches that logger once the maximum level (default `Off`) allows it. | No. `Log::log` returns nothing; only the no-op path's cost is promised. |
+| `tracing` (A2) | No: implicit statics. The application builds a `Dispatch` but hands it over once. | Global: no. Scoped: yes, for its closure or guard. | Callsites cache interest; the cache is rebuilt when a `Dispatch` is created, and open bugs can leave a callsite muted. A `Span` keeps the `Dispatch` that created it, and one created disabled stays disabled. | No. No error channel and no `catch_unwind`. |
+| `metrics` (A3) | No: an implicit static. | Global: no. Scoped: yes. | **No.** A handle stays bound to the recorder current when it was registered: one obtained with no recorder set, global or local, stays a no-op for good, and one obtained under a local recorder keeps recording to it. A fresh macro call after install records. | No. Only the no-op path's cost is promised. |
+| OpenTelemetry Rust (A4) | The provider is an object the application creates and owns; the global is optional. | Global: repeatable, not endable. Provider: ends with `shutdown`. | **No.** A tracer or meter obtained before a provider is set stays a no-op. | The global degrades to a no-op rather than panic (since 0.31), and the project's decision record says regular operation should not panic. Recording returns nothing. Whether recording blocks depends on the processor the application chose: the simple processor exports on the calling thread. Obtaining a tracer or meter through the global takes a read lock, which waits while a setter holds the write lock. |
 | Python `logging` (B1) | No: an implicit module-level registry. | Repeatable: `dictConfig` and `fileConfig` may run again; `basicConfig` is one-shot unless forced. | Yes: a logger obtained early works once logging is configured, unless `dictConfig` or `fileConfig` disables it (their default). | Handlers swallow their own errors by convention; some errors still reach the caller. |
 
 ## A. The Rust facades
@@ -85,7 +85,7 @@ The Rust `log` crate, read as one of the three facades in the claim that Transec
 **The claim, part by part**
 
 1. Global entry point: holds, with two qualifications. Macros read an implicit process-wide `static mut LOGGER` guarded by an atomic `STATE`. (a) Since 0.4.27 every macro also accepts an explicit `logger:` argument that bypasses the global, though the global maximum level still applies. (b) The static is per linked copy of the crate, so a dynamically loaded library has its own uninitialised copy (issue 421).
-2. Backend installed at the top level: holds in convention, not in mechanism. Whoever calls `set_logger` first wins; install is one-shot, a second call returns `Err(SetLoggerError)` without panicking, and there is no uninstall, replace or guard (teardown existed in 0.1 to 0.3 and was removed in 0.4.0). Calls before install are discarded.
+2. Backend installed at the top level: holds in convention, not in mechanism. Whoever calls `set_logger` first wins; install is one-shot, a second call returns `Err(SetLoggerError)` without panicking, and there is no uninstall, replace or guard (teardown existed in 0.1 to 0.3 and was removed in 0.4.0). Calls through the global before install are discarded, and a `&'static dyn Log` taken from `logger()` before install stays the no-op; a macro given its own `logger:` is not discarded once `set_max_level` allows its level.
 3. Scoped override for tests: does not hold. No scoped, thread-local, guard or closure override exists; maintainers point users at shims built on the global, and third-party test aids (`testing_logger`, `env_logger`'s `is_test`) still install through it.
 
 **What it does**
@@ -112,6 +112,15 @@ Source: https://github.com/rust-lang/log/blob/v0.4.35/src/lib.rs
 > ///
 > /// If a logger has not been set, a no-op implementation is returned.
 > pub fn logger() -> &'static dyn Log {
+
+Read from source: while `STATE` is not `INITIALIZED`, `logger()` returns a reference to a local `static NOP: NopLogger`. A caller that keeps that reference keeps the no-op after `set_logger` succeeds; the macros are unaffected because they call `logger()` each time:
+
+Source: https://github.com/rust-lang/log/blob/v0.4.35/src/lib.rs
+>     if STATE.load(Ordering::Acquire) != INITIALIZED {
+>         static NOP: NopLogger = NopLogger;
+>         &NOP
+
+A macro given its own `logger:` does not go through the global, but the global maximum level still limits it, and that level defaults to `Off` (quoted below). So a `logger:` call before `set_logger` reaches its logger only once `set_max_level` has been called, which can be done on its own.
 
 Since 0.4.27 (PR 664, by tisonkun, merged 2025-03-23) every macro accepts an optional `logger` argument in place of the global logger, and the global level filter still applies:
 
@@ -289,7 +298,7 @@ Not applicable: the authors' why was found (issues 3, 81, 117; PRs 230, 450, 664
 **Constraints**
 
 - Deployment model: libraries depend on the `log` library crate directly; one backend crate per binary installs itself through `set_logger`. `no_std` by default since 0.4.0; `set_boxed_logger` needs `alloc` (0.4.34 onward). `set_logger` needs pointer-sized atomics; `set_logger_racy` is the `unsafe` fallback.
-- Guarantees promised: install happens at most once (`Err` after). Calls before install, or at disabled levels, cost "an integer load, comparison and jump" and are dropped. A compile-time maximum level is available through Cargo features, which the crate docs warn libraries off "because they're global and can't be changed once they're set" (`src/lib.rs`, "Compile time filters").
+- Guarantees promised: install happens at most once (`Err` after). Calls through the global before install, or at disabled levels, cost "an integer load, comparison and jump" and are dropped. A compile-time maximum level is available through Cargo features, which the crate docs warn libraries off "because they're global and can't be changed once they're set" (`src/lib.rs`, "Compile time filters").
 - Failure model: the facade's only reported failure is `SetLoggerError` at install. Log calls return `()`. Filtering, flushing, buffering, I/O failure and back-pressure belong to the backend; `flush` is "called manually on shut-down" (`Log::flush` doc).
 - History: 2014-12 issue 3 proposes the facade (single global, init once, no teardown, ignore before init, manual install). 2015-01 PR 12 lands it. 2016-03 PR 76 stops dropping the logger in an atexit callback (it deadlocked on Windows); PR 78 adds an explicit `shutdown_logger`. 2017-05 the libs-team "libz blitz" evaluation (tracking issue 150) files issue 117 "Remove logger shutdown" and issue 146 "Change set_logger to panic on error". 2017-10 PR 230 keeps `Result` and declines panicking variants, citing tests. 2017-12 0.4.0 removes `shutdown` and adds `Log::flush`. 2025-03 0.4.27 adds the `logger:` macro argument. 2026-08 0.4.34 moves `set_boxed_logger` from `std` to `alloc`.
 
@@ -371,7 +380,7 @@ Speakers: `hawkw` is Eliza Weisman (GitHub profile name; first listed author in 
 
 1. *A global entry point: holds.* The macros take no handle; they reach the subscriber through process-wide statics in `tracing-core` (a `static mut GLOBAL_DISPATCH`, a `thread_local!` current default, a global callsite registry and a global registry of every live `Dispatch`). The application builds a `Dispatch` and hands it over once to be installed, never to call sites.
 2. *A backend installed at the top level: holds.* `set_global_default` installs it once for the life of the process; a second call returns `Err`, nothing removes or replaces it, the subscriber is deliberately leaked, and the docs tell libraries not to call it. History: the 2018 prototype had a `log`-style global, prototype issue #30 (2018) removed it, `tokio-trace` entered Tokio (#827, February 2019) with only a thread-local default, and a contributor's #1152 (June 2019) added a global back as a fallback.
-3. *A scoped override for tests: holds only in part.* `with_default` (closure) and `set_default` (returns a `DefaultGuard`) exist and tests are a named motivation, but the override is thread-local (not reaching spawned threads or runtime workers) and not test-specific (from #30 until #1152 it was the only mechanism). Nor is it isolated: the `Send` guard dropped on another thread rewrites that thread's default (fix proposed 2023, open); out-of-order drops leave the wrong dispatcher (open since 2021); any new `Dispatch` changes the interest cached at every callsite for every thread, and open bugs make a scoped subscriber silently miss events under parallel `cargo test` (#2874, #3611); bugs aside, several dispatchers cost weaker caching, not different results (#927); and a scoped default sets a process-wide `EXISTS` flag that is never cleared (#1102).
+3. *A scoped override for tests: holds, with limits.* `with_default` (closure) and `set_default` (returns a `DefaultGuard`) exist and tests are a named motivation. It is not test-specific (from #30 until #1152 it was the only mechanism), which the claim does not require. The limits: the override is thread-local (not reaching spawned threads or runtime workers), and it is not isolated: the `Send` guard dropped on another thread rewrites that thread's default (fix proposed 2023, open); out-of-order drops leave the wrong dispatcher (open since 2021); any new `Dispatch` changes the interest cached at every callsite for every thread, and open bugs make a scoped subscriber silently miss events under parallel `cargo test` (#2874, #3611); bugs aside, several dispatchers cost weaker caching, not different results (#927); and a scoped default sets a process-wide `EXISTS` flag that is never cleared (#1102).
 
 Whether `tracing` is a "facade": it never calls itself one. A case-insensitive grep for `facade` across `tracing/src`, `tracing-core/src` and the three READMEs in the `tracing-0.1.44` tarball finds a single hit, describing `log`:
 
@@ -456,6 +465,14 @@ Source: https://github.com/tokio-rs/tracing/blob/tracing-core-0.1.36/tracing-cor
 Source: https://github.com/tokio-rs/tracing/blob/tracing-core-0.1.36/tracing-core/src/subscriber.rs
 > /// never being interested in any callsite, and dropping all spans and events.
 
+With the non-default `log` feature (`tracing/Cargo.toml` has `default = ["std", "attributes"]`), an event or a span with fields is not discarded when no subscriber is active:
+
+Source: https://github.com/tokio-rs/tracing/blob/tracing-0.1.44/tracing/src/lib.rs
+> //! This crate provides two feature flags, "log" and "log-always", which will
+> //! cause [spans] and [events] to emit `log` records. When the "log" feature is
+> //! enabled, if no `tracing` `Subscriber` is active, invoking an event macro or
+> //! creating a span with fields will emit a `log` record.
+
 *Callsites registered before a subscriber is installed.* Each callsite caches the combined `Interest` of the live dispatchers. The module docs say the cache is rebuilt when a `Dispatch` is created:
 
 Source: https://github.com/tokio-rs/tracing/blob/tracing-core-0.1.36/tracing-core/src/callsite.rs
@@ -483,6 +500,15 @@ The 0.1.36 source does not bear this out (docs and source disagree). `Dispatch` 
 
 Source: https://github.com/tokio-rs/tracing/pull/3530
 > `with_default` has returned), the interest cache is not rebuilt.
+
+*Spans created before a subscriber is installed.* A `Span` holds the `Dispatch` that created it, and a span that no subscriber enabled has no inner value. Its `inner` is set only when it is constructed, so a disabled span stays disabled after a subscriber is installed:
+
+Source: https://github.com/tokio-rs/tracing/blob/tracing-0.1.44/tracing/src/span.rs
+>     /// The subscriber that will receive events relating to this span.
+>     ///
+>     /// This should be the same subscriber that provided this span with its
+>     /// `id`.
+>     subscriber: Dispatch,
 
 *3. Scoped override for tests.* Two forms, both thread-local:
 
@@ -551,7 +577,14 @@ Non-blocking output belongs to the backend, as a separate crate:
 Source: https://github.com/tokio-rs/tracing/blob/tracing-0.1.44/tracing/src/lib.rs
 > //!    including a file appender and non blocking writer.
 
-What the dispatch layer does guarantee: it blocks recursion (an event or span emitted from inside a subscriber goes to a no-op dispatcher); `set_global_default` returns `Err` rather than panicking; during thread-local teardown `try_with` fails and `get_default` falls back to `NONE`.
+What the dispatch layer does guarantee: `set_global_default` returns `Err` rather than panicking; during thread-local teardown `try_with` fails and `get_default` falls back to `NONE`; and it blocks recursion only on the scoped path (an event or span emitted from inside a subscriber goes to a no-op dispatcher while a scoped default is live on some thread). When no scoped default is live, the fast path added in 0.1.31 (#2593) returns the global before the re-entry check, so a subscriber that emits reaches itself again:
+
+Source: https://github.com/tokio-rs/tracing/blob/tracing-core-0.1.36/tracing-core/src/dispatcher.rs
+>     if SCOPED_COUNT.load(Ordering::Acquire) == 0 {
+>         // fast path if no scoped dispatcher has been set; just use the global
+>         // default.
+>         return f(get_global());
+>     }
 
 Source: https://github.com/tokio-rs/tracing/blob/tracing-core-0.1.36/tracing-core/src/dispatcher.rs
 > /// Note that calls to `get_default` should not be nested; if this function is
@@ -714,7 +747,7 @@ Source: https://github.com/tokio-rs/tracing/blob/tracing-0.1.44/tracing/src/lib.
 Source: https://github.com/tokio-rs/tracing/blob/tracing-core-0.1.36/tracing-core/src/dispatcher.rs
 > //!     Rust standard library. <code>no_std</code> users should use
 
-- *Guarantees:* the global default is set at most once and never dropped; events and spans outside any subscriber are discarded; recursion from inside a subscriber goes to a no-op dispatcher. No guarantee on panics, errors or blocking in the subscriber: those belong to the backend.
+- *Guarantees:* the global default is set at most once and never dropped; events and spans outside any subscriber are discarded unless the non-default `log` feature is enabled, in which case they are emitted as `log` records to whatever `log` backend is installed; recursion from inside a subscriber goes to a no-op dispatcher only while a scoped default is live; otherwise the fast path skips that guard. No guarantee on panics, errors or blocking in the subscriber: those belong to the backend.
 - *Failure model:* installation fails loudly once (`Err`, or a panic from `init`). Recording has no error channel. A subscriber panic propagates to the call site, and a poisoned registry lock panics later callers.
 - *History:* prototype #30 (2018-10) agreed to remove the `log`-style global; `tokio-trace` entered Tokio with only a thread-local default (#827, 2019-02); tokio #1152 (2019-06) added `set_global_default` back as a fallback; #383 and #388 (2019-10) added `set_default`; #2065 (2022) fixed a scoped guard clobbering a later global default; #2593 (`tracing-core` 0.1.31, 2023-05) removed thread-local caching of the global and added the `SCOPED_COUNT` fast path; both are in the `tracing-core` changelog.
 
@@ -840,7 +873,7 @@ The Rust `metrics` crate, read as one of the three facades in the claim that Tra
 **The claim, part by part**
 
 1. Global entry point: holds. Macros reach the recorder through an implicit process-wide `static`; the application hands its recorder over once and never passes it to call sites. Qualifications: a thread-local override is consulted first, and a stored metric handle stays bound to the recorder current when it was registered.
-2. Backend installed at the top level: holds, strictly one-shot. A second `set_global_recorder` returns an error that hands the recorder back; the installed recorder is leaked and never replaced or dropped. Metrics before install are ignored, and a handle obtained before install stays a no-op for good.
+2. Backend installed at the top level: holds, strictly one-shot. A second `set_global_recorder` returns an error that hands the recorder back; the installed recorder is leaked and never replaced or dropped. Metrics recorded with neither a global nor a thread-local recorder set go to the no-op recorder and are lost, and a handle obtained then stays a no-op for good; under a local recorder set before the global one, metrics go to that local recorder.
 3. Scoped override for tests: holds, with limits. A closure form (0.22.0) and a `!Send` guard form (0.24.0), both thread-local: neither reaches other threads or redirects an existing handle. The authors state two purposes: tests, and recorders that are not thread-safe.
 
 The separate question of failure posture: the facade promises nothing about a call failing, panicking or blocking; those belong to the recorder. Its only promise is the cost of the no-op path.
@@ -894,14 +927,14 @@ Source: https://github.com/metrics-rs/metrics/blob/metrics-v0.24.6/metrics/src/l
 
 No way exists to end or replace the global. The item index (`https://docs.rs/metrics/0.24.6/metrics/all.html`) lists exactly four functions: `set_default_local_recorder`, `set_global_recorder`, `with_local_recorder`, `with_recorder`. `RecorderOnceCell` (`recorder/cell.rs`) has only `new`, `set` and `try_load`, with no clear or take. An unsafe `clear_recorder` existed until 0.21.1 and was removed in 0.22.0: a grep of `lib.rs`, `recorder/mod.rs` and `recorder/cell.rs` at `metrics-v0.22.0`, and of `metrics/src` at `metrics-v0.24.6`, finds no `clear_recorder`, `set_recorder` or `set_boxed_recorder`.
 
-Metrics emitted before install go to the no-op recorder and are lost:
+Metrics emitted before install, with no local recorder set, go to the no-op recorder and are lost:
 
 Source: https://github.com/metrics-rs/metrics/blob/metrics-v0.24.6/metrics/src/lib.rs
 > //! Initialization of the global recorder isn't required for macros to function, but any metrics emitted before a global
 > //! recorder is installed will not be recorded, so initialization and installation of an exporter should happen as early
 > //! as possible in the application lifecycle.
 
-*A handle obtained before install stays a no-op permanently.* The no-op recorder's `register_counter` returns `Counter::noop()`, an empty handle (`Self { inner: None }`, `noop.rs` and `handles.rs`). Every handle operation checks only its own `inner` and never looks the recorder up again:
+*A handle obtained with no recorder set, global or local, stays a no-op permanently.* The no-op recorder's `register_counter` returns `Counter::noop()`, an empty handle (`Self { inner: None }`, `noop.rs` and `handles.rs`). Every handle operation checks only its own `inner` and never looks the recorder up again:
 
 Source: https://github.com/metrics-rs/metrics/blob/metrics-v0.24.6/metrics/src/handles.rs
 >     pub fn increment(&self, value: u64) {
@@ -926,11 +959,26 @@ Source: https://github.com/metrics-rs/metrics/blob/metrics-v0.24.6/metrics/src/r
 > /// does not extend to other threads, and so is not suitable for capturing metrics in asynchronous code where multiple
 > /// threads are involved.
 
-The guard form is `set_default_local_recorder(recorder: &dyn Recorder) -> LocalRecorderGuard<'_>`, `#[must_use]`. It nests and restores the previous recorder on drop:
+The guard form is `set_default_local_recorder(recorder: &dyn Recorder) -> LocalRecorderGuard<'_>`, `#[must_use]`. It nests and restores the previous recorder on drop, provided guards are dropped innermost first: `Drop` writes back the recorder it replaced without checking that it is the innermost guard, so dropping an outer guard first replaces the active inner recorder, and the inner guard's later drop restores the outer one, even if that recorder has since been dropped (read from source, not run). The saved `prev_recorder` is a bare `Option<NonNull<dyn Recorder>>`; the guard's `PhantomData<&'a dyn Recorder>` bounds only its own recorder:
 
 Source: https://github.com/metrics-rs/metrics/blob/metrics-v0.24.6/metrics/src/recorder/mod.rs
 > /// Additionally, local recorders can be used in a nested fashion. When setting a new default local recorder, the
 > /// previous default local recorder will be captured if one was set, and will be restored when the returned guard drops.
+
+Source: https://github.com/metrics-rs/metrics/blob/metrics-v0.24.6/metrics/src/recorder/mod.rs
+> impl<'a> Drop for LocalRecorderGuard<'a> {
+>     fn drop(&mut self) {
+>         // Clear the thread-local recorder.
+>         LOCAL_RECORDER.with(|local_recorder| local_recorder.replace(self.prev_recorder.take()));
+>     }
+> }
+
+Matei David (`mateiidavid`, `CONTRIBUTOR`), the guard's contributor, not a maintainer, raised this in PR #523 after the maintainer's review and before the merge:
+
+Source: https://github.com/metrics-rs/metrics/pull/523#issuecomment-2389078754
+> There is also a bit of an issue with the current implementation, for example, suppose you have something like this:
+
+His example drops the outer guard, then the outer recorder, then the inner guard, whose drop "will now restore the previous recorder (in this case `root_recorder`)"; the test is named `it_will_segfault`. No reply on the thread addresses it: the later issue comments are about signing and release, the inline review comments about naming, a SAFETY comment and doc wording, and of the eight review bodies all but one are empty.
 
 The closure form is built on the same guard, which clears the slot even when the closure unwinds:
 
@@ -1076,7 +1124,15 @@ Toby Lawrence, maintainer, reviewing #523, on why the guard saves and restores t
 Source: https://github.com/metrics-rs/metrics/pull/523#issuecomment-2386952189
 > What needs to happen is that we need to store the _current_ local recorder in the guard, so that when it drops, it can be reset.
 
-Both forms stay; no one states why both are kept (see No stated rationale found).
+Matei David, the guard's contributor (not a maintainer), presented it as additive and rejected an `Arc`-based alternative because it would break `with_local_recorder`:
+
+Source: https://github.com/metrics-rs/metrics/pull/523
+> The change does not introduce any breaking changes to the existing API.
+
+Source: https://github.com/metrics-rs/metrics/pull/523#issuecomment-2389078754
+> 2. Use Arc / RefCell, but this unfortunately would break backwards compatibility since `with_local_recorder` takes a trait object.
+
+No maintainer states why both forms are kept (see No stated rationale found).
 
 **Inferred**
 
@@ -1087,7 +1143,7 @@ Both forms stay; no one states why both are kept (see No stated rationale found)
 **No stated rationale found**
 
 - Why the guard is `!Send`: looked in the `LocalRecorderGuard` and `set_default_local_recorder` docs at the tag, and in the body and all issue comments of #523 and #502; none discusses `Send`.
-- Why both the closure and the guard are kept: looked in #523 and #502 (bodies and comments), the 0.24.0 CHANGELOG entry and `RELEASES.md` at the tag, which has no 0.24.0 narrative entry on local recorders.
+- Why both the closure and the guard are kept, beyond the contributor's compatibility reason at introduction (above): looked in #523 and #502 (bodies and comments), the 0.24.0 CHANGELOG entry and `RELEASES.md` at the tag, which has no 0.24.0 narrative entry on local recorders.
 
 A why was found for everything else asked.
 
@@ -1098,7 +1154,7 @@ A why was found for everything else asked.
 Source: https://github.com/metrics-rs/metrics/issues/551#issuecomment-2610637888
 > a mismatch in the minor version (i.e. using `metrics@0.24.x` while using, say, `metrics-exporter-prometheus@v0.15.x` which depends on `metrics@v0.23.x`) of the `metrics` crate can lead to installing exporters in a way where they aren't used when actually calling `counter!`, etc.
 
-- Guarantees promised: the no-op fallback costs "an atomic load and comparison". Install is once per process. A failed install returns the recorder. The local override is thread-local and restores the previous one on drop, including on unwind. Nothing is promised about the cost, fallibility, panics or blocking of a call into an installed recorder.
+- Guarantees promised: the no-op fallback costs "an atomic load and comparison". Install is once per process. A failed install returns the recorder. The local override is thread-local and restores the previous one on drop, including on unwind, when guards drop in reverse order; out-of-order drops are not handled. Nothing is promised about the cost, fallibility, panics or blocking of a call into an installed recorder.
 - Failure model: emission is infallible by signature. A recorder's panic propagates to the caller; nothing in the facade catches it. An example of a backend panicking at install is issue #122, "PrometheusBuilder::install panics without a thread-local runtime", reported by str4d, a user:
 
 Source: https://github.com/metrics-rs/metrics/issues/122
@@ -1164,6 +1220,13 @@ Source: https://github.com/metrics-rs/metrics/blob/metrics-v0.24.6/metrics/RELEA
 > macros.
 
 - Comparables that chose otherwise (`log`, `tracing`, OpenTelemetry) are surveyed in their own sections and not repeated here.
+- Chose otherwise on the unset path: `metrique` 0.1.34 (awslabs), a Rust metrics library whose `ServiceMetrics` global sink panics if `sink` is called before a destination is attached:
+
+Source: https://docs.rs/metrique/0.1.34/metrique/
+> by using the sink method (you must attach a destination before calling sink, otherwise you will encounter
+> a panic!).
+
+No stated rationale found: the crate root docs at 0.1.34 mention "panic" only in this sentence, and the `_guide::sinks` page at 0.1.34 not at all; the issue tracker was not searched. Only this sentence was read; the crate is not otherwise surveyed.
 
 **Unverified**
 
@@ -1171,6 +1234,7 @@ Source: https://github.com/metrics-rs/metrics/blob/metrics-v0.24.6/metrics/RELEA
 - Whether a `LocalRecorderGuard` held across `.await` on a multi-threaded runtime could be dropped on another thread. The type is `!Send`, so a future holding it is `!Send` and the compiler rejects a spawn that needs `Send`; no test was compiled and no source states the outcome.
 - The review comments on PR #414 (`pulls/414/comments`, `pulls/414/reviews`); only the body and issue-thread comments were read.
 - Exhaustiveness of the dissent search, cut short by the GitHub search API rate limit (see Costs and dissent).
+- Whether the out-of-order drop in PR #523's `it_will_segfault` example crashes at 0.24.6. The destructor it relies on is unchanged at the tag (read from source); the example was not compiled or run.
 
 #### Leads that did not hold (`metrics`)
 
@@ -1187,7 +1251,7 @@ The OpenTelemetry API and SDK crates for Rust, tested against the claim that Tra
 **The claim, part by part**
 
 1. *A global entry point: holds, but optional.* `global` holds a process-wide tracer and meter provider, yet the SDK provider is an ordinary value the application builds and owns; the SDK's own getting-started example never uses the global, and logs have no global at all (removed in 0.23; a re-add refused in 2026, #3346).
-2. *A backend installed at the top level: holds in part.* `set_tracer_provider` and `set_meter_provider` exist but can be called any number of times (last call wins, nothing returned since 0.31), and installing does not hand over the lifecycle: the application keeps the provider to shut it down, and the global's clone is never dropped.
+2. *A backend installed at the top level: holds, by convention.* `set_tracer_provider` and `set_meter_provider` say "Libraries should NOT call this function. It is intended for applications/executables." Separately, they can be called any number of times (last call wins, nothing returned since 0.31), and installing does not hand over the lifecycle: the application keeps the provider to shut it down, and the clone in the global is never dropped while it is the current one; replacing it drops the old clone inside `set_*`, under the write lock, which shuts that provider down if it was the last clone.
 3. *A scoped override for tests: does not hold at 0.33.1.* No public item scopes a provider. A guard that restored the previous provider existed up to v0.12 and was removed in 0.13 (#444). Tests build their own providers with in-memory exporters.
 
 **What it does**
@@ -1331,6 +1395,15 @@ Source: https://github.com/open-telemetry/opentelemetry-rust/blob/372ebbc74d4dba
 > /// Spans are exported synchronously
 > /// in the same thread that emits the log record.
 
+Obtaining a tracer or meter through the global takes the slot's `RwLock` for reading, so it waits while `set_tracer_provider` or `set_meter_provider` holds the write lock. Inferred from source, not run: the write lock is held while the replaced provider is dropped, which can run that provider's shutdown.
+
+Source: https://github.com/open-telemetry/opentelemetry-rust/blob/372ebbc74d4dba71bb9820732f57f7316b4e7a1e/opentelemetry/src/global/trace.rs
+>     let global_provider = global_tracer_provider().read();
+
+Source: https://github.com/rust-lang/rust/blob/1.100.0/library/std/src/sync/poison/rwlock.rs
+>     /// Locks this `RwLock` with shared read access, blocking the current thread
+>     /// until it can be acquired.
+
 `force_flush` and `shutdown` block the caller:
 
 Source: https://github.com/open-telemetry/opentelemetry-rust/blob/372ebbc74d4dba71bb9820732f57f7316b4e7a1e/opentelemetry-sdk/src/trace/provider.rs
@@ -1354,10 +1427,23 @@ Source: https://github.com/open-telemetry/opentelemetry-rust/blob/372ebbc74d4dba
 >         // TODO: Make this timeout configurable.
 >         match response_rx.recv_timeout(Duration::from_secs(5)) {
 
-A provider set globally is never dropped through the global, because the slot is a `static`, and
+A provider set globally is never dropped through the global while it is the current one, because the slot is a `static` (a later `set_*` does drop it, see below), and
 
 Source: https://github.com/rust-lang/reference/blob/b122dbbf524f95f75fd2cc2966fe26bd37aa8b04/src/items/static-items.md
 > Static items do not call [`drop`] at the end of the program.
+
+Replacing it does drop it. Each setter assigns into the slot while it holds the write guard, and assignment runs the destructor of the old value, an `Arc` around the old provider. If the global held the last clone of an `SdkTracerProvider`, its inner destructor runs `shutdown` (the drop path quoted above), inside `set_*` and under the write lock. So only the value in the slot when the process exits is never dropped. Before 0.31 the setter returned the replaced provider; since then it is dropped in place. Whether it is the last clone depends on what else holds one: the application, or tracers obtained from it (read from source, not run):
+
+Source: https://github.com/open-telemetry/opentelemetry-rust/blob/372ebbc74d4dba71bb9820732f57f7316b4e7a1e/opentelemetry/src/global/trace.rs
+>     let mut global_provider = global_tracer_provider().write();
+>     if let Ok(ref mut provider) = global_provider {
+>         **provider = GlobalTracerProvider::new(new_provider);
+
+Source: https://github.com/open-telemetry/opentelemetry-rust/blob/372ebbc74d4dba71bb9820732f57f7316b4e7a1e/opentelemetry/src/global/metrics.rs
+>         **provider = Arc::new(new_provider);
+
+Source: https://doc.rust-lang.org/1.100.0/reference/destructors.html
+> Assignment also runs the destructor of its left-hand operand, if it’s initialized.
 
 The metrics guide states the consequence the other way round:
 
@@ -1471,7 +1557,7 @@ Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63
 **Inferred**
 
 - Inferred: tracers and meters taken early stay no-op because the global stores the provider behind a lock and hands out snapshots, not a delegating proxy that re-reads the slot on each call. No author states this as the reason; the observability design note calls it a limitation to investigate, and the source shows the mechanism.
-- Inferred: keeping the provider and calling `shutdown` on it is mandatory for a provider set globally, because the global's clone lives in a `static` that Rust never drops, so the drop-triggers-shutdown path cannot fire. The metrics guide's note implies this; no author states the `static` reason in those words.
+- Inferred: keeping the provider and calling `shutdown` on it is mandatory for a provider set globally, because the current global's clone lives in a `static` that Rust never drops, so the drop-triggers-shutdown path cannot fire for it; it can fire for a provider that a later `set_*` replaces, if the global held its last clone. The metrics guide's note implies this; no author states the `static` reason in those words.
 - Inferred: the absence of a scoped override follows from the removal of the guard in #444 and of the returned provider in #3078; nobody proposed a test-scoped replacement in the threads read.
 
 **No stated rationale found**
@@ -1488,8 +1574,20 @@ Source: https://github.com/open-telemetry/opentelemetry-rust/blob/372ebbc74d4dba
 > Instead they operate by spawning dedicated background thread, and making
 > blocking calls from the same.
 
-- *Guarantees:* recording calls on the global path do not return errors or panic by design (lock poisoning degrades to no-op since 0.31); data loss is allowed and logged once (batch queue full); shutdown is best-effort and bounded by a timeout, configurable for traces and fixed at five seconds for the metrics periodic reader.
-- *Failure model:* set-up can fail (exporter build returns `Result`); shutdown and flush return `OTelSdkResult`; telemetry after shutdown is dropped with a warning ("Spans are being emitted even after Shutdown. This indicates incorrect lifecycle management of TracerProvider in application. Spans will not be exported." in `span_processor.rs`).
+- *Guarantees:* recording calls on the global path do not return errors or panic by design (lock poisoning degrades to no-op since 0.31); data loss is allowed and logged once (batch queue full); shutdown is best-effort; the batch span processor bounds its wait by a timeout, configurable for traces, and the metrics periodic reader waits a fixed five seconds; the simple span processor first takes the exporter mutex, which an export in flight holds, so that wait is outside its timeout.
+- *Failure model:* set-up can fail (exporter build returns `Result`); shutdown and flush return `OTelSdkResult`; a span ended after its provider has shut down is skipped silently in `span.rs`, before any processor sees it, and tracers obtained after shutdown are no-ops; a processor that is itself shut down while the provider is not warns ("Spans are being emitted even after Shutdown. This indicates incorrect lifecycle management of TracerProvider in application. Spans will not be exported." in `span_processor.rs`), for example when a processor is shut down directly, or in a race with provider shutdown.
+
+Source: https://github.com/open-telemetry/opentelemetry-rust/blob/372ebbc74d4dba71bb9820732f57f7316b4e7a1e/opentelemetry-sdk/src/trace/span.rs
+>         // skip if provider has been shut down
+>         if provider.is_shutdown() {
+>             return;
+>         }
+
+Source: https://github.com/open-telemetry/opentelemetry-rust/blob/372ebbc74d4dba71bb9820732f57f7316b4e7a1e/opentelemetry-sdk/src/trace/provider.rs
+> /// Once shut down, the `TracerProvider` transitions into a disabled state. In this state, further
+> /// operations on its associated `Tracer` instances will result in no-ops, ensuring that no spans
+> /// are processed or exported after shutdown.
+
 - *Stability:* pre-1.0, breaking the global API between minor releases (0.13, 0.22, 0.23, 0.28 and 0.31 all changed it).
 - *History:* a global with an uninstall guard that restored the previous provider (from #229, merged 2020-09-27, to v0.12); guard replaced by returning the old provider plus `global::shutdown_tracer_provider` (0.13, #444); exporter pipelines that installed the global themselves, removed in 2024 (#1787 metrics, #1812 traces, under #1592); global logs removed (0.23, #1691); `global::shutdown_meter_provider` removed (0.22, #1412) and `global::shutdown_tracer_provider` removed (0.28, #2369); `set_tracer_provider` stops returning the old provider and stops panicking (0.31, #3078). The direction throughout is from a global that owns the lifecycle to an application-held provider with an optional global for discovery.
 
@@ -1553,7 +1651,7 @@ Source: https://github.com/open-telemetry/opentelemetry-rust/pull/3870#issuecomm
 
 #### Leads that did not hold (OpenTelemetry Rust)
 
-- **"A backend installed at the top level"** holds only in part: `set_tracer_provider` and `set_meter_provider` are replaceable any number of times (last call wins, nothing returned since 0.31), and installing does not hand over the lifecycle: the application builds and keeps the SDK provider, and the global holds a clone that is never dropped.
+- **"A backend installed at the top level"** holds by convention, as the setters' docs assign them to applications, but differs from `log`, `tracing` and `metrics` in two respects the claim does not cover: `set_tracer_provider` and `set_meter_provider` are replaceable any number of times (last call wins, nothing returned since 0.31), and installing does not hand over the lifecycle: the application builds and keeps the SDK provider, and the global holds a clone that is never dropped until another `set_*` replaces it.
 - **"A global entry point"** holds with a qualification the claim omits: the global is optional. The SDK's getting-started example uses `provider.tracer(...)` without it, and logs have no global (removed in 0.23, a re-add refused in 2026, #3346).
 - **"A scoped override for tests"** does not hold at 0.33.1: no item in either crate's full index scopes a provider. One existed up to v0.12 (`TracerProviderGuard`) and was removed in 0.13.
 - **Lead `shutdown_tracer_provider`**: confirmed removed in 0.28 (#2369), not merely deprecated. While present it released the global's reference rather than shutting the provider down if other references existed (#1961).
@@ -1647,7 +1745,7 @@ Source: https://docs.python.org/3.15/howto/logging.html
 > because the configuration of handlers is the prerogative of the application
 > developer who uses your library.
 
-*5. The serving path: what can raise or block on a logging call.* The swallow is a per-handler convention, not enforced by the framework. `Handler.handle` calls `emit` under the handler's lock with no `try`; each standard `emit` wraps its own work, including formatting (so a mismatched `%`-format goes to `handleError`), re-raises `RecursionError` and does not catch non-`Exception` throwables (`with self.lock: self.emit(record)`, lines 1029–1030):
+*5. The serving path: what can raise or block on a logging call.* The swallow is a per-handler convention, not enforced by the framework. `Handler.handle` calls `emit` under the handler's lock with no `try`; each standard `emit` that does I/O or formatting wraps its own work (`BufferingHandler` and `MemoryHandler` do not: their `emit` appends and may call `flush`, which hands records to the target's `handle` without a `try`, so an exception from the target's filters or from a non-standard target reaches the caller; both quoted below), including formatting (so a mismatched `%`-format goes to `handleError`), re-raises `RecursionError` and does not catch non-`Exception` throwables (`with self.lock: self.emit(record)`, lines 1029–1030):
 
 Source: https://github.com/python/cpython/blob/v3.15.2/Lib/logging/__init__.py#L1153-L1162
 >         try:
@@ -1660,6 +1758,20 @@ Source: https://github.com/python/cpython/blob/v3.15.2/Lib/logging/__init__.py#L
 >             raise
 >         except Exception:
 >             self.handleError(record)
+
+`BufferingHandler.emit`, which `MemoryHandler` inherits, and `MemoryHandler.flush` have no `try`:
+
+Source: https://github.com/python/cpython/blob/v3.15.2/Lib/logging/handlers.py
+>         self.buffer.append(record)
+>         if self.shouldFlush(record):
+>             self.flush()
+
+Source: https://github.com/python/cpython/blob/v3.15.2/Lib/logging/handlers.py
+>         with self.lock:
+>             if self.target:
+>                 for record in self.buffer:
+>                     self.target.handle(record)
+>                 self.buffer.clear()
 
 With `raiseExceptions` true (the default), `handleError` prints a traceback to stderr and returns, never re-raising the original exception (while printing, a `RecursionError` is re-raised and only `OSError` from the writes is suppressed, lines 1097–1105). With it false, nothing:
 
@@ -1718,7 +1830,7 @@ Source: https://peps.python.org/pep-0282/
 > multiple libraries will be able to be integrated into larger
 > applications which can be logged reasonably coherently.
 
-*Configuration from outside the code, changeable at run time.* PEP 282; then Vinay Sajip, author, PEP 391; then CPython logging docs (owned by the maintainer under CODEOWNERS) on why incremental configuration is limited to levels:
+*Configuration from outside the code, changeable at run time.* PEP 282; then Vinay Sajip, author, PEP 391; then the CPython logging docs on why incremental configuration is limited to levels:
 
 Source: https://peps.python.org/pep-0282/
 > The main benefit of a logging system like this is that one can
@@ -1769,7 +1881,7 @@ Source: https://github.com/python/cpython/issues/34244#issuecomment-1093957746
 Source: https://plumberjack.blogspot.com/2010/12/proposed-changes-to-logging-defaults.html
 > When the logging package was introduced, this was done with a philosophy that logging is an adjunct to normal application activity — meaning that a script should work in exactly the same way with or without the presence of logging.
 
-*`raiseExceptions` defaults to `True`: development is noisy, production should turn it off.* CPython logging docs (owned by the maintainer under CODEOWNERS), the HOWTO; the reference agrees:
+*`raiseExceptions` defaults to `True`: development is noisy, production should turn it off.* the CPython logging docs, the HOWTO; the reference agrees:
 
 Source: https://docs.python.org/3.15/howto/logging.html
 > The default value of raiseExceptions is True. This is
@@ -1954,7 +2066,12 @@ Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63
 Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63.0/specification/performance.md
 > The OpenTelemetry client could block the end user application when it shut down. On shutdown, it has to flush data to prevent information loss. The OpenTelemetry client should support user-configurable timeout if it blocks on shut down.
 
-The normative no-blocking rules are narrower: `Span.End` "MUST NOT perform blocking I/O on the calling thread" (`trace/api.md`), and `Export` "MUST NOT block indefinitely", except for synchronous output through an API without deadlines or cancellation (`trace/sdk.md`).
+The normative no-blocking rules are narrower. On the serving path, `Span.End` "MUST NOT perform blocking I/O on the calling thread" (`trace/api.md`), and the log record processor's `OnEmit` "SHOULD NOT block or throw exceptions" (`logs/sdk.md`); the span processor's `OnStart`, `OnEnding` and `OnEnd` say the same in lower case (`trace/sdk.md`). Off it, `Export` "MUST NOT block indefinitely", except for synchronous output through an API without deadlines or cancellation (trace, metrics and logs SDK pages), and `Shutdown` "SHOULD NOT block indefinitely" (metrics and logs SDK pages; lower case in `trace/sdk.md`).
+
+Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63.0/specification/logs/sdk.md
+> `OnEmit` is called when a `LogRecord` is [emitted](api.md#emit-a-logrecord). This
+> method is called synchronously on the thread that emitted the `LogRecord`,
+> therefore it SHOULD NOT block or throw exceptions.
 
 *Global registration.* A SHOULD, in the same words for `TracerProvider`, `MeterProvider` and `LoggerProvider`; implementations SHOULD also allow "an arbitrary number" of provider instances.
 
@@ -2144,7 +2261,13 @@ Source: https://github.com/open-telemetry/opentelemetry-java/blob/v1.68.0/api/al
 >           set(OpenTelemetry.noop());
 >           openTelemetry = Objects.requireNonNull(globalOpenTelemetry);
 
-Since 1.57.0, `getOrNoop()` and `isSet()` read without that side effect. Autoconfiguration runs only with `otel.java.global-autoconfigure.enabled=true`; if it throws, `get()` logs SEVERE ("OpenTelemetry will not be enabled") and falls back to no-op. Null arguments are logged and given a no-op. `resetForTest()` clears the global, tests only.
+Since 1.57.0, `getOrNoop()` and `isSet()` read without that side effect. Autoconfiguration runs only with `otel.java.global-autoconfigure.enabled=true`; if it throws, `get()` logs SEVERE ("OpenTelemetry will not be enabled") and falls back to no-op; if the autoconfigure class is present but its `initialize` or `getOpenTelemetrySdk` method cannot be found or accessed, `get()` throws `IllegalStateException` ("This is a bug in OpenTelemetry."). Null arguments are logged and given a no-op. `resetForTest()` clears the global, tests only.
+
+Source: https://github.com/open-telemetry/opentelemetry-java/blob/v1.68.0/api/all/src/main/java/io/opentelemetry/api/GlobalOpenTelemetry.java
+>     } catch (NoSuchMethodException | IllegalAccessException e) {
+>       throw new IllegalStateException(
+>           "AutoConfiguredOpenTelemetrySdk detected on classpath "
+>               + "but could not invoke initialize method. This is a bug in OpenTelemetry.",
 
 **The stated why**
 
@@ -2184,7 +2307,7 @@ Not applicable for throwing, set-on-get, the opt-in, the obfuscation and `getOrN
 **Constraints**
 
 - Deployment model: the Java agent installs an SDK in premain and calls `set` before application code; instrumentation finds it through the global. Without the agent, the application typically calls `OpenTelemetrySdkBuilder.buildAndRegisterGlobal()`.
-- Guarantees: `get()` always returns the same instance; a second `set` throws with the first caller's stack; the instance cannot be cast to the SDK. Failure model: a `get` before `set` gives no-op application-wide, then `IllegalStateException` at the late `set`; failed autoconfiguration logs SEVERE and degrades to no-op.
+- Guarantees: `get()` always returns the same instance; a second `set` throws with the first caller's stack; the instance cannot be cast to the SDK. Failure model: a `get` before `set` gives no-op application-wide, then `IllegalStateException` at the late `set`; autoconfiguration that throws logs SEVERE and degrades to no-op, and one whose methods cannot be reached by reflection throws `IllegalStateException` from `get()`.
 - History: own class 2020-12 (PR #2233); set-twice prevented 2021-01 (PR #2548); obfuscation 2021-02 (PR #2829); scare text 2022-03 (PR #4223); opt-in autoconfiguration 2022-12 (PR #5010); `getOrNoop`/`isSet` 2025-11 (PR #7819, 1.57.0). From the file's commit list at `v1.68.0`.
 
 **Costs and dissent**
@@ -2220,7 +2343,7 @@ Comparable that chose otherwise: Python (C2) warns and late-binds. Issue #3068 r
 
 #### Leads that did not hold (OpenTelemetry API and SDK)
 
-- "MUST NOT block" in `performance.md`: absent; it says "should" and allows shutdown and flush to block. Normative no-blocking text exists only for `Span.End` and `Export` (trace, metrics and logs SDK pages). Shown by `grep -n -i block`.
+- "MUST NOT block" in `performance.md`: absent; it says "should" and allows shutdown and flush to block. Upper-case no-blocking text covers `Span.End` (MUST NOT), the log record processor's `OnEmit` (SHOULD NOT), `Export` (MUST NOT block indefinitely; trace, metrics and logs SDK pages) and `Shutdown` (SHOULD NOT block indefinitely; metrics and logs SDK pages). Shown by `grep -rn 'MUST NOT block\|SHOULD NOT block\|MUST NOT perform blocking'` over `specification/` at `v1.63.0`.
 - That the specification defines a tracer or meter obtained before registration: it does not (`grep -rn -i global specification/` at `v1.63.0`); #3068 called it under-defined and closed stale.
 - Java's `set` throws if called twice or after `get`: holds after `set`, `get()` or any helper calling it; not after `getOrNoop()` or `isSet()` (since 1.57.0). With autoconfiguration enabled, `get()` sets an SDK, not a no-op.
 - Python warns on a second set: holds, and the second provider is ignored, not installed.
@@ -2764,7 +2887,7 @@ Rejected alternative: Greg Ewing argued for thunk (closure) blocks; PEP 340 quot
 
 **Unverified**
 
-- Whether `docs.python.org/3.15/` changes between 3.15 patch releases; it is the version-pinned path, read 2026-11-24.
+- Whether `docs.python.org/3.15/` changes between 3.15 patch releases. It names the minor series, not a patch release: the pages read identified themselves as "Python 3.15.2 documentation", and `docs.python.org/3.15.2/` returns 404, so no patch-pinned path exists. Read 2026-11-24.
 
 #### The guarantees side by side
 
@@ -2802,22 +2925,22 @@ The claim under test, made from memory and unverified: "Observability libraries 
 
 | ID | Library | Lang. | Version | Set-up fails loudly? | Serving call can fail? (on what) | Serving call can block? (default) | Primary source |
 |---|---|---|---|---|---|---|---|
-| E1 | Log4j 2 Core (`AsyncAppender`, async loggers) | Java | 2.26.1 | **No** by default: errors go to the status logger, and a missing configuration falls back to `DefaultConfiguration`. | **Configurable**, default no: `ignoreExceptions=true` swallows appender exceptions. | **Yes, by default, without a bound**: backpressure until the queue has space. | log4j2 `rel/2.26.1` |
+| E1 | Log4j 2 Core (`AsyncAppender`, async loggers) | Java | 2.26.1 | **Mostly no**: most errors go to the status logger, and a missing configuration falls back to `DefaultConfiguration`; an `AsyncAppender` left with no usable appender throws `ConfigurationException`, which `Configurator.initialize` status-logs but which, read from the code, reaches the first `LogManager.getLogger` caller under automatic configuration. | **Configurable**, default no: `ignoreExceptions=true` swallows appender exceptions. | **Yes, by default, without a bound**: backpressure until the queue has space. | log4j2 `rel/2.26.1` |
 | E2 | Logback (`AsyncAppender`) | Java | 1.6.8 | **Depends on the path**: automatic configuration prints `JoranException`; explicit `doConfigure` throws it. | **No**: `doAppend` catches `Exception` into a status error. | **Yes, by default**, mixed: `WARN`/`ERROR` block without a bound and lower levels drop near full. | logback `v_1.6.8`, logback-site `c83ed2a` |
-| E3 | Python stdlib `logging` | Python | CPython 3.15.2 | **Yes**: `dictConfig` and `fileConfig` raise. | Errors inside a standard handler's `emit` **no** (traceback to stderr); a non-integer level **raises `TypeError`**, an `extra` key colliding with a record attribute **raises `KeyError`**, and filter exceptions **propagate** (B1). | **Yes**: handlers run synchronously in the caller's thread under the handler's lock. | cpython `v3.15.2` |
-| E4 | Kafka Java producer | Java | 4.4.0 | **Yes**: the constructor throws `KafkaException`. | **Yes**: `send` throws several exceptions directly; API errors come back in the `Future`. | **Yes, up to `max.block.ms` = 60000 ms by default**, configurable. | kafka `4.4.0`, KIP-19, KAFKA-3539 |
+| E3 | Python stdlib `logging` | Python | CPython 3.15.2 | **Yes**: `dictConfig` and `fileConfig` raise. | Errors inside a standard handler's `emit` **no** (traceback to stderr), except through `MemoryHandler`'s unguarded flush to its target; a non-integer level **raises `TypeError`**, an `extra` key colliding with a record attribute **raises `KeyError`**, and filter exceptions **propagate** (B1). | **Yes**: handlers run synchronously in the caller's thread under the handler's lock. | cpython `v3.15.2` |
+| E4 | Kafka Java producer | Java | 4.4.0 | **Yes**: the constructor throws `KafkaException`. | **Yes**: `send` throws several exceptions directly; API errors come back in the `Future`. | **Yes**: waits for metadata and buffer space up to `max.block.ms` = 60000 ms by default, configurable; blocking in user-supplied serializers or the partitioner is not counted against it. | kafka `4.4.0`, KIP-19, KAFKA-3539 |
 | E5 | Micrometer | Java | 1.18.0 | **Mixed**: a type clash throws, while the Prometheus registry logs other registration failures. | Increment no; lookup-or-register (often per event) can throw. | Cumulative counter increment no; registration locking not examined. | micrometer `v1.18.0`, issues #2068, #5228 |
-| E6 | `prometheus_client` | Python | 0.26.0 | **Yes**: duplicate registration and bad names raise. | **Yes**: wrong labels, negative increments and missing labels raise. | Short lock only; no I/O on the serving path. | client_python `v0.26.0`, prometheus/docs guideline |
+| E6 | `prometheus_client` | Python | 0.26.0 | **Yes**: duplicate registration and bad names raise. | **Yes**: wrong labels, negative increments and missing labels raise. | Default (in-process) mode: short lock only, no I/O. Multiprocess mode (`PROMETHEUS_MULTIPROC_DIR` set): one process-wide lock for every metric, every update writes to a memory-mapped file, a new child can open or grow that file, and after a fork every file is reopened. | client_python `v0.26.0`, prometheus/docs guideline |
 | E7 | `client_golang` | Go | 1.25.0 | **Yes, panics** with `MustRegister`; `Register` returns an `error`. | **Yes, panics** on a wrong label count or negative add; error-returning variants exist. | **Yes, through a lock**: `WithLabelValues` can block behind a stuck scrape at v1.25.0 (#2147). | client_golang `v1.25.0`, issues #715, #2147 |
 | E8 | `pystatsd` | Python | 4.0.1 | **Yes**: the constructor resolves the host and raises on failure. | UDP **no** (swallowed); TCP and Unix **yes**; timer misuse raises. | UDP: a blocking socket write, in practice brief; TCP: **yes**, no timeout by default. | pystatsd `v4.0.1` |
 | E9 | `cadence` (StatsD) | Rust | 1.8.0 | **Yes**: the UDP sink constructor returns a `Result`. | **Yes, as a `Result`**; `.send()` routes errors to a no-op handler by default. | Socket mode is the caller's choice; the queuing sink is unbounded by default and fails rather than blocks when bounded. | cadence `1.8.0`, issue #65 |
-| E10 | `sentry-sdk` | Python | 3.0.0 | **Yes**: a malformed DSN raises `BadDsn`; an empty DSN makes the SDK a no-op. | **No**: SDK-internal exceptions are logged. | **No**: `put_nowait` on a 100-item queue, dropping and recording when full. | sentry-python `3.0.0`, sentry-docs develop guidelines |
-| E11 | `sentry` | Rust | 0.49.6 | **Yes, panics** on an invalid DSN; an empty DSN disables the client; a failed transport-thread spawn is silent (`.ok()`), and envelopes are then recorded lost (G2). | **No**: `capture_event` returns a `Uuid`, nil if discarded. | **No**: `try_send` on a 30-slot channel, dropping when full. | sentry-rust `0.49.6` |
-| E12 | `tracing-appender` (with `tracing-subscriber`) | Rust | 0.2.5 (subscriber 0.3.23) | **Mixed**: `new`, the worker spawn and `init` panic; the builder and `try_init` return `Result`. | **No** in lossy mode; the worker ignores I/O errors. | Default **no** (lossy, 128,000 lines); `lossy(false)` blocks with backpressure. | tracing `tracing-appender-0.2.5`, PR #673, issue #2865 |
+| E10 | `sentry-sdk` | Python | 3.0.0 | **Yes**: a malformed DSN raises `BadDsn`; an empty DSN makes the SDK a no-op. | **No**: SDK-internal exceptions are logged. | **No wait for queue space**: `put_nowait` on a 100-item queue, dropping and recording when full. Event processing and any user `before_send` run synchronously on the caller's thread, and when the worker is not alive a submit first takes the worker lock (which `flush` holds while it waits) and starts a thread. | sentry-python `3.0.0`, sentry-docs develop guidelines |
+| E11 | `sentry` | Rust | 0.49.6 | **Yes, panics** on an invalid DSN; an empty DSN disables the client; a failed transport-thread spawn is silent (`.ok()`), and envelopes are then recorded lost (G2). | **No error value**: `capture_event` returns a `Uuid`; it is nil if the event is discarded before sending, but a drop at the transport's full channel happens after the ID is set, so a non-nil ID does not mean the event was queued. An application `before_send` runs inline and can panic. | **No wait for channel space**: `try_send` on a 30-slot channel, dropping when full. Event preparation, including any application `before_send`, runs synchronously on the caller's thread under the transport slot's read lock, and in application session mode it takes a session mutex. | sentry-rust `0.49.6` |
+| E12 | `tracing-appender` (with `tracing-subscriber`) | Rust | 0.2.5 (subscriber 0.3.23) | **Mixed**: loud for `new`, the worker spawn and `init` (panic) and for the builder and `try_init` (`Result`); quiet for `with_ansi(true)` without the `ansi` feature in a release build, which only prints to stderr. | **No** in lossy mode; the worker ignores I/O errors. | Default **no** (lossy, 128,000 lines); `lossy(false)` blocks with backpressure. | tracing `tracing-appender-0.2.5`, PR #673, issue #2865 |
 | E13 | `slog-async` (with `slog`) | Rust | 2.8.0 (slog 2.8.2) | Spawning the worker panics on failure. | `Fatal` on poisoning or disconnection, which the documented `.fuse()` turns into a **panic**. | Default **no** (`DropAndReport`, 128 slots); `Block` blocks. | slog-rs/async `v2.8.0`, slog `v2.8.2` |
 | E14 | Datadog `ddtrace` (trace writer only) | Python | 4.17.2 | Not examined. | Not on buffer full: drops, warns and counts. | A lock around encoding; `sync_mode` flushes in the caller's thread. | dd-trace-py `v4.17.2` |
 
-Across this sample neither half of the claim holds as stated: set-up fails loudly in most libraries but not in the two Java logging frameworks or Micrometer's Prometheus registry since 1.6, and on the serving path Kafka, Log4j 2 and Logback block by default, Python `logging` does synchronous I/O, and `prometheus_client`, `client_golang` and `cadence` raise, panic or return errors on misuse. The event shippers (E10, E11, and E14 on the one path examined) and the lossy Rust writers (E12, E13) fit the serving half most closely.
+What the sample shows, half by half, without a verdict. The serving half says "never", and the sample has counterexamples to it: Kafka, Log4j 2 and Logback block by default, Python `logging` does synchronous I/O, and `prometheus_client`, `client_golang` and `cadence` raise, panic or return errors on misuse. The set-up half says "usually". A purposive sample cannot test how common a posture is (see the note above the table), so that half is Unverified here. What the sample shows is that set-up postures vary. Set-up is loud in E3, E4, E6 to E10 and E13. It is loud in E11 apart from a silent transport-thread spawn failure, and loud in E12 apart from a release-build `with_ansi` misuse. Log4j 2 status-logs a missing configuration and most component errors, but an `AsyncAppender` with no usable appender throws, and read from the code that reaches the caller on the automatic path (E1). Logback is quiet on its automatic path and loud on an explicit `doConfigure` (E2). Micrometer's Prometheus registry is quiet since 1.6, apart from a type clash (E5). Set-up was not examined for `ddtrace` (E14). The event shippers (E10, E11, and E14 on the one path examined) and the lossy Rust writers (E12, E13) do not block on a full queue; E10 and E11 can still wait elsewhere on the serving call (see their sections).
 
 ### E1. Log4j 2 Core (2.26.1)
 
@@ -2834,6 +2957,27 @@ In `AsyncAppender.start()` a dangling appender reference is only status-logged (
 
 Source: https://github.com/apache/logging-log4j2/blob/rel/2.26.1/log4j-core/src/main/java/org/apache/logging/log4j/core/appender/AsyncAppender.java
 > throw new ConfigurationException("No appenders are available for AsyncAppender " + getName());
+
+`ConfigurationException` extends `RuntimeException`. It is not caught on the way out of `LoggerContext.setConfiguration` (a `try` with only a `finally`), which `reconfigure` also calls, nor in `AbstractConfiguration.start()`, which calls `appender.start();` in a loop, nor in `Log4jContextFactory.getContext`, which calls `ctx.start()` (read from source, not run):
+
+Source: https://github.com/apache/logging-log4j2/blob/rel/2.26.1/log4j-core/src/main/java/org/apache/logging/log4j/core/LoggerContext.java
+>             config.start();
+
+Source: https://github.com/apache/logging-log4j2/blob/rel/2.26.1/log4j-core/src/main/java/org/apache/logging/log4j/core/config/AbstractConfiguration.java
+>             appender.start();
+
+Whether it reaches the application depends on the entry point. Automatic configuration goes through `LogManager.getLogger` and then `getContext`, which catches only `IllegalStateException`, so by this reading the exception reaches the first caller of `LogManager.getLogger`:
+
+Source: https://github.com/apache/logging-log4j2/blob/rel/2.26.1/log4j-api/src/main/java/org/apache/logging/log4j/LogManager.java
+>         } catch (final IllegalStateException ex) {
+>             LOGGER.warn("{} Using SimpleLogger", ex.getMessage());
+
+`Configurator.initialize`, the programmatic entry point, catches it and logs it to the status logger:
+
+Source: https://github.com/apache/logging-log4j2/blob/rel/2.26.1/log4j-core/src/main/java/org/apache/logging/log4j/core/config/Configurator.java
+>         } catch (final Exception ex) {
+>             LOGGER.error(
+>                     "There was a problem initializing the LoggerContext using configuration {}",
 
 *Serving path, failure.* `AppenderControl` catches every `RuntimeException` from `append` and rethrows only when `ignoreExceptions` is `false` (default `true`); that includes the `IllegalStateException` a stopped `AsyncAppender` throws:
 
@@ -2884,7 +3028,7 @@ The deadlock fixes named in the source (LOG4J2-471, LOG4J2-1518, LOG4J2-2031) sh
 
 **Unverified**
 
-Whether the `ConfigurationException` from `AsyncAppender.start()` reaches the application or is status-logged further up (`AbstractConfiguration.start()` calls `appender.start()` without a catch at line 344; `LoggerContext` callers not traced). The LOG4J2-471, -1518 and -2031 Jira threads were not read.
+Whether the `ConfigurationException` from `AsyncAppender.start()` reaches the application was traced from the code, not run: `AbstractConfiguration.start()`, `LoggerContext.setConfiguration` (a `try` with only a `finally`), `LoggerContext.reconfigure` and `Log4jContextFactory.getContext` have no `catch`; `LogManager.getContext` catches only `IllegalStateException`; `Configurator.initialize` catches `Exception` and status-logs it. The LOG4J2-471, -1518 and -2031 Jira threads were not read.
 
 ### E2. Logback (1.6.8)
 
@@ -2983,7 +3127,7 @@ Source: https://github.com/python/cpython/blob/v3.15.2/Doc/library/logging.confi
 >    raise a :exc:`ValueError`, :exc:`TypeError`, :exc:`AttributeError`
 >    or :exc:`ImportError` with a suitably descriptive message.
 
-*Serving path, failure.* Errors inside a standard handler's `emit` go to `handleError`, which by default (`raiseExceptions = True`) prints a traceback to stderr and returns, without re-raising; with `raiseExceptions=False` it is silent. Not every error goes there: an `extra` key that collides with a `LogRecord` attribute raises `KeyError`, and an exception in a filter propagates (B1). At the earlier tag `v3.14.0`, `FileHandler` opening a delayed file and `WatchedFileHandler` reopening one ran outside `emit`'s `try`, so an `OSError` reached the caller; `v3.15.2` routes both to `handleError`. The module comment says such exceptions "should be propagated", but the code only prints: comment and code disagree. `Logger.log` with a non-integer level does raise by default:
+*Serving path, failure.* Errors inside a standard handler's `emit` go to `handleError` (except through `MemoryHandler`, whose `emit` and `flush` hand records to the target's `handle` without a `try`, B1), which by default (`raiseExceptions = True`) prints a traceback to stderr and returns, without re-raising; with `raiseExceptions=False` it is silent. Not every error goes there: an `extra` key that collides with a `LogRecord` attribute raises `KeyError`, and an exception in a filter propagates (B1). At the earlier tag `v3.14.0`, `FileHandler` opening a delayed file and `WatchedFileHandler` reopening one ran outside `emit`'s `try`, so an `OSError` reached the caller; `v3.15.2` routes both to `handleError`. The module comment says such exceptions "should be propagated", but the code only prints: comment and code disagree. `Logger.log` with a non-integer level does raise by default:
 
 Source: https://github.com/python/cpython/blob/v3.15.2/Lib/logging/__init__.py
 >         if not isinstance(level, int):
@@ -3057,6 +3201,9 @@ Source: https://github.com/apache/kafka/blob/4.4.0/clients/src/main/java/org/apa
 Source: https://github.com/apache/kafka/blob/4.4.0/clients/src/main/java/org/apache/kafka/clients/producer/ProducerConfig.java
 > "For <code>send()</code> this timeout bounds the total time waiting for both metadata fetch and buffer allocation "
 
+Source: https://github.com/apache/kafka/blob/4.4.0/clients/src/main/java/org/apache/kafka/clients/producer/ProducerConfig.java
+>                                                     + "(blocking in the user-supplied serializers or partitioner is not counted against this timeout). "
+
 **The stated why**
 
 KIP-19, status Accepted (Confluence page version 36, not pinnable further; history names Jiangjie Qin as creator and Mayuresh Gharat as last editor, roles not verified). Bounded, not zero, blocking was a goal:
@@ -3110,6 +3257,11 @@ The Prometheus registry turns its own registration failures into a log line (war
 Source: https://github.com/micrometer-metrics/micrometer/issues/2068
 > Previously, `PrometheusMeterRegistry` threw an `IllegalArgumentException`. Now, we'll _not_ throw an exception but instead silently continue, but inform any callbacks registered that this `Meter.Id` could not be registered.
 
+In 1.18.0 two conflicts that used to pass registration and then fail every later scrape are caught at registration instead, logged and the conflicting meter discarded by default: a duplicate Prometheus family name, and histogram configurations that differ between meters of the same name. The migration guide is a wiki page, pinned to its revision `8f46ab2`; it is checked as HTML, so its inline code appears without backticks. The earlier behaviour:
+
+Source: https://github.com/micrometer-metrics/micrometer/wiki/1.18-Migration-Guide/8f46ab2ad0e7040ce0ba82d43fa89fe8751a9fae
+> Previously, if different meters mapped to the same Prometheus metric family name (for example, registering a Timer("test") which generates test_seconds_max along with a separate Gauge("test_seconds_max")), both meters were accepted at registration time, but subsequent calls to scrape() would fail with a DuplicateLabelsException.
+
 *Serving path.* `CumulativeCounter.increment` is a `DoubleAdder.add` (`value.add(amount)`).
 
 **The stated why**
@@ -3121,6 +3273,11 @@ Source: https://github.com/micrometer-metrics/micrometer/issues/2068
 
 Source: https://github.com/micrometer-metrics/micrometer/issues/2068
 > In this way, the user can do whatever they'd like with these problems, including logging or propagating a hard failure if they choose.
+
+The 1.18 migration guide, last revised by Tommy Ludwig (`shakuzen`, the `MEMBER` quoted next), on the 1.18 default for a conflicting meter:
+
+Source: https://github.com/micrometer-metrics/micrometer/wiki/1.18-Migration-Guide/8f46ab2ad0e7040ce0ba82d43fa89fe8751a9fae
+> Default behavior: A warning log explains that meters with the same name must produce the same family type (e.g. SUMMARY vs HISTOGRAM). The conflicting meter is ignored, preventing the scrape endpoint from failing.
 
 GitHub user `shakuzen` (association `MEMBER`), on why the failure is not even logged by default:
 
@@ -3167,7 +3324,21 @@ The official Prometheus client for Python (pull model). Tag `v0.26.0`. Read 2026
 Source: https://github.com/prometheus/client_python/blob/v0.26.0/prometheus_client/metrics.py
 >                 raise ValueError('Incorrect label count')
 
-*Serving path, blocking.* Child lookup takes a lock (`with self._lock:`); no I/O, since exposition happens at scrape time.
+*Serving path, blocking.* In the default in-process mode, child lookup takes a lock (`with self._lock:`) and there is no I/O, since exposition happens at scrape time. In multiprocess mode, chosen by `PROMETHEUS_MULTIPROC_DIR` (`if 'prometheus_multiproc_dir' in os.environ or 'PROMETHEUS_MULTIPROC_DIR' in os.environ:`, `values.py`), every value shares one process-wide lock and every update, not only the first use, writes to a memory-mapped file. Creating a value (on a label combination's first use) can open a per-process file, which growing the map truncates to a larger size, and after a fork `__check_for_pid_change` closes every file and resets every value, so all the files are reopened (read from source, not run):
+
+Source: https://github.com/prometheus/client_python/blob/v0.26.0/prometheus_client/values.py
+>                 files[file_prefix] = MmapedDict(filename)
+
+Source: https://github.com/prometheus/client_python/blob/v0.26.0/prometheus_client/mmap_dict.py
+>         self._f = open(filename, 'rb' if read_mode else 'a+b')
+
+Source: https://github.com/prometheus/client_python/blob/v0.26.0/prometheus_client/values.py
+>         def inc(self, amount):
+>             with lock:
+>                 self.__check_for_pid_change()
+>                 self._value += amount
+>                 self._timestamp = 0.0
+>                 self._file.write_value(self._key, self._value, self._timestamp)
 
 **The stated why**
 
@@ -3404,6 +3575,24 @@ Source: https://github.com/getsentry/sentry-python/blob/3.0.0/sentry_sdk/transpo
 >             for item in envelope.items:
 >                 self.record_lost_event("queue_overflow", item=item)
 
+That covers a full queue only. Event processing runs first on the caller's thread, including any user `before_send` (`client.py` line 562):
+
+Source: https://github.com/getsentry/sentry-python/blob/3.0.0/sentry_sdk/client.py
+>                     new_event = before_send(event, hint or {})
+
+Before enqueueing, `submit` restarts a worker that is not alive (on the first submit, after `kill()`, in a forked child, or after the thread has died), under the lock `flush` holds while it waits, and spawns a thread; when the worker is alive, `submit` takes no lock. Python's `put` holds `self.not_full` only for a size check and the append, since `block=False` (read from source, not run):
+
+Source: https://github.com/getsentry/sentry-python/blob/3.0.0/sentry_sdk/worker.py
+>     def submit(self, callback: "Callable[[], Any]") -> bool:
+>         self._ensure_thread()
+
+Source: https://github.com/getsentry/sentry-python/blob/3.0.0/sentry_sdk/worker.py
+>     def flush(self, timeout: float, callback: "Optional[Any]" = None) -> None:
+>         logger.debug("background worker got flush request")
+>         with self._lock:
+>             if self.is_alive and timeout > 0.0:
+>                 self._wait_flush(timeout, callback)
+
 **The stated why**
 
 Sentry's SDK development guidelines (project documentation; no individual author), which also permit the transport to discard on a missing DSN, a full queue or rate limiting:
@@ -3457,7 +3646,21 @@ Source: https://github.com/getsentry/sentry-rust/blob/0.49.6/sentry-core/src/api
 > /// The return value is the event ID. If the event was discarded for any reason,
 > /// return value will be the nil UUID (`Uuid::nil`).
 
-*Serving path, blocking.* The transport uses `try_send` on a channel of `DEFAULT_CHANNEL_CAPACITY` 30, dropping and recording the loss when full.
+The docs' "for any reason" is wider than the code: the transport's queue-overflow drop is recorded as a client report and does not change the returned ID. `capture_event` sets the ID inside the envelope builder, before the transport is called, and returns it whatever the transport does; the nil ID comes back only for discards before the envelope is built, such as `before_send` returning `None` or a client with no transport:
+
+Source: https://github.com/getsentry/sentry-rust/blob/0.49.6/sentry-core/src/client/mod.rs
+>                 event_id = event.event_id;
+
+Source: https://github.com/getsentry/sentry-rust/blob/0.49.6/sentry/src/transports/tokio_thread.rs
+>                 TrySendError::Full(task) => (task, ClientReportReason::QueueOverflow),
+
+*Serving path, blocking.* The transport uses `try_send` on a channel of `DEFAULT_CHANNEL_CAPACITY` 30, dropping and recording the loss when full. That covers a full queue only: `capture_event` first prepares the event on the caller's thread, inside the closure that `send_envelope_with` runs while it holds the transport slot's read lock. That runs the application's `before_send` callback, and in application session mode it takes a session mutex (`.lock().unwrap()`). A grep of `client/mod.rs` finds no `catch_unwind`; other files were not searched. `shutdown` takes the write lock only for `.take()`, and the guard is released before `transport.shutdown(timeout)` (read from source, not run):
+
+Source: https://github.com/getsentry/sentry-rust/blob/0.49.6/sentry-core/src/client/mod.rs
+>         if let Some(ref func) = self.options.before_send {
+>             sentry_debug!("invoking before_send callback");
+>             let id = event.event_id;
+>             if let Some(processed_event) = func(event) {
 
 **The stated why**
 
@@ -3494,7 +3697,7 @@ Rust's non-blocking log writer for `tracing`. Tags `tracing-appender-0.2.5` and 
 
 **What it does**
 
-*Set-up.* Mixed. `RollingFileAppender::new` panics and the builder returns a `Result`:
+*Set-up.* Loud, except for one misuse in release builds. `RollingFileAppender::new` panics and the builder returns a `Result`:
 
 Source: https://github.com/tokio-rs/tracing/blob/tracing-appender-0.2.5/tracing-appender/src/rolling.rs
 >     /// Unlike [`RollingFileAppender::new`], the [`Builder::build`] method
@@ -3662,11 +3865,11 @@ Set-up failure behaviour, the default buffer size, when `sync_mode` is on, and a
 
 - **Log4j 2 never blocking the serving path:** `AsyncAppender` (`blocking=true`) and the queue-full policy (`Default`) both block by default; dropping is opt-in (`Discard`). E1.
 - **Logback `neverBlock`:** it exists but defaults to `false`, so the appender blocks; the default is lossy for `TRACE`/`DEBUG`/`INFO` through `discardingThreshold`, not `neverBlock`. E2.
-- **Kafka `send` not blocking:** documented as asynchronous, it blocks for up to `max.block.ms` (60000 ms default) and throws several exceptions directly. E4.
+- **Kafka `send` not blocking:** documented as asynchronous, it blocks on metadata and buffer space for up to `max.block.ms` (60000 ms default), and without that bound in user-supplied serializers or the partitioner, and throws several exceptions directly. E4.
 - **The serving half, for metrics clients:** `prometheus_client` raises and `client_golang` panics on a wrong label count or negative increment; `cadence` returns a `Result` from every plain call; at v1.25.0 `client_golang`'s `WithLabelValues` can block behind a stuck scrape. E6, E7, E9.
-- **"Set-up fails loudly" for Java logging:** Log4j 2 status-logs configuration errors and falls back to a default configuration; Logback's automatic configuration catches and prints `JoranException`. E1, E2.
+- **"Set-up fails loudly" for Java logging:** Log4j 2 status-logs most configuration errors and falls back to a default configuration, except that an `AsyncAppender` with no usable appender throws `ConfigurationException`, which reaches the caller on the automatic path (read from the code); Logback's automatic configuration catches and prints `JoranException`, while an explicit `doConfigure` throws it. E1, E2.
 - **"Set-up fails loudly" for Micrometer:** since 1.6 the Prometheus registry swallows registration failures (warn-then-debug), while a `MeterRegistry` type clash still throws. E5.
-- **`tracing-appender` set-up failing loudly:** mixed; `new` and the worker spawn panic, the builder returns a `Result`, and runtime I/O errors are ignored. E12.
+- **`tracing-appender` set-up failing loudly:** holds except for one case: `new` and the worker spawn panic and the builder returns a `Result`, all loud, but `with_ansi(true)` without the `ansi` feature only prints to stderr in a release build. Runtime I/O errors are ignored, which is the serving path, not set-up. E12.
 - **"A StatsD client" as one posture:** `pystatsd` swallows over UDP but raises, and can block without a bound, over TCP; `cadence` returns a `Result`. E8, E9.
 - **The serving half for `slog-async`:** with the documented `.fuse()`, a fatal drain error becomes a panic at the call site. E13.
 
@@ -3678,7 +3881,7 @@ Set-up failure behaviour, the default buffer size, when `sync_mode` is on, and a
 
 Comparables for a top-level block that owns a background writer.
 
-Libraries in which a value or block held at the top level owns a background worker, and ending it ends or flushes the worker. Sources read 2026-11-24; pins were that day's current releases; Sentry docs and SDK spec at `getsentry/sentry-docs` commit `feaece23fe2aa5da596937b948b8fca6f70ff2e0`. Two shapes appear. **Scope-owned**: ending a value or block ends the worker (G1, G2, the last clone in G3, G4 as a `with` block). **Exit-hook-owned**: a global object owns the worker and an `atexit` hook (in G7 also signal handlers) ends it; the application holds no value whose end ends the worker (G5, G6, G7). Two libraries removed a scope-owned shape: opentelemetry-rust its provider guard (#444), sentry-python `init` as a context manager (#3729, #3730).
+Libraries in which a value or block held at the top level owns a background worker, and ending it ends or flushes the worker. Sources read 2026-11-24; pins were that day's current releases; Sentry docs and SDK spec at `getsentry/sentry-docs` commit `feaece23fe2aa5da596937b948b8fca6f70ff2e0`. Two shapes appear. **Scope-owned**: ending a value or block asks the worker to finish and waits for it (G1, G2, the last clone in G3, G4 as a `with` block). Whether the request is always delivered, whether everything queued is written, and whether the thread has exited when the wait ends differ by library; each section says which. **Exit-hook-owned**: a global object owns the worker and an `atexit` hook (in G7 also signal handlers) ends it; the application holds no value whose end ends the worker (G5, G6, G7). Two libraries removed a scope-owned shape: opentelemetry-rust its provider guard (#444), sentry-python `init` as a context manager (#3729, #3730).
 
 ### G1. tracing-appender `non_blocking` and `WorkerGuard` (crate 0.2.5, tag `tracing-appender-0.2.5`)
 
@@ -3694,12 +3897,20 @@ Source: https://github.com/tokio-rs/tracing/blob/tracing-appender-0.2.5/tracing-
 > //! Unintentional drops of `WorkerGuard` remove the guarantee that logs will be flushed
 > //! during a program's termination, in a panic or otherwise.
 
-- *Ending it.* `Drop` makes two bounded sends and does **not** join: `Msg::Shutdown` on the data channel (at most 100 ms), then a rendezvous on a zero-capacity channel (at most 1000 ms). The worker handles `Shutdown` in queue order, so every line queued before it is written; it flushes, blocks on the rendezvous, breaks and flushes again. Bound about 1.1 s; neither timeout is configurable in 0.2.5 (a `// TODO: Make timeout configurable.` sits on the 1000 ms send).
+- *Ending it.* `Drop` makes two bounded sends and does **not** join: `Msg::Shutdown` on the data channel (at most 100 ms), then a rendezvous on a zero-capacity channel (at most 1000 ms). The worker handles `Shutdown` in queue order, so it reaches `Shutdown` only after attempting every line queued before it, if it gets there before the guard's bound runs out; a line whose write fails is lost and the loop carries on (`write_all(msg)?`, errors ignored; quoted below). If `Shutdown` cannot be enqueued within 100 ms, `Drop` prints an error and returns without waiting. If the 1000 ms rendezvous expires, `Drop` returns while earlier lines may still be unwritten. On reaching `Shutdown`, the worker flushes, blocks on the rendezvous, breaks and flushes again. Bound about 1.1 s; neither timeout is configurable in 0.2.5 (a `// TODO: Make timeout configurable.` sits on the 1000 ms send).
 
 Source: https://github.com/tokio-rs/tracing/issues/1135
 > Currently there is a default timeout of 1000 ms. This default wasn't chosen for a specific reason and it would be better to let the end user decide what is the correct value for their application.
 
   #1135 is open; PR #3231 (configurable `shutdown_timeout`) is open and unmerged (checked 2026-11-24). On unreleased master (`74fc079d2308a959d3a17907b3ba592ffd0a98f7`) `Drop` also joins after a successful rendezvous and reports a timeout or worker panic on stderr; that join is from PR #1713 (merged to master 2021-11-13) and is **not** in 0.2.5 (no #1713 commit in the tag's history of `non_blocking.rs`).
+
+  The worker's branch for a failed write, in 0.2.5:
+
+Source: https://github.com/tokio-rs/tracing/blob/tracing-appender-0.2.5/tracing-appender/src/worker.rs
+>                         Err(_) => {
+>                             // TODO: Expose a metric for IO Errors, or print to stderr
+>                         }
+
 - *Early drop, leak.* An early drop shuts the worker down at once; later lines go nowhere. A leaked or never-dropped guard sends no `Shutdown`, and the worker runs until the process ends. Nothing in 0.2.5 mentions `mem::forget` (grep of `non_blocking.rs`, `worker.rs`, `lib.rs`). After an early drop, `write` in lossy mode (the default) counts the failure and returns `Ok`; in blocking mode it returns an `io::Error`.
 - *Exit without ending it.* No `atexit` or exit hook; the guard must drop by unwinding or by `main` returning.
 
@@ -3862,8 +4073,8 @@ Source: https://github.com/open-telemetry/opentelemetry-rust/blob/opentelemetry_
 > /// to the `TracerProvider` will automatically trigger its shutdown. During shutdown, the provider
 > /// will flush all remaining spans, ensuring they are passed to the configured processors.
 
-- *Ending it.* The inner `Drop` calls `shutdown()` unless already shut down; default 5 s (`Duration::from_secs(5)`), given to each processor in turn. The processor sends a `Shutdown` control message; the worker exports everything buffered, shuts the exporter down and acknowledges; the caller waits with `recv_timeout` and **only then** joins (`handle.join().unwrap()`). On timeout the thread is not joined.
-- *Early drop, leak.* Dropping one clone does nothing. Dropping the last early stops processing; later spans are refused with a warning:
+- *Ending it.* The inner `Drop` calls `shutdown()` unless already shut down; default 5 s (`Duration::from_secs(5)`), given to each processor in turn. The processor sends a `Shutdown` control message with `try_send`, and a full control channel returns an error without signalling the worker. The worker makes one export pass over what is buffered, shuts the exporter down, ignoring that result, and sends back the export's result. The caller waits with `recv_timeout`, discards that result (`.map(|_| {`), and **only then** joins (`handle.join().unwrap()`, which has no timeout of its own), so shutdown returns `Ok` even if the final export failed. On timeout the thread is not joined.
+- *Early drop, leak.* Dropping one clone does nothing. Dropping the last early stops processing. A span ended after its provider has shut down is skipped silently in `span.rs`, before any processor sees it (as in A4); the warning below is reached only when a processor is shut down while its provider is not:
 
 Source: https://github.com/open-telemetry/opentelemetry-rust/blob/opentelemetry_sdk-0.33.1/opentelemetry-sdk/src/trace/span_processor.rs
 >                     message = "Spans are being emitted even after Shutdown. This indicates incorrect lifecycle management of TracerProvider in application. Spans will not be exported."
@@ -3897,7 +4108,7 @@ Source: https://github.com/open-telemetry/opentelemetry-rust/pull/444
 
 **Inferred**
 
-- The global holder is a `static OnceLock<RwLock<GlobalTracerProvider>>` (`opentelemetry/src/global/trace.rs`, same tag) and Rust never drops statics, so a clone held only by the global is never shut down by `Drop`; hence the explicit call.
+- The global holder is a `static OnceLock<RwLock<GlobalTracerProvider>>` (`opentelemetry/src/global/trace.rs`, same tag) and Rust never drops statics, so a clone held only by the global is never shut down by `Drop` while it stays current; a later `set_tracer_provider` drops it under the global's write lock, and if it was the last clone its `Drop` runs `shutdown`. Hence the explicit call.
 - If the worker panicked after acknowledging, `join().unwrap()` panics in the caller.
 - Acknowledge-then-join avoids the objection raised on tracing-appender #1125, that a join in `drop` "will never complete" if the worker fails to stop; neither project cites the other.
 
@@ -3908,7 +4119,7 @@ For the 5 s default: none in the comments of `provider.rs` and `span_processor.r
 **Constraints**
 
 - One thread per processor, `OpenTelemetry.Traces.BatchProcessor`; queue bounded (2,048 default), drops when full.
-- Shutdown exports all buffered spans within the timeout; tracers then do nothing. Explicit `shutdown` returns errors; drop-time errors are logged at debug.
+- Shutdown makes one export attempt of the buffered spans within the timeout; tracers then do nothing. Explicit `shutdown` returns an error for a timeout or a full control channel, but not for a failed final export, whose result is discarded; drop-time errors are logged at debug.
 - History: guard removed in #444 (2021). `SdkMeterProvider` gained a `Drop` in #1623 and broke the global pattern (#1661); a maintainer proposed moving `Drop` to the shared inner value (it landed: `impl Drop for SdkMeterProviderInner` at 0.33.1, as A4 says). #2369 (2024) removed `global::shutdown_tracer_provider`.
 
 **Costs and dissent**
@@ -4227,7 +4438,7 @@ Source: https://github.com/DataDog/dd-trace-py/pull/17195
 - **OpenTelemetry Python `BatchSpanProcessor` and `atexit`.** The registration is `TracerProvider`'s; grep for `atexit` in `sdk/trace/export/__init__.py` and `sdk/_shared_internal/__init__.py` at v1.45.2 finds nothing.
 - **ddtrace as a guard comparable.** No value or block the application holds; the global tracer's worker ends through Python and native `atexit` hooks plus SIGTERM and SIGINT handlers (since #16342). The #17195 opt-out was never merged.
 - **sentry-python's `atexit` flush as an `init` guard.** In 3.0.0 `init()` returns `None` and is not a context manager (MIGRATION_GUIDE, #3730); the hook's `close()` flushes but does not join, and `kill()` returns immediately.
-- **opentelemetry_sdk providers "on drop".** Only the **last** clone's drop shuts down, a clone in the global `static OnceLock` is never dropped, and the changelog directs an explicit `shutdown()`. The earlier guard was removed in #444.
+- **opentelemetry_sdk providers "on drop".** Only the **last** clone's drop shuts down, a clone in the global `static OnceLock` is never dropped unless a later `set_*` replaces it, and the changelog directs an explicit `shutdown()`. The earlier guard was removed in #444.
 - Holds, with a divergence: **tracing-appender `WorkerGuard`**: in 0.2.5 `Drop` does not join, waiting at most 100 ms then 1000 ms for a rendezvous; the join exists only on unreleased master (#1713).
 - Holds, with a divergence: **sentry-rust `ClientInitGuard`**: the docs say events drain "with the configured `shutdown_timeout`", but only the flush acknowledgement is bounded (2 s); the `TransportThread` drop joins unbounded, and the marker `send` can wait on a full channel first (read from source).
 - Holds, with a divergence: **CPython `QueueListener`**: since 3.14 also a context manager; `stop()` joins without a timeout, the thread is a daemon (in source, not the reference page), and `logging`'s `atexit` does not stop listeners.
@@ -4296,7 +4507,7 @@ Source: https://github.com/slog-rs/slog/blob/v2.8.2/src/lib.rs
 > //!   registered backend. Parts of your application can handle logging
 > //!   in a customized way, or completely independently.
 
-Dawid Ciężarkiewicz (`dpc`, collaborator), to a user asking for `log`-style global setup (#157), then on the slog-scope panic default (#169):
+Dawid Ciężarkiewicz (`dpc`, collaborator), to a user asking for `log`-style global setup (#157), then on the slog-scope panic default (#169), where he also recalls, hedged with "IIRC", why the guard exists:
 
 Source: https://github.com/slog-rs/slog/issues/157#issuecomment-354695001
 > `log` has one global logger, and that's where everything lands.
@@ -4304,9 +4515,14 @@ Source: https://github.com/slog-rs/slog/issues/157#issuecomment-354695001
 Source: https://github.com/slog-rs/slog/issues/169#issuecomment-384061697
 > Problems with global state just won't go away...
 
+Source: https://github.com/slog-rs/slog/issues/169#issuecomment-384061697
+> IIRC, the guard was added so that ther's something reliabily dropping `slog-async::Async` so that logging messages are flushed, to avoid a pitfall.
+
+(The typos are the source's.)
+
 **Inferred**
 
-Inferred: the core's "tree-structured loggers" and per-`Logger` key-value context only work if child loggers are values handed to sub-components; one global would collapse the tree. No author states this link.
+Inferred: the core's "tree-structured loggers" and per-`Logger` key-value context follow the program's logical structure only when child loggers are values handed to sub-components. `slog-scope` shows a global can coexist with child loggers, but it ties them to the call stack instead, which is the cost the author states above. No author states the link to tree-structured loggers.
 
 **No stated rationale found**
 
@@ -5277,20 +5493,28 @@ Scoped OS threads, here briefly; D1 and D2 cover their history. Read at `library
 
 **What it does**
 
-*Promise.* The lexical closure is the scope.
+*Promise.* The lexical closure is the scope. The promise is about the threads' main functions; their thread-local destructors may still be running when `scope` returns (as in D2):
 
 Source: https://github.com/rust-lang/rust/blob/1.100.0/library/std/src/thread/scoped.rs
 > /// All threads spawned within the scope that haven't been manually joined
 > /// will be automatically joined before this function returns.
+> /// However, note that joining will only wait for the main function of these threads to finish; even
+> /// when this function returns, destructors of thread-local variables in these threads might still
+> /// be running.
 
 *Way out for long-lived work.* `std::thread::spawn` remains.
 
-*When a child fails.* A panic in a joined child is re-raised as a panic of `scope`. **[ticket 13]**
+*When a child fails.* If a thread joined automatically at the end of the scope panicked, `scope` panics with its own message, "a scoped thread panicked", not the child's payload; a panic in a thread joined by hand comes back as the `Err` of `join` and does not make `scope` panic. If the closure itself panicked, its panic is resumed instead. **[ticket 13]**
 
 Source: https://github.com/rust-lang/rust/blob/1.100.0/library/std/src/thread/scoped.rs
 > /// If any of the automatically joined threads panicked, this function will panic.
 
-*When a child will not finish.* `scope` waits for every thread. It has no timeout: `pub fn scope<'env, F, T>(f: F) -> T` takes only the closure, and `grep -c timeout` on the file returns 0. **[ticket 13]**
+Source: https://github.com/rust-lang/rust/blob/1.100.0/library/std/src/thread/scoped.rs
+>         Ok(_) if scope.data.a_thread_panicked.load(Ordering::Relaxed) => {
+>             panic!("a scoped thread panicked")
+>         }
+
+*When a child will not finish.* `scope` waits for the main function of every thread; thread-local destructors in those threads may still be running when it returns. It has no timeout: `pub fn scope<'env, F, T>(f: F) -> T` takes only the closure, and `grep -c timeout` on the file returns 0. **[ticket 13]**
 
 **The stated why**
 
@@ -5326,7 +5550,7 @@ Source: https://github.com/rust-lang/async-book/blob/840327a2e8ea30644b2a6c8940d
 
 What each source says of the claim, without a verdict:
 
-- **"Lives inside a scope".** Every source states that a child does not outlive its parent scope.
+- **"Lives inside a scope".** Every source states that a child does not outlive its parent scope. Rust's `scope` qualifies this: it waits only for each thread's main function, and thread-local destructors may still be running when it returns (S7, D2).
 - **"Every".** Each adopter keeps a way out for long-lived work: Sústrik's heap-allocated green thread, "managed manually by the owner(s)"; asyncio's `create_task` for "fire-and-forget" tasks; Java's non-goal of replacing `ExecutorService`; Kotlin's `GlobalScope`, "not limited by structured concurrency", behind an opt-in; Swift's `Task { }` and `Task.detached`; Rust's `thread::spawn`. Smith's essay says the full benefit needs the old primitives removed.
 - **"Visibly".** Trio, asyncio, Java and Swift scopes are syntactic blocks, and Java enforces structure at run time. Trio and the essay let a nursery be passed elsewhere, "explicitly" per the essay, so the call site shows it. Trio's system tasks go into an internal "system nursery" user code never opens. In libdill and Kotlin's `CoroutineScope()` entity pattern, the scope is a value in an object, closed by an explicit call (`hclose`, `scope.cancel()`), not a block.
 - **"Closes".** libdill's `hclose` cancels, then waits. Trio's nursery waits, cancelling when a child or the body raises or an enclosing cancel scope is cancelled. asyncio's `TaskGroup` waits, cancelling when a child or the body raises or on `cancel()`. Swift's group waits, cancelling on `cancelAll()`, cancellation of the group's task, or a throwing body. Java's `close()` cancels, then waits with no bound. Kotlin's `coroutineScope` waits; `scope.cancel()` cancels and, inferred from its non-suspending signature, does not wait.
@@ -5687,16 +5911,24 @@ pytest's log-capture fixture. Read 2026-11-24 at `9.2.0`: `how-to/logging.rst`; 
 
 **What it does**
 
-- **Install.** Function-scoped fixture; its handler goes on the root logger and, since 9.1.0 (changelog, issue 3697), on every non-propagating logger. Existing handlers stay.
+- **Install.** Function-scoped fixture; its handler goes on the root logger and, since 9.1.0 (changelog, issue 3697), on every logger that is non-propagating when capture starts; a logger that becomes non-propagating afterwards is missed. Existing handlers stay.
 
 Source: https://github.com/pytest-dev/pytest/blob/9.2.0/src/_pytest/logging.py
 >         # Attach to all non-propagating loggers (won't reach root).
 
+Source: https://github.com/pytest-dev/pytest/blob/9.2.0/src/_pytest/logging.py
+>         # Note that will miss loggers that *become* non-propagating
+>         # after the `__enter__`. Not worth the trouble for now.
+
 - **Records** `LogRecord`s reaching its handler after real logger levels, logger filters and propagation, plus formatted text; production handlers' filters do not gate it.
-- **Real backend's rules?** Denied on purpose in one respect: a record that fails to format raises in the test, where production prints to stderr and carries on (the next comment says pytest wants such mistakes visible). The docs warn capture depends on the root logger's config.
+- **Real backend's rules?** Denied on purpose in one respect: a record that fails to format raises in the test while `logging.raiseExceptions` is true (its default), where production prints to stderr and carries on (the next comment says pytest wants such mistakes visible). The docs warn capture depends on the root logger's config.
 
 Source: https://github.com/pytest-dev/pytest/blob/9.2.0/src/_pytest/logging.py
 >             # Fail the test if the log message is bad (emit failed).
+
+Source: https://github.com/pytest-dev/pytest/blob/9.2.0/src/_pytest/logging.py
+>     def handleError(self, record: logging.LogRecord) -> None:
+>         if logging.raiseExceptions:
 
 Source: https://github.com/pytest-dev/pytest/blob/9.2.0/doc/en/how-to/logging.rst
 >     The ``caplog`` fixture adds a handler to the root logger to capture logs. If the root logger is
@@ -5729,10 +5961,12 @@ Test-runner plugin, one process per worker. Records per phase (`setup`, `call`, 
 
 **Costs and dissent**
 
-- The 9.1.0 change broke a user's (`NONE`) test of a handler's resilience to bad records; maintainers (`MEMBER`) replied:
+- The 9.1.0 change broke a user's (`vallsv`, `NONE`, the reporter) test of a handler's resilience to bad records. The reporter's own explanation:
 
 Source: https://github.com/pytest-dev/pytest/issues/14603#issuecomment-4707909507
 > But it was done in purpose to check incorrect calls. To make sure that a custom handler is resilient to any problems.
+
+Maintainers (`RonnyPfannschmidt` and `bluetech`, `MEMBER`) replied:
 
 Source: https://github.com/pytest-dev/pytest/issues/14603#issuecomment-4707726446
 > so pytest just uncovered a bug in your code - because those logger calls are absolutely incorrect - seems like lack of handler and propagation just hid the fact that there is a bug
@@ -5812,7 +6046,12 @@ Why the exporter seam rather than replacing the SDK: not in PR 119 (all comments
 
 **Constraints**
 
-In-process SDK, pipeline built by the test. Guarantees what was exported, in order; unbounded unless `max_spans` is set. `export` fails only after `shutdown`.
+In-process SDK, pipeline built by the test. Holds what was exported, in order, when unbounded (the default); with `max_spans` set, the oldest spans are evicted silently, with no count. `export` fails only after `shutdown`.
+
+Source: https://github.com/open-telemetry/opentelemetry-python/blob/v1.45.2/opentelemetry-sdk/src/opentelemetry/sdk/trace/export/in_memory_span_exporter.py
+>         max_spans: Maximum number of spans to store in memory. When the limit
+>             is reached, the oldest spans are dropped automatically. If ``None``
+>             (default), there is no limit.
 
 **Costs and dissent**
 
@@ -5915,7 +6154,12 @@ Source: https://github.com/open-telemetry/opentelemetry-java/blob/v1.68.0/sdk/te
 Source: https://github.com/open-telemetry/opentelemetry-java/blob/v1.68.0/sdk/testing/src/main/java/io/opentelemetry/sdk/testing/exporter/InMemorySpanExporter.java
 >  * A {@link SpanExporter} implementation that can be used to test OpenTelemetry integration.
 
-- **Shows drops?** Not checked for Java (see Unverified).
+- **Shows drops?** Within a captured span only: `SpanData` gives total counts of recorded events, links and attributes, which exceed the attached ones when a span limit dropped some. No count of whole spans that never reached the exporter.
+
+Source: https://github.com/open-telemetry/opentelemetry-java/blob/v1.68.0/sdk/trace/src/main/java/io/opentelemetry/sdk/trace/data/SpanData.java
+>    * The total number of {@link EventData} events that were recorded on this span. This number may
+>    * be larger than the number of events that are attached to this span, if the total number
+>    * recorded was greater than the configured maximum value. See: {@link
 
 **The stated why**
 
@@ -5950,7 +6194,7 @@ No issue found where a Java fake passed and production differed; one search (`re
 
 **Unverified**
 
-Whether Java `SpanData` exposes dropped counts, and whether the Java batch processor filters unsampled spans; neither read.
+Whether the Java batch processor filters unsampled spans; not read.
 
 ### T9. structlog: `capture_logs`, `LogCapture`, `CapturingLogger` and `ReturnLogger` (structlog 26.1.0)
 
@@ -6213,7 +6457,7 @@ Source: https://docs.rs/diesel/2.4.0/diesel/connection/trait.Connection.html
 | What | Where | Link | Date read |
 |---|---|---|---|
 | Rust's built-in `core` crate, "The Rust Core Library". It is the dependency-free foundation of `std`, with no allocation, concurrency or I/O, and it is stable since Rust 1.6.0 according to the page. | Rust standard library docs, 1.100.0 (`0ef1bc386`, 2026-11-09). Rust 1.100.0 is the latest GitHub release, published 2026-11-12. | https://doc.rust-lang.org/1.100.0/core/index.html | 2026-11-24 |
-| `core` is always in the extern prelude, so a `core::` path resolves to it in every crate. | The Rust Reference, 1.100.0, "Preludes" | https://doc.rust-lang.org/1.100.0/reference/names/preludes.html | 2026-11-24 |
+| `core` is always in the extern prelude, so a `core::` path resolves to it unless a declaration in the module shadows the name. | The Rust Reference, 1.100.0, "Preludes" | https://doc.rust-lang.org/1.100.0/reference/names/preludes.html | 2026-11-24 |
 | `core` is a reserved crate name on crates.io: publishing it fails with "cannot upload a crate with a reserved name". The API returns 404 for `/crates/core`, and the sparse index returns 404 for `co/re/core`. | crates.io source at `7866a45`: the reserved-names migration and `publish.rs` | https://github.com/rust-lang/crates.io/blob/7866a4599199c2034bc631eb067d764486bf7a3a/migrations/20170305095748_create_reserved_crate_names/up.sql | 2026-11-24 |
 | `tracing-core` 0.1.36: "Core primitives for application-level tracing." 1,105,015,107 downloads. | crates.io API; docs.rs | https://docs.rs/tracing-core/0.1.36/tracing_core/ | 2026-11-24 |
 | `futures-core` 0.3.34: "The core traits and types in for the `futures` library." 1,201,112,691 downloads. | crates.io API; docs.rs | https://docs.rs/futures-core/0.3.34/futures_core/ | 2026-11-24 |
@@ -6235,6 +6479,9 @@ Source: https://doc.rust-lang.org/1.100.0/core/index.html
 
 Source: https://doc.rust-lang.org/1.100.0/reference/names/preludes.html
 > The core crate is always added to the extern prelude.
+
+Source: https://doc.rust-lang.org/1.100.0/reference/names/scopes.html
+> The prelude names may be shadowed by declarations in a module.
 
 Source: https://github.com/rust-lang/crates.io/blob/7866a4599199c2034bc631eb067d764486bf7a3a/migrations/20170305095748_create_reserved_crate_names/up.sql
 > ('compiletest'), ('core'), ('coretest'),
