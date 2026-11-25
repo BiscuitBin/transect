@@ -3,7 +3,7 @@
 - **Ticket:** `issues/16-research-the-why-client-shape-and-failure-posture.md`. It bears on open question 18 of `docs/specs/transect-client.allium` (whether confluence, establish and core are the final names), on the "Derived" statements that ticket 11 puts to the maintainer, and on the register's Product entries.
 - **Sources read:** on 2026-11-25 (UTC), from 01:10 to 05:50, which was 2026-11-24 in the maintainer's local time (UTC−8). The sections below give the local date, 2026-11-24.
 - **Web research:** authorised by the maintainer on 2026-11-24 for this ticket, for the agent working it, for its research subagents and for its reviewers. All of it was read-only: nothing was posted, filed or sent.
-- **State of this file:** the findings, up to N3, passed the first adversarial review in two rounds. Fit, the verdicts on the four claims and on the five stated behaviours, the proposed wording and what the findings bear on were written after it, and the second review covers them.
+- **State of this file:** the findings, up to N3, passed the first adversarial review in two rounds. Fit, the verdicts on the four claims and on the five stated behaviours, the proposed wording and what the findings bear on were written after it, and the second review covers them. On 2026-11-24 the maintainer read the hand-back and said the verdicts are not guaranteed to be applied: they, and the questions this file leaves open, stay open for the tickets they bear on, which ticket 16's hand-back lists.
 
 ## How the sources were checked
 
@@ -7600,6 +7600,8 @@ Each stated behaviour gets exactly one verdict:
 - or it rests on no stated why.
 
 Each verdict takes first the reason the record gives for the behaviour, then any other comparable's stated why found in this file. Where the record's reason fails but another comparable's stated why fits the whole behaviour, the verdict is the first, and says so. Where the verdict is not the first, proposed wording for the maintainer follows. The specification is not edited.
+
+This rule is the file's own reading of the ticket. The maintainer kept it on 2026-11-24, and said that the verdicts are not guaranteed to be applied and stay open, to be taken up by the tickets they bear on.
 
 ### 1. A confluence, establish and a client handle
 

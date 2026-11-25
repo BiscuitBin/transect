@@ -20,6 +20,8 @@ The interim behaviours that open questions carry ("Until decided") are a separat
 
 How to run it: put the statements to the maintainer in plain language, a few related ones at a time, each with the consequence of the opposite answer. For each, the maintainer confirms it, corrects it, or says it is undecided.
 
+**Ticket 16's findings:** `.scratch/client-spec/research/16-client-shape-and-failure-posture.md` bears on this ticket. It bears on four Derived statements: an establish nested inside an open one and a handle shared between threads ("What the findings bear on"), the fake core's rules (stated behaviour 5), and what a forked child's copy carries (stated behaviour 3). It confirms none of them. Review the report and its findings with the maintainer: the verdicts on its five stated behaviours, the rule they rest on (a stated why must fit the whole behaviour), and the question for the maintainer in behaviour 3 are open, not decided. Behaviour 4's verdict rests on `writer_has_stopped`, which is marked Derived and is also open question 26's "Until decided" rule, so it belongs to that open question. Read it before starting. Its fits and verdicts are findings, not decisions: the maintainer has said they are not guaranteed to be applied, and they stay open for the tickets they bear on.
+
 **Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the conformance and breakage lenses, at two key moments: after the maintainer's answers are recorded verbatim in this ticket's hand-back and before the specification changes; and before hand-back. Questions to put to the reviewers:
 
 1. Was every statement marked "Derived" put to the maintainer? Compare the statements asked against a fresh search of the specification, not against this ticket's summary.

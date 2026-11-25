@@ -20,6 +20,8 @@ Related open questions, by number and gist. Do not resolve them:
 - 25: whether a hand-over also carries the stored position, so a collector can tell rows still waiting from rows lost.
 - 16: the default queue capacity and maximum row size, and how a table is given its own.
 
+**Ticket 16's findings:** `.scratch/client-spec/research/16-client-shape-and-failure-posture.md` bears on this ticket. E1 to E14 record what fourteen libraries do when a queue or buffer is full, each with its stated why or "No stated rationale found": Log4j 2 and Logback block by default (E1, E2), `tracing-appender`, `slog-async`, `sentry` and `ddtrace` drop (E11 to E14), and `cadence` gives a reason for a bounded queue (E9). Fit E argues which of those reasons hold for this client. Read it before starting. Its fits and verdicts are findings, not decisions: the maintainer has said they are not guaranteed to be applied, and they stay open for the tickets they bear on.
+
 **Research file:** `.scratch/client-spec/research/04-evict-oldest-as-a-queue-policy.md`, written only if the proposal cites another system. "Citing a comparable" in `CONTEXT.md` says what it records.
 
 **Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the conformance and breakage lenses, at two key moments: after the maintainer's answers are recorded verbatim in this ticket's hand-back and before the specification changes; and before hand-back. Questions to put to the reviewers:

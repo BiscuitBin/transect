@@ -339,7 +339,43 @@ The resolution column gives the triage's solution. There, `r:` and a number give
 
   > All checks passed and the worktree is unchanged.
 
-- **Changed files:** `git diff main...HEAD --stat`, against the merge base `90f0abb`, shows only this ticket and its research file. `main` has since moved on (pull request #7, which closed tickets 01 and 02 and narrowed ticket 11); this branch does not touch those files. The specification is unchanged, and open question 18 is still in it. No code was added.
+- **Changed files:** `git diff main...HEAD --stat`, against the merge base `90f0abb`, shows only this ticket and its research file. `main` has since moved on (pull request #7, which closed tickets 01 and 02 and narrowed ticket 11); this branch does not touch those files. The specification is unchanged, and open question 18 is still in it. No code was added. This was true at hand-back; at the maintainer's request, ten other tickets have since gained a note (see "The maintainer's answers").
+
+### The maintainer's answers
+
+Put to the maintainer after the hand-back, on 2026-11-24, as four questions. Their answers, with their notes verbatim:
+
+- **The question from behaviour 3** (a host that never establishes, and a forked child's copy): left open. Note:
+
+  > Add a note to ticket 11 to review this report and its findings. And any other ticket that should take this report into consideration.
+
+- **The verdict rule:** kept as it is, a stated why that fits the whole behaviour. Note:
+
+  > This isn't a verdict that is guaranteed to be applied. This is still an open question or open questions and should be handled as part of other tickets. So be sure to add notes to other tickets that should take this stuff into consideration.
+
+- **The unreviewed last round:** accepted, with the open point above kept.
+- **The branch:** push it and open a pull request.
+
+**What changed.** The research file's head and its section "Verdicts on the stated behaviours" now say that the maintainer kept the rule, and that the verdicts are not guaranteed to be applied and stay open. No quotation changed. Each ticket below gained one paragraph, "Ticket 16's findings", which points to the research file, names the sections that bear on it, and says that its fits and verdicts are findings, not decisions:
+
+| Ticket | What the research file bears on |
+| --- | --- |
+| 03, a configurable wait at shutdown | how values that own a background writer end it, and what their waits bound (G1 to G7, C1, D1 to D4, E14) |
+| 04, evict-oldest as a queue policy | what fourteen libraries do with a full queue, and why (E1 to E14, Fit E) |
+| 06, transactional client blocks | what the end of a scope can guarantee or report in Rust and Python (D1 to D4, claim 2) |
+| 07, diagnostics tables | who counts what they discard, where, and why (behaviour 3) |
+| 08, fork and multi-process support | the open question on a forked child's copy, and what comparables do after a fork (behaviour 3, B1, G5 to G7) |
+| 10, snapshot capture | what the end of a scope can guarantee or report (D1 to D4, claim 2) |
+| 11, the Derived statements | nested establish, a shared handle, the fake core and a forked child's copy; the verdicts, their rule and behaviour 3's question to review with the maintainer |
+| 13, store failure and data writer death | a child's failure in structured concurrency, worker death, a guard's end (S1 to S7, G1 to G7, D1, D3) |
+| 14, a library logging its own failures | how comparables report their own failures (A1 to A3, B1, C1, behaviour 3) |
+| 15, table definitions over time | handles bound before a backend, and checking at registration (A3, C2, E7, behaviour 2) |
+
+The note is placed before each ticket's "Research file" line, or, in ticket 11, which has none, before "Adversarial review". Before the notes were added, `main` (pull request #8, ticket 12) was merged into this branch, so that the notes sit on each ticket's current text.
+
+- **Gate after these changes**, at AFTER_COMMIT. The commit that records this line changes only the line itself.
+
+  > AFTER_LINE
 
 ### Acceptance
 
@@ -353,4 +389,4 @@ The resolution column gives the triage's solution. There, `r:` and a number give
 - [x] What the three names already mean, with no name recommended; open question 18 is still open.
 - [x] This hand-back, summarising the findings and pointing to the research file, committed with it.
 - [x] The adversarial review at both key moments, with reviewers that opened the sources; every finding listed above with its verdict, resolution and reviewing model.
-- [x] No tracked file other than this ticket and its research file changed, and no code added.
+- [x] No tracked file other than this ticket and its research file changed, and no code added: true at hand-back. At the maintainer's request, ten tickets have since gained a note pointing to the research file (see "The maintainer's answers").

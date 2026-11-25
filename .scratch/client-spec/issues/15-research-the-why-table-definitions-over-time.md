@@ -40,6 +40,8 @@ Related open questions, by number and gist. Say what the evidence bears on each.
 - 13: whether a declaration carries a version or a definition hash, and stable column ids.
 - 20: what makes a declaration valid, including which names are allowed and which columns may form a key.
 
+**Ticket 16's findings:** `.scratch/client-spec/research/16-client-shape-and-failure-posture.md` bears on this ticket. Fit records that a `metrics` handle registered before a recorder stays bound to the recorder current then, which runs against declaring a table at any time (A3, K4), and that OpenTelemetry Python's proxies bind once a provider is set, because import order "is not necessarily in users' control", which fits it (C2). Stated behaviour 2 records `client_golang`'s reason for checking at registration, that an inconsistency "will usually be detected at start-up time of a program" (E7), which covers a declaration made at start-up and not one made with a run in force. Read it before starting. Its fits and verdicts are findings, not decisions: the maintainer has said they are not guaranteed to be applied, and they stay open for the tickets they bear on.
+
 **Research file:** `.scratch/client-spec/research/15-table-definitions-over-time.md`
 
 **Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the sources and reasoning lenses, at two key moments: after the findings are drafted in the research file and before any fit verdict is written; and before hand-back. The reviewers need the same web authorisation as this ticket. Questions to put to them:
