@@ -1,7 +1,7 @@
 # Research: the client's shape and failure posture
 
 - **Ticket:** `issues/16-research-the-why-client-shape-and-failure-posture.md`. It bears on open question 18 of `docs/specs/transect-client.allium` (whether confluence, establish and core are the final names), on the "Derived" statements that ticket 11 puts to the maintainer, and on the register's Product entries.
-- **Sources read:** on 2026-11-25 (UTC), from 01:10 to 04:10, which was 2026-11-24 in the maintainer's local time (UTC−8). The sections below give the local date, 2026-11-24.
+- **Sources read:** on 2026-11-25 (UTC), from 01:10 to 05:50, which was 2026-11-24 in the maintainer's local time (UTC−8). The sections below give the local date, 2026-11-24.
 - **Web research:** authorised by the maintainer on 2026-11-24 for this ticket, for the agent working it, for its research subagents and for its reviewers. All of it was read-only: nothing was posted, filed or sent.
 - **State of this file:** the findings, up to N3, passed the first adversarial review in two rounds. Fit, the verdicts on the four claims and on the five stated behaviours, the proposed wording and what the findings bear on were written after it, and the second review covers them.
 
@@ -1251,7 +1251,19 @@ Source: https://github.com/metrics-rs/metrics/blob/metrics-util-v0.20.4/metrics-
 > /// it can be important to perform finalization before the application exits, which is not possible
 > /// if the application cannot consume the recorder.
 
-It still installs through the one-shot `set_global_recorder`. Once the handle is dropped, the installed wrapper hands out no-op handles, and the global cannot be installed again (read from source, not run):
+Dropping the handle drops the recorder only once the last active reference to it is also dropped. A call in progress holds one, because each call upgrades the installed weak reference (quoted below), and using the recorder "temporarily upgrades its internal weak reference to a strong reference" (read from source, not run):
+
+Source: https://github.com/metrics-rs/metrics/blob/metrics-util-v0.20.4/metrics-util/src/recoverable.rs
+> /// While `RecoveryHandle<R>` provides a method to manually recover the recorder directly, one
+> /// particular benefit is that due to how the recorder is wrapped, when `RecoveryHandle<R>` is
+> /// dropped, and the last active reference to the wrapped recorder is dropped, the recorder itself
+> /// will be dropped.
+
+Source: https://github.com/metrics-rs/metrics/blob/metrics-util-v0.20.4/metrics-util/src/recoverable.rs
+>     /// that the wrapped recorder which was installed is not being actively used, as using it
+>     /// temporarily upgrades its internal weak reference to a strong reference.
+
+It still installs through the one-shot `set_global_recorder`. Once the recorder is dropped, the installed wrapper hands out no-op handles, and the global cannot be installed again (read from source, not run):
 
 Source: https://github.com/metrics-rs/metrics/blob/metrics-util-v0.20.4/metrics-util/src/recoverable.rs
 >         if let Some(recorder) = self.recorder.upgrade() {
@@ -2216,7 +2228,14 @@ Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63
 Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63.0/specification/library-guidelines.md
 > It is important that values returned from this minimal implementation of API are valid and do not require the caller to perform extra checks (e.g. createSpan() method should not fail and should return a valid non-null Span object).
 
-The trace no-op is a section of `trace/api.md` (no side effects, except that a parent `SpanContext` still propagates). `metrics/noop.md` requires a No-Op of every language and forbids its `MeterProvider` to "return a non-empty error or log any message".
+The trace no-op is a section of `trace/api.md` (no side effects, except that a parent `SpanContext` still propagates). `metrics/noop.md` requires a No-Op of every language and forbids its `MeterProvider` to "return a non-empty error or log any message". Its instruments keep no state, not even a count:
+
+Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63.0/specification/metrics/noop.md
+> Instruments are used to make measurements and report telemetry for a
+> system. However, the No-Op is used to disable this production of
+> telemetry. Because of this, all instruments the No-Op provides MUST NOT
+> hold any configuration or operational state including the aggregation of
+> telemetry.
 
 *Error handling.* Run time is forbidden to throw; initialisation may fail fast. The SDK also must not throw for its own errors, and where a non-null value is expected must return a "no-op" or default object, ideally pre-allocated. Users MUST be able to change the default error handling, and a custom handler "is the only exception" to these principles.
 
@@ -2293,10 +2312,30 @@ Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63
 Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63.0/specification/library-guidelines.md
 > It is also important that minimal implementation incurs as little performance penalty as possible, so that third-party frameworks and libraries that are instrumented with OpenTelemetry impose negligible overheads to users of such libraries that do not want to use OpenTelemetry too.
 
+*The metrics no-op is silent and keeps no state* because users choose it to turn OpenTelemetry off:
+
+Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63.0/specification/metrics/noop.md
+> The No-Op is used by OpenTelemetry users to disable OpenTelemetry
+> computation overhead and eliminate OpenTelemetry related output. For
+> this reason, the MeterProvider MUST NOT return a non-empty error or log
+> any message for any operations it performs.
+
 *Errors are swallowed* because telemetry is not essential to business logic and the library may be loaded "outside of the application developer's control":
 
 Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63.0/specification/error-handling.md
 > We assume that users would prefer to lose telemetry data rather than have the library significantly change the behavior of the instrumented application.
+
+*Not blocking by default*, from `performance.md`, a reason separate from the error-handling one:
+
+Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63.0/specification/performance.md
+> Although there are inevitable overhead to achieve monitoring, API should not degrade the end user application as possible. So that it should not block the end user application nor consume too much memory resource.
+
+Where not blocking means dropping, the same page asks that the loss be made visible:
+
+Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63.0/specification/performance.md
+> - **Prevent blocking**: Dropping some information under overwhelming load and show warning log to inform when information loss starts and when recovered
+>   - Should provide option to change threshold of the dropping
+>   - Better to provide metric that represents effective sampling ratio
 
 *A configurable handler*, so developers can run strict "in a staging environment to catch invalid uses of the API, or malformed config". *The exporter's synchronous-write exception*, from its NOTE:
 
@@ -3092,7 +3131,12 @@ Not applicable: each point above has a stated why.
 **Constraints**
 
 - Deployment: any Python code; `with` is syntax and runs `__exit__` on normal exit, on exceptions, and (PEP 343) on `break`/`continue`/`return`, with three `None` arguments as if the block completed normally.
-- Guarantee: `__exit__` always runs once `__enter__` returned without error; it gets the exception, may suppress it or raise its own; `__aexit__` may await.
+- Guarantee: `__exit__` runs once `__enter__` returned without error, whether the block completes or raises; it gets the exception, may suppress it or raise its own; `__aexit__` may await. Not on an immediate process exit: that it does not run under `os._exit()` is Inferred from that function's documentation, which does not name `__exit__`, as the closure scope's end is Inferred not to run on process exit (D2):
+
+Source: https://github.com/python/cpython/blob/v3.15.2/Doc/library/os.rst
+>    Exit the process with status *n*, without calling cleanup handlers, flushing
+>    stdio buffers, etc.
+
 - Failure: an exception from `__exit__` replaces normal flow; limits under **Costs and dissent**.
 - History: PEP 310 (argument-less `__exit__`) and PEP 340 (generator-based anonymous blocks) combined into PEP 343 for Python 2.5; `async with` from PEP 492 in 3.5.
 
@@ -3635,6 +3679,11 @@ GitHub user `shakuzen` (association `MEMBER`), on why the failure is not even lo
 Source: https://github.com/micrometer-metrics/micrometer/issues/5228#issuecomment-2212811290
 > it's important to balance this with the principle that observability impact to your application should be minimal - I think this includes avoiding logging too much. It's better to lose some observability info than cause issues for the application.
 
+The same comment, on which code the reason concerns:
+
+Source: https://github.com/micrometer-metrics/micrometer/issues/5228#issuecomment-2212811290
+> Logging this is far more reasonable if we're only talking about meter registration failures caused by instrumentation issues in code that users control in their application code, but it's a problem when we're talking about instrumentation issues in code that users don't control (third-party libraries).
+
 The compromise shipped is the warn-then-debug logger, in the Prometheus registry only.
 
 **Inferred**
@@ -3762,7 +3811,9 @@ Source: https://github.com/prometheus/client_golang/blob/v1.25.0/prometheus/doc.
 > // Inconsistencies are ideally detected at registration time, not at collect
 > // time. The former will usually be detected at start-up time of a program,
 > // while the latter will only happen at scrape time, possibly not even on the
-> // first scrape if the inconsistency only becomes relevant later.
+> // first scrape if the inconsistency only becomes relevant later. That is the
+> // main reason why a Collector and a Metric have to describe themselves to the
+> // registry.
 
 GitHub user `beorn7` (association `CONTRIBUTOR`; writes "I used to be the maintainer of this repo" in the same thread):
 
@@ -3880,6 +3931,17 @@ The `send`/`try_send` split came from issue #65, where the owner (`56quarters`, 
 Source: https://github.com/56quarters/cadence/issues/65#issuecomment-376358475
 > I like the idea of some sort of error handler such that errors aren't completely ignored.
 
+The same issue gives the reason for a `send` that returns nothing. The owner opened it on 2018-03-15: after an attribute added to `MetricBuilder` (per #63), a plain `.send()` still warns, and callers must do something with its `Result`. The owner relayed a contributor's (`robinst`, `CONTRIBUTOR`) suggestion of an extra method that returns nothing, named `send_quiet` there, with the reason below. Later in the thread `send` itself was made to return nothing, and 1.8.0 has it beside `try_send`, which returns the `Result`:
+
+Source: https://github.com/56quarters/cadence/issues/65
+> To avoid the warning, users need to do *something* with the `Result` from `.send()`, like...
+
+Source: https://github.com/56quarters/cadence/issues/65
+> adding another method to `MetricBuilder` that sends the metric but does not return a result so that callers aren't forced to do something perfunctory with it.
+
+Source: https://github.com/56quarters/cadence/blob/1.8.0/cadence/src/builder.rs
+>     pub fn send(self) {
+
 **Inferred**
 
 None.
@@ -3963,6 +4025,11 @@ Source: https://github.com/getsentry/sentry-docs/blob/feaece23fe2aa5da596937b948
 Source: https://github.com/getsentry/sentry-docs/blob/feaece23fe2aa5da596937b948b8fca6f70ff2e0/develop-docs/sdk/foundations/client/index.mdx
 > SDKs **MUST** accept an empty DSN as valid configuration.
 
+The client-reports protocol in the same guidelines, on why an SDK counts what it discards, by reason, and reports the counts to Sentry. Its list includes discards the application configured, such as sampling and `before_send`:
+
+Source: https://github.com/getsentry/sentry-docs/blob/feaece23fe2aa5da596937b948b8fca6f70ff2e0/develop-docs/sdk/telemetry/client-reports.mdx
+> SDKs might drop events in several places — transport queue overflow, rate limit backoff, sampling, `before_send`, event processors — and this loss can be invisible to a customer. Client reports let an SDK emit such event outcomes to provide data about how often this is happening.
+
 **Inferred**
 
 Inferred: the "inform the user ahead of time … at installation time" line is the closest stated support for failing loudly at set-up, but it is about platform support, not a malformed DSN.
@@ -4024,6 +4091,16 @@ Source: https://github.com/getsentry/sentry-rust/blob/0.49.6/sentry/src/transpor
 >         // Using send here would mean that when the channel fills up for whatever
 >         // reason, trying to send an envelope would block everything. We'd rather
 >         // drop the envelope in that case.
+
+On one failure moved to set-up: the 0.38.0 changelog entry for PR #773 by `lcian` (MEMBER), merged 2025-04-28, which makes the `DebugImages` integration load its data when it is initialised:
+
+Source: https://github.com/getsentry/sentry-rust/blob/0.49.6/CHANGELOG.md
+>   - Previously, on problematic systems the SDK would cause deadlock after capturing the first event. Now the SDK will panic on initialization instead. Please open an issue if you're affected.
+
+The PR gives the mechanism:
+
+Source: https://github.com/getsentry/sentry-rust/pull/773
+> by default the Lazy will be initialized before a client is available, so the SDK will just panic when the call to `findshlibs` panics, but will not attempt to report the panic which is what was causing the deadlock.
 
 **Inferred**
 
@@ -4381,6 +4458,13 @@ Source: https://github.com/getsentry/sentry-rust/blob/0.49.6/sentry-core/src/hub
 Source: https://github.com/getsentry/sentry-rust/blob/0.49.6/sentry-core/src/hub_impl.rs
 >     /// On the thread on which the [`PROCESS_HUB`] is initialized, the [`THREAD_HUB`] and
 >     /// [`PROCESS_HUB`] are identical, i.e. `Arc::ptr_eq(&PROCESS_HUB, &THREAD_HUB)` is true.
+
+The current hub can change on any thread, that one included: `Hub::run` installs another for the duration of a call, so an `init` inside it binds to that hub (read from source, not run):
+
+Source: https://github.com/getsentry/sentry-rust/blob/0.49.6/sentry-core/src/hub_impl.rs
+>     /// During the execution of `f` the given hub will be installed as the
+>     /// thread-local hub.  So any call to [`Hub::current`] during this time
+>     /// will return the provided hub.
 
 **What it does**
 
@@ -4786,7 +4870,20 @@ Source: https://github.com/open-telemetry/opentelemetry-python/blob/v1.45.2/open
 >         for sp in self._span_processors:
 >             sp.shutdown()
 
-- *Never ended.* No value whose drop ends the worker. `shutdown_on_exit=False` removes the hook, leaving `shutdown()` to the application. After shutdown, `emit` refuses data (`"Shutdown called, ignoring %s."`).
+- *Never ended.* No value whose drop ends the worker. `shutdown_on_exit=False` removes the hook, leaving `shutdown()` to the application. After shutdown, `emit` refuses data (`"Shutdown called, ignoring %s."`) and counts each refused record as dropped, with `error.type` `already_shutdown`. The count goes to the SDK's internal metrics, through the meter provider passed in or the global one, and those metrics are off unless `OTEL_PYTHON_SDK_INTERNAL_METRICS_ENABLED` is set (read from source, not run):
+
+Source: https://github.com/open-telemetry/opentelemetry-python/blob/v1.45.2/opentelemetry-sdk/src/opentelemetry/sdk/_shared_internal/__init__.py
+>     def emit(self, data: Telemetry) -> None:
+>         if self._shutdown:
+>             _logger.info("Shutdown called, ignoring %s.", self._exporting)
+>             self._metrics.drop_items(1, "already_shutdown")
+>             return
+
+Source: https://github.com/open-telemetry/opentelemetry-python/blob/v1.45.2/opentelemetry-sdk/src/opentelemetry/sdk/environment_variables/__init__.py
+> The :envvar:`OTEL_PYTHON_SDK_INTERNAL_METRICS_ENABLED` environment variable enables
+> metrics emitted by the SDK about its own internal state.
+> Default: "false"
+
 - *Exit.* `atexit` is the mechanism; the thread is a daemon, so a process that skips the hook loses the buffer. Forks: `os.register_at_fork`; the child clears the queue and starts a new thread.
 - *Can it fail?* `shutdown` returns `None`; a worker that misses the timeout is abandoned, not reported; export exceptions are logged.
 - *Worker dies first.* `_export` catches every exception, so exporter failures do not end the worker. No restart was found for a thread dying otherwise, except after a fork.
@@ -4821,6 +4918,17 @@ Chris Kleinknecht (`c24t`, MEMBER), reviewer:
 Source: https://github.com/open-telemetry/opentelemetry-python/pull/280#discussion_r344863763
 > I agree about making this configurable, but I think this is much better than the current default: call `shutdown` or lose unexported spans.
 
+On counting records refused after shutdown: `cijothomas` (MEMBER), author of PR #5509 (merged 2026-08-05). The PR names the silence of the drop. Its commit `1fff042` adds that the change matches the semantic conventions and the .NET SDK, and the PR states nothing more:
+
+Source: https://github.com/open-telemetry/opentelemetry-python/pull/5509
+> The batch (span + log) and simple log processors dropped records silently once shut down.
+
+OpenTelemetry's project guidance on opentelemetry.io gives the purpose of SDK self-metrics. It is the blueprint "Managed Telemetry Platforms for Kubernetes Workloads", first committed 2026-06-24, and as project documentation it names no individual author. It is addressed to application owners and platform teams, and its example is a full queue:
+
+Source: https://github.com/open-telemetry/opentelemetry.io/blob/c9001de650942867f8e99e34d21730ac3d43eae4/content/en/docs/guidance/blueprints/managed-telemetry-platforms-for-k8s-workloads.md
+> To identify and monitor data loss occurring before telemetry even leaves the
+> application process (e.g., if the SDK's internal queue fills up), we recommend:
+
 **Inferred**
 
 None.
@@ -4831,7 +4939,7 @@ For the 30 s default: no comment on `shutdown(self, timeout_millis: int = 30000)
 
 **Constraints**
 
-- One daemon thread per batch processor; queue bounded, oldest entries dropped when full, with a warning (`Queue full, dropping %s.`) and a dropped-items count.
+- One daemon thread per batch processor; queue bounded, oldest entries dropped when full, with a warning (`Queue full, dropping %s.`) and a dropped-items count; a record emitted after shutdown is refused and counted as `already_shutdown`. Both counts are kept only with the SDK's internal metrics enabled, which they are not by default.
 - Best-effort export at `atexit`, bounded per batch processor by 30 s plus the exporter's shutdown; by default processors are shut down one after another with no shared deadline (read from source); failures logged, `shutdown` returns nothing.
 - History: PR #280 (2019) added `shutdown_on_exit` and `atexit`. The shutdown path was bounded later; the earlier version joined without a timeout (#2284 traceback: `self.worker_thread.join()`).
 
@@ -5250,6 +5358,9 @@ Source: https://github.com/go-kit/kit/issues/42
 
 Source: https://github.com/go-kit/kit/issues/42
 > Packages that do not create log events do not need any of these. Thus, **`log.DefaultLogger` is not needed as package log is not a source of log events**.
+
+Source: https://github.com/go-kit/kit/issues/42
+> Of the above choices, a package scoped logger is attractive.
 
 Peter Bourgon (`peterbourgon`, organisation member) agreed with the first two sentences and closed it "This is done!" (comment `105806372`). Commit `ec30ded` "Remove DefaultLogger" (PR #46, 2015-05-25) deleted `log/default_logger.go` and gave the one internal user, the Zipkin collector, its own swappable package logger. Chris Hines restated the position in the `log/slog` review (H5), citing this issue.
 
@@ -7279,7 +7390,7 @@ This section argues, for each comparable, which constraints behind its choice ho
 - **K1. In-process, with one behaviour for Rust and Python.** The client runs inside the host application, and the Rust and Python clients have one behaviour (the specification's scope; `CONTEXT.md`, standing guidance).
 - **K2. Never harm the host.** Opening a handle, closing one and writing never fail and never block, and a write returns nothing (`NeverFailsNeverBlocks`). A queue is bounded and never blocks the worker (standing guidance).
 - **K3. Coordination-free, or low-coordination** (standing guidance).
-- **K4. Declared against an object, before any backend.** A developer creates a confluence at global scope and declares tables against it. A declaration needs no run, and a table declared earlier takes part in every later run (`CreateConfluence`, `DeclareTable`, `AttachRun`).
+- **K4. Declared against an object, with or without a backend.** A developer creates a confluence at global scope and declares tables against it. A table may be declared at any time, with or without a run in force, and a table declared earlier takes part in every later run (`CreateConfluence`, `DeclareTable`, `AttachRun`).
 - **K5. A backend with a duration, given again.** Establish gives the confluence a core for its duration. One establish after another is fine, and each is a new run; an establish nested inside an open one is refused (the comment before `EstablishProductionCore`; the nesting rule is Derived).
 - **K6. The run owns the one data writer.** A production run starts the data writer (`StartDataWriter`). At the end of establish nothing waits for the queues: what is still queued is discarded and counted, and the batch in hand is finished (`BeginClosing`; the settled part of open question 26). Until open question 26 is decided, the run ends only once the data writer has stopped (`writer_has_stopped`, Derived).
 - **K7. Who declares.** The specification names a developer declaring tables and application code writing rows. It says nothing of third-party libraries declaring tables or writing through a confluence they did not create. Several comparables' stated why rests on exactly that case, so the fit says where it does.
@@ -7297,16 +7408,17 @@ A comparable justifies a behaviour only with a stated why that fits. Otherwise i
   - *Transfers:* the reason for rejecting thread-local loggers. A per-thread setting cannot reach threads the application did not start, such as a pool's (issue 3). That holds for any core given per thread.
   - *So:* `log` informs the shape. Its install rules rest on reasons that do not transfer to K5.
 - **A2, `tracing`.**
-  - *Transfers:* the stated reason for adding a global default (pools whose threads the user does not start, Tokio #1152). It holds under K1.
+  - *Transfers where its constraint holds:* the stated reason for adding a global default is pools whose threads the user does not start, where "you don't control the thread initialization" (Tokio #1152). It would hold wherever writes come from such threads, such as an async runtime's workers. K1 places the client in the host's process, but K1 to K7 do not record which threads write, so the reason informs.
   - *Does not hold:* the one-shot global's rules, under K5. Clearing it was declined as "a pretty dangerous API" (#652).
-  - *Costs a per-thread core would share:* the scoped default exists, for Tokio's pattern and for tests (prototype #30, #383). It is per thread, so a fake core given per thread would share its first limit: threads the test did not start do not see it. Its open defects, a `Send` guard that is unsafe to send, out-of-order drops, and an interest cache that silences a scoped subscriber in parallel tests (#2482, #1657, #2874, #3611), are defects of `tracing`'s guard and callsite cache, not of every per-thread override: #2482's arises "because `DefaultGuard` is `Send`" (A2), while `metrics`' guard is `!Send` and has its own drop-order hazard (A3). They would arise here only with the same mechanisms. Out-of-order drops concern nested guards, and K5's nesting rule, which is Derived, refuses an establish nested inside an open one.
-  - *So:* `tracing` informs. Its scoped default and `metrics`' local recorder (A3) are the only mechanisms in A1 to A3 with a duration, and both are thread-local.
+  - *Costs a per-thread core would share:* the scoped default exists, for Tokio's pattern and for tests (prototype #30, #383). It is per thread, so a fake core given per thread would share its first limit: no other thread sees it, not even one the test spawns inside the scope, since `with_default` "will not propagate the current thread's default subscriber to any threads spawned within the `with_default` block" (A2). Its open defects, a `Send` guard that is unsafe to send, out-of-order drops, and an interest cache that silences a scoped subscriber in parallel tests (#2482, #1657, #2874, #3611), are defects of `tracing`'s guard and callsite cache, not of every per-thread override: #2482's arises "because `DefaultGuard` is `Send`" (A2), while `metrics`' guard is `!Send` and has its own drop-order hazard (A3). They would arise here only with the same mechanisms. Out-of-order drops concern nested guards, and K5's nesting rule, which is Derived, refuses an establish nested inside an open one.
+  - *So:* `tracing` informs. Its scoped default and `metrics`' local recorder (A3) are the only overrides in A1 to A3 with a duration, and both are thread-local. No global install in A1 to A3 has one: behind `metrics`' one-shot global, `metrics-util`'s `RecoverableRecorder` gives the recorder a lifetime the application owns, but the global cannot be installed again (A3).
 - **A3, `metrics`.**
   - *Not established:* K7, for the stated reason for the global ("initialize once, benefit everywhere" from dependencies).
   - *Does not hold:* K5, for the reason for leaking the recorder (a `'static` reference for every call).
   - *Holds:* the reasons for the local recorder (parallel tests, and recorders that need not be thread-safe, PR #414), if a fake core is given per test.
   - *The handle-binding rule runs against K4:* a handle registered before a recorder stays bound to the recorder that was current, so a table declared before establish would not follow the run. The maintainer said registration must follow installation (issue #69).
-  - *Bears on K5 and K6:* `metrics-util`'s `RecoverableRecorder` gives the recorder a lifetime the application owns behind the one-shot global, because "it can be important to perform finalization before the application exits" (A3). Dropping its handle drops the recorder, after which the global hands out no-op handles and cannot be installed again (read from source, not run). So it has a duration and is not given again.
+  - *Bears on K5 and K6:* `metrics-util`'s `RecoverableRecorder` gives the recorder a lifetime the application owns behind the one-shot global, because "it can be important to perform finalization before the application exits" (A3). The recorder is dropped once its handle is dropped "and the last active reference to the wrapped recorder is dropped", so a call in progress, which holds one, delays the end. After that the global hands out no-op handles and cannot be installed again (read from source, not run). So the global install stays one-shot with no duration, while the recorder behind it has a duration, ended by the application, and is not given again.
+  - *Chose otherwise, `metrique` (A3):* `sink_or_discard` discards an entry while no sink is attached and forwards entries once one is, as a write is discarded here with no establish in force. Its stated reason is libraries that "don't control when (or whether) the host application attaches a sink", which rests on K7, not established; it informs stated behaviour 3. Its `sink` panics with no sink attached, with no stated rationale found. Its opt-in pending sink buffers entries until a sink that "requires async initialization" is ready (PR #275); K1 to K7 record no such sink, and here a write with no establish in force is discarded, not buffered. Informs.
   - *So:* `metrics` informs, mostly by contrast.
 - **A4, OpenTelemetry Rust.**
   - *Closest to the confluence's nature:* the SDK provider is an object the application creates and owns, with the global optional. This informs K4.
@@ -7326,12 +7438,12 @@ A comparable justifies a behaviour only with a stated why that fits. Otherwise i
 ### OpenTelemetry's API and SDK (C1 to C3)
 
 - **C1, the specification.**
-  - *Fits K2, for the serving half:* "We assume that users would prefer to lose telemetry data rather than have the library significantly change the behavior of the instrumented application". Implementations "MUST NOT throw unhandled exceptions at runtime", and a library "should not block end user application by default". It is a stated why in the survey for the serving half.
+  - *Fits K2, for the serving half:* "We assume that users would prefer to lose telemetry data rather than have the library significantly change the behavior of the instrumented application". Implementations "MUST NOT throw unhandled exceptions at runtime", and a library "should not block end user application by default". Its rule on blocking has its own reason, that the "API should not degrade the end user application as possible" (`performance.md`). Both are stated whys in the survey for the serving half.
   - *Softer than K2:* the rule on blocking is a lower-case "should" that holds "by default", and a hard non-blocking API is not promised. A custom error handler "is the only exception" to the error-handling principles, so that developers can run strict "in a staging environment to catch invalid uses of the API, or malformed config". K2 offers no strict handler and no blocking option. The reason itself does not depend on those options.
   - *The set-up half has a rule and no reason:* initialisation "MAY _fail fast_", with the example "because of a bad user config or environment", and the specification gives no reason for the permission. Its link to Java's throwing `set` is Inferred (C1, C3). Sentry's guidelines give none either: E10's closest support for loud set-up is Inferred and concerns platform support at installation, and E10 and E11 found no stated rationale for raising or panicking on a malformed DSN.
   - *Returns values:* its API returns valid values, such as a non-null `Span`, and it states no reason for a call that returns nothing.
   - *Its constraint, as a difference:* a library may be loaded outside the application developer's control. That does not hold the same way here (K7). The reason itself, preferring lost telemetry to a changed application, does not depend on it.
-  - *Fits the inert case only in part:* the no-op without an SDK, valid and cheap so that callers need no checks. The split's stated reason is libraries instrumented in applications that may never install an SDK (K7 not established). The no-op's own reason, values that are valid and need no checks, fits a write with no establish in force.
+  - *Fits the inert case only in part:* the no-op without an SDK, valid and cheap so that callers need no checks. The split's stated reason is libraries instrumented in applications that may never install an SDK (K7 not established). The no-op's own reason, values that are valid and need no checks, fits a write with no establish in force. The metrics no-op's reason for keeping no state, aggregation included, is that users choose it "to disable OpenTelemetry computation overhead and eliminate OpenTelemetry related output" (C1). It bears on counting where nothing was ever established, according to whether a host that never establishes has chosen to turn the client off, which the specification does not say (stated behaviour 3).
   - *Bears on the end of establish:* shutdown may block, with a configurable timeout. This is open question 26, pointed to and not weighed.
   - *So:* C1 justifies the serving half of the posture, never failing at run time and not blocking by default. It informs set-up failing loudly, for which it states no reason, and it covers neither making those guarantees unconditional nor a write that returns nothing (stated behaviour 2).
 - **C2, OpenTelemetry Python.**
@@ -7339,7 +7451,7 @@ A comparable justifies a behaviour only with a stated why that fits. Otherwise i
   - *Does not match K5:* a second set is ignored with a warning.
   - *So:* informs.
 - **C3, OpenTelemetry Java.**
-  - *Shows the set-up half of the posture, for reasons that do not transfer:* a second `set` throws, and a `get` before `set` installs a no-op so that a later `set` throws ("fail fast"). The stated reason is to avoid libraries holding a mix of no-op and configured instances depending on order (#4180). That rests on libraries reading the global before it is set (K7 not established), a mix K4 avoids here, and on a single install, where K5 allows one establish after another.
+  - *Shows the set-up half of the posture, for reasons that do not transfer:* a second `set` throws, and a `get` before `set` installs a no-op, or an autoconfigured SDK when that is enabled, so that a later `set` throws ("fail fast"). The stated reason is to avoid libraries holding a mix of no-op and configured instances depending on order (#4180). That rests on libraries reading the global before it is set (K7 not established), a mix K4 avoids here, and on a single install, where K5 allows one establish after another.
   - *Runs against K4:* a write's table declared before establish must work afterwards. Java instead makes an early `get` fix the no-op.
   - *So:* informs.
 
@@ -7347,7 +7459,7 @@ A comparable justifies a behaviour only with a stated why that fits. Otherwise i
 
 - *Bears on K6:* a Rust guard can be leaked in safe code, and its `Drop` returns nothing (D1, D3). A guard-shaped establish therefore cannot guarantee that its end runs, nor return a failure to the code that ends it: its `Drop` can only ignore, log or trace one, or panic, which aborts if the thread is already unwinding. The Rust API guidelines send fallible teardown to a `close() -> Result` method, and have `Drop` do the teardown and ignore, log or trace its errors when `close` is not called (D3).
 - *The other form:* a closure scope runs its end on any exit from the closure, unwinding included, because the scope function does it after the closure returns or unwinds (D2; RFC 1084's stated reason). On process exit or abort it is Inferred not to run, and no source covers that (D2; D, side by side). Async closures were the stated pain that led `metrics` to add a guard (A3).
-- *Python, against K1:* `__exit__` always runs once `__enter__` has returned, and may raise or suppress (D4). So the end of a Python `with` can raise to its caller where the end of a Rust guard cannot, and one behaviour for both has to say which.
+- *Python, against K1:* `__exit__` runs once `__enter__` has returned, whether the block completes or raises, and may raise or suppress (D4). Like a Rust scope's end, it is Inferred not to run when the process ends abruptly: `os._exit` exits "without calling cleanup handlers" (D4; D, side by side). So the end of a Python `with` can raise to its caller where the end of a Rust guard cannot, and one behaviour for both has to say which.
 - *So:* this bears on open question 26 (what the end of establish waits for) and on ticket 13, pointed to and not weighed. D informs.
 
 ### The posture survey (E1 to E14)
@@ -7364,24 +7476,24 @@ The sample was chosen to cover both directions, so it shows that the posture is 
   - Log4j 2 states the consequence of its blocking default without defending it (E1).
   - The Kafka producer is a messaging client with delivery semantics, not an observability library (E4).
 - **Raise or panic on misuse, with a reason about catching programming errors early:** `client_golang` says inconsistencies are "ideally detected at registration time", and its value-returning calls panic to allow chained shortcuts (E7). The Prometheus guideline requires the negative-increment check (E6), but states no reason for raising rather than ignoring a wrong label count. `client_golang`'s registration-time reason concerns set-up (below). Its value-returning panics and the Prometheus negative-increment check concern the serving path, where this client refuses an invalid row and counts it instead (`RefuseInvalidRow`), so those reasons do not transfer under K2.
-- **Loud set-up, with a stated why that fits:** `client_golang`'s reason, that an inconsistency found at registration "will usually be detected at start-up time of a program" (E7), fits declaring a table, which the specification makes loud "because it runs at start-up, where the developer can see it". It does not speak to establish. No section records a stated why that fits for establish failing loudly: C1 and C3 were checked, and the stated whys of B1 and E1 to E14. E5 and E3 give reasons for quiet set-up instead.
-- **Swallow set-up failures:** the Java logging frameworks by default (E1, E2; Log4j 2's `AsyncAppender` with no usable appender throws, and Logback's explicit `doConfigure` throws), Micrometer's Prometheus registry since 1.6 (E5), whose maintainer gave a reason in #5228, and Python's `SysLogHandler`, which constructs quietly when its Unix socket is not listening or its host does not resolve (E3). These are the exceptions to the set-up half in this sample.
+- **Loud set-up, with a stated why that fits:** `client_golang` checks a collector when it is registered, and gives the reason as "the main reason why a Collector and a Metric have to describe themselves to the registry": an inconsistency found at registration "will usually be detected at start-up time of a program", while one found at collection shows only at scrape time (E7). A failure found at registration is returned as an error or panics; the documentation weighs it against a later failure, not against a quiet refusal. That it fits is this file's argument: a declaration refused quietly and counted would be found only when someone reads the count, later, as a scrape-time error is. So the reason fits declaring a table failing loudly, which the specification makes loud "because it runs at start-up, where the developer can see it". Both reasons cover the usual case: `client_golang` says "usually", and a table may also be declared later, with a run in force (`DeclareTable`), where the start-up reason does not hold. It does not speak to establish. No section records a stated why that fits for establish failing loudly: C1 and C3 were checked, and the stated whys of B1 and E1 to E14. `sentry`'s reason for one panic at initialisation, to avoid a deadlock after the first capture, informs it (E11). E5 and E3 give reasons for quiet set-up instead.
+- **Swallow set-up failures:** the Java logging frameworks by default (E1, E2; Log4j 2's `AsyncAppender` with no usable appender throws, and Logback's explicit `doConfigure` throws), Micrometer's Prometheus registry since 1.6 (E5), whose maintainer gave a reason in #5228, and Python's `SysLogHandler`, which constructs quietly when its Unix socket is not listening or its host does not resolve (E3). These are the exceptions to the set-up half in this sample. Micrometer's two reasons inform and do not transfer. #2068's, "the significant burden Prometheus' requirement places on everyone for the same metric name to have the same set of tags", is a backend's constraint that K1 to K7 do not record, and E5 records a maintainer saying (#877) that the restriction was removed from `PrometheusMeterRegistry` in 1.17. #5228's comment applies the principle that "It's better to lose some observability info than cause issues for the application" to logging registration failures from "code that users don't control (third-party libraries)". That application rests on K7, not established, and for "code that users control" the same comment calls logging the failure "far more reasonable" (E5). The principle itself is the one behaviour 2 cites from OpenTelemetry and Sentry for the serving path.
 - **The systems not placed above:**
   - *E8, `pystatsd`:* no stated why, so it informs only; the reason that UDP is fire-and-forget is Inferred. Every call is a direct socket write in the caller's thread, with no background thread or queue, unlike K6's data writer. Over TCP and Unix sockets it raises, and can block without a bound, against K2.
-  - *E9, `cadence`:* the stated reason for a bounded queue, that an unbounded one lets unsent metrics "slowly use up more and more memory", holds under K2's bounded queue. Its consequence, an emit that fails and returns a `Result` when the queue is full, does not, since here a write never fails and returns nothing. The owner's reason for an error handler, so that errors "aren't completely ignored" (#65), informs; the no-op default handler has no stated reason. Informs.
+  - *E9, `cadence`:* the stated reason for a bounded queue, that an unbounded one lets unsent metrics "slowly use up more and more memory", holds under K2's bounded queue. Its consequence, an emit that fails and returns a `Result` when the queue is full, does not, since here a write never fails and returns nothing. The owner's reason for an error handler, so that errors "aren't completely ignored" (#65), informs; the no-op default handler has no stated reason. The reason for a `send` that returns nothing, so that "callers aren't forced to do something perfunctory with" the `Result` (#65), bears on a write that returns nothing (stated behaviour 2). It answers the warning on an unused `Result` from `.send()`, which has no counterpart in Python (K1), and `cadence` keeps `try_send` and plain metric calls that return a `Result` beside it, where K2 has every write return nothing. Informs.
   - *E14, `ddtrace`:* the stated reason for `sync_mode` is hosts that may end before a background flush (AWS Lambda with the agent extension, Cloud and Azure Functions, Ray jobs): "sync mode should be used to avoid data loss". That touches the leaning that the most common host is an ephemeral environment such as a Kubernetes pod, cited as a leaning. Its remedy, flushing in the caller's thread, runs against K2's never block, so the reason informs and does not justify. The buffer-full drop has no stated rationale found, and set-up was not examined.
 
 ### Values and blocks that own a background worker (G1 to G7)
 
 - *The closest comparables to K6:* a value the application holds that owns a background writer. These are `tracing-appender`'s `WorkerGuard` (G1), `sentry`'s `ClientInitGuard` (G2), the OpenTelemetry SDK providers (G3, G6) and CPython's `QueueListener` (G4). They are closer in kind than the structured-concurrency sources, because each is a value that owns a writer thread. Their ownership differs:
   - one thread per `non_blocking` call, each with its own guard (G1);
-  - a client bound to the hub of the thread that calls `init`, which is the process hub on the thread that created it (G2);
+  - a client bound to the hub current on the thread that calls `init`, which is the process hub on the thread that created it unless `Hub::run` has installed another there for the duration of a call (G2);
   - providers the application builds, with one thread per batch processor, of which OpenTelemetry Rust allows several (G3, G6);
   - and one thread per `QueueListener`, over a queue the caller supplies (G4).
 - *Owned by exit hooks:* `sentry-sdk` and `ddtrace` return no value for the application to hold, and a hook registered at set-up ends the worker at exit (G5, G7). OpenTelemetry Python's provider registers such a hook by default as well (G6).
-- *Holds:* K1. K2 holds by default: G1 drops when its buffer is full unless built with `lossy(false)`, which blocks (E12); G2, G3 and G6 drop when full; `QueueListener`'s queue is the caller's, and `dictConfig`'s default is an unbounded `queue.Queue()` (G4).
+- *Holds:* K1. K2 holds in part by default, for a full buffer: G1 drops unless built with `lossy(false)`, which blocks (E12), and G2, G3 and G6 drop. It does not hold for G4 by default: `QueueListener`'s queue is the caller's, and `dictConfig`'s default is an unbounded `queue.Queue()`, against K2's bounded queue, and `QueueHandler` enqueues with `put_nowait` inside `emit`, which `Handler.handle` calls under the handler's lock (G4, B1). The queue policy covers only the enqueue: work done on the caller's thread before it, such as `sentry`'s `before_send` callback and its session lock, lies outside it (E10, E11).
 - *K5, mixed:* a new `non_blocking` call starts a new worker with its own guard (G1). OpenTelemetry Rust allows several providers, which the author of #444 called "not a common situation" (G3). A stopped `QueueListener` can be started again (G4; read from source, not run). For `sentry`, a contributor wrote "Usually you `sentry::init` in the main thread" (G2, PR #646). Of the globals the providers can be published to, OpenTelemetry Python's ignores a second set (C2), and OpenTelemetry Rust's can be set again (A4). Whether `sentry::init` can be called again, and whether G6's provider can be built again in one process, was not checked.
-- *K6, at the end:* ending G1 and G2 drains what is queued within a bound: G1's worker reaches `Shutdown` only after attempting every line queued before it, if it gets there before the guard's bound runs out, and G2's guard drains with its `shutdown_timeout`. Here nothing waits for the queues: what is still queued is discarded and counted, and the batch in hand is finished (open question 26, settled).
+- *K6, at the end:* ending G1 and G2 attempts to drain what is queued, with different limits. G1's guard waits about 1.1 s at most and does not join; its worker reaches `Shutdown` only after attempting every line queued before it, if it gets there before that bound runs out, and when the guard returns lines may still be unwritten. G2's `shutdown_timeout` bounds only the wait for the flush's acknowledgement: the marker's `send` can first wait on a full channel, and when the transport's last reference then drops, its thread is joined with no bound. Here nothing waits for the queues: what is still queued is discarded and counted, and the batch in hand is finished (open question 26, settled).
 - *Their costs:*
   - an early-dropped guard loses data (G1);
   - waits that are unbounded (the joins in G2 and G4, and in G3 after its timeout bounds only the caller's wait for an acknowledgement) or bounded with no join (G1);
@@ -7392,27 +7504,27 @@ The sample was chosen to cover both directions, so it shows that the posture is 
 
 - *The stated reasons, which differ:*
   - *H1, slog:* "manually passing Logger gives maximum flexibility", a logging context follows the program's logical structure rather than the call stack, and libraries "should expose full flexibility to their users". The library reason rests on K7, which is not established here; the structure reason informs. A confluence is an object, as slog's `Logger` is (K4), but one reachable at global scope, which is the `slog-scope` hybrid; informs.
-  - *H2, zap:* its maintainers prefer injected loggers to global state, and keep the globals `L()` and `S()` "to simplify migration" for code written against a global, a constraint K1 to K7 do not record for this client. Its reason for having no global `SetLogger`, that a library should not change the level of every logger, rests on K7, not established; informs.
+  - *H2, zap:* its maintainers prefer injected loggers to global state, and keep the globals `L()` and `S()` "to simplify migration" for code written against a global, a constraint K1 to K7 do not record for this client. Its reason for having no `SetLogger` method, that a child logger passed to a library should not be able to change the level of every other logger, rests on K7, not established; the global itself is replaced with `ReplaceGlobals` (H2); informs.
   - *H3, `prometheus-client`:* a global registry is "error prone", its side effect may surprise "when importing an external library", and users "can define their own within their binary"; the absence is "by design" "thus far", and its author is "undecided". The library case rests on K7, not established. A registry the application defines for itself is the kind of object K4 describes, and it informs K4.
   - *H4, go-kit `log`:* "Logging is an application concern and should be controlled by applications". Among the ways a source of events may accept a logger, it lists a "Package scoped function or variable", so the reason is against a default owned by the logging package, not against a value reachable at global scope. It informs a confluence that the developer creates (K4). That the sources of log events are libraries, and Peter Bourgon's dissent about a library with a persistent connection, rest on K7, not established.
   - *H5, Go `log/slog`, contrast:* its author keeps a default so that getting started is easy and debug logging can be added anywhere in a program, which informs a confluence reachable at global scope (K4). Its author's view that a non-main package calling `slog.SetDefault` is a design flaw bears on K7, not established; informs.
   - *H6, the `prometheus` crate, contrast:* no stated why. Its default registry is Inferred to mirror the Go client and the Prometheus guideline (H7), so it informs only as a contrast to H3. Its recorded cost, that tests registering the same metric on the global find "all but the first then fails with `AlreadyReg`" (#386), bears on declaring tables against a confluence at global scope across tests (K4), pointed to and not weighed.
   - *H7, Python `prometheus_client`, contrast:* the guideline's reason, that users should not have to plumb metrics through their code, informs a confluence at global scope (K4), and its way out "for use in batch jobs and unittests" bears on the fake core (stated behaviour 5). Its recorded costs are duplicates on reload and repeated import (#993, #1042); informs.
-- *Their main cost does not arise here:* threading a logger through every call is the cost the explicit libraries accept (H1, H2, H4), and it does not arise where the object is reachable at global scope (K4). `slog-scope` (H1) and zap's globals (H2) are that hybrid, discouraged by their own authors.
+- *Their main cost does not arise here:* passing a logger explicitly, as a value or a constructor argument, is the cost slog and zap accept (H1, H2), and it does not arise where the object is reachable at global scope (K4). go-kit does not require it: among the ways a source of events may accept a logger it lists a "Package scoped function or variable", which its author found "attractive", and its shipped compromise is the package-scoped `SwapLogger` (H4). `slog-scope` (H1) and zap's globals (H2) are that hybrid, discouraged by their own authors.
 - *So:* H informs. The explicit libraries' reasons differ: flexibility for libraries (H1, H3), the application's control of logging (H4) and avoiding global state (H2). Their library halves rest on K7, which is not established.
 
 ### Structured concurrency (S1 to S7)
 
 - *The stated promise, on lifetime:* a child finishes before the scope that started it ends (S1 to S7). The stated reasons are about lifetime: "The goal of structured concurrency is to guarantee encapsulation" (S1), a nursery's function "can't return until they've all finished" (S2), eliminating "thread leaks and cancellation delays" (S4), and SE-0304's child tasks of "bounded duration" (S6).
 - *Holds, for K6 as the specification states it today:* a production run starts the data writer and, until open question 26 is decided, ends only once it has stopped, which is a child finishing before its scope ends. Each run is its own scope, so K5's repetition does not change this. The sources' constraints differ from this client's (libdill's single-threaded C coroutines, S1; JDK threads, S4), and none of those four reasons depends on them. A Rust guard-shaped establish can be leaked so that its end never runs (D1, D3); the run then never ends either. The end condition is the Derived `writer_has_stopped`, which open question 26 keeps only until decided, so this fit holds while that rule stands and confirms neither. The settled part of open question 26, that nothing waits for the queues, is in K6.
-- *On a child's failure, the sources differ:* Trio, asyncio, Java's default joiner and Kotlin's regular `Job` deliver it to the scope (S2 to S5). libdill describes no mechanism for it (S1, Inferred). A Kotlin supervisor does not fail with its child (S5). Swift ignores a child's error when the body returns normally (S6). Rust's `scope` panics with its own message when an automatically joined thread panicked (S7). Only Smith's essay gives a reason, that a background error is otherwise dropped "on the floor" (S2). K2 covers handles and writes, not the end of establish, so a dead data writer does not surface as a failed write. How the client reports a dead data writer is the register's Product entry on reporting its own failures, and whether it is restarted is open question 14 (ticket 13). So this half bears on those and is not weighed.
+- *On a child's failure, the sources differ:* Trio, asyncio, Java's default joiner and Kotlin's regular `Job` deliver it to the scope (S2 to S5). libdill describes no mechanism for it (S1, Inferred). A Kotlin supervisor does not fail with its child (S5). Swift's task group ignores a child's error when the body returns normally, while SE-0381's discarding groups rethrow the first error and cancel the group (S6). Rust's `scope` panics with its own message when an automatically joined thread panicked (S7). Two sources give a reason. Smith's essay says a background error is otherwise dropped "on the floor" (S2). Swift's discarding groups rethrow the first error and cancel the group because the caller "cannot observe the error via a `try await next()` call" (Konrad Malawski, S6). K2 covers handles and writes, not the end of establish, so a dead data writer does not surface as a failed write. How the client reports a dead data writer is the register's Product entry on reporting its own failures, and whether it is restarted is open question 14 (ticket 13). So this half bears on those and is not weighed.
 - *The long-lived case:* every system provides a sanctioned way out for work that outlives its launcher, or a top-level scope that lives as long as the program (Trio's system tasks, Kotlin's `GlobalScope`, Swift's detached tasks; claim 4). Some sanctioned forms are scopes tied to an object's lifecycle, which remain scopes (Kotlin's `CoroutineScope()`, S5; libdill's object that opens and closes its coroutines, S1). Under K6 as it stands, the data writer does not outlive the establish that started it, and the specification means establish to be the top-level block of the process, so it is not that case.
 - *So:* the lifetime reasons fit K6 as the specification states it today. Fit G gives the closer comparables, values that own a background writer (G1 to G7).
 
 ### Fakes for tests (T1 to T10)
 
 - *What none promises:* that its fake applies the real backend's rules. Three partly deny it (T3, T5, T9).
-- *The closest:* the OpenTelemetry and Sentry fakes capture at the exporter or transport, after the SDK's own processing (T6 to T8, T10). What runs before them is the pipeline the test configures, which need not be production's, and what the exporter or transport they replace would do does not apply. OpenTelemetry Java's JUnit extension always wires a simple processor (T8). At 0.33.1 OpenTelemetry Rust's simple and batch processors disagree on unsampled spans, so a simple-processor test does not show what a batch processor exports (T7). Sentry's helper replaces the transport, applies the application's `before_send` and sample rate only if the test supplies them, and keeps only event items; rate limiting and channel capacity live in the transport it replaces (T10, the last Inferred). The fake core here replaces the production core and has no queue bound, which is a different seam.
+- *The closest:* the OpenTelemetry and Sentry fakes capture after the SDK's own processing: at a span exporter, at a metric reader in Python and Java (`InMemoryMetricReader`) or a metric exporter in Rust (`InMemoryMetricExporter`), and at Sentry's transport (T6 to T8, T10). What runs before them is the pipeline the test configures, which need not be production's, and what the exporter, reader or transport they replace would do does not apply. OpenTelemetry Java's JUnit extension always wires a simple processor (T8). At 0.33.1 OpenTelemetry Rust's simple and batch processors disagree on unsampled spans, so a simple-processor test does not show what a batch processor exports (T7). Sentry's helper replaces the transport, applies the application's `before_send` and sample rate only if the test supplies them, and keeps only event items; rate limiting and channel capacity live in the transport it replaces (T10, the last Inferred). The fake core here replaces the production core and has no queue bound, which is a different seam.
 - *Each fake's constraints:*
   - *T1, `metrics-util`'s `DebuggingRecorder`:* its stated reason for thread-local capture, that one instance "never conflicts with another" under parallel tests (PR 414), holds if a fake core is given per test, as A3's fit says. It records the raw values the facade passed, with no exporter rules and no drops.
   - *T2, `tracing-mock`:* its stated reason, publishing support that third parties kept reproducing (issue 539), is about packaging, not fidelity. It asserts callbacks rather than recording them, and its thread-scoped capture can miss events under parallel tests (#3611).
@@ -7433,7 +7545,7 @@ Each claim gets one of three verdicts: it holds; it holds in part, with where; o
 **Holds in part, and is wrong for `log`.**
 
 - **A global entry point: holds for all three** (A1 to A3). In each, the global is an implicit process-wide static that the macros reach. In none is it an object the application creates and declares things against. A confluence is the second kind. The comparables with that kind are OpenTelemetry Rust's provider (A4) and `prometheus-client`'s `Registry` (H3).
-- **A backend installed at the top level: holds for all three, by convention, and only once for each global.** A process can hold more than one: one per linked copy of `log` (A1) and one per semver-incompatible version of `metrics` (A3). None of the three installs can end or be repeated (A1 to A3). The only thing with a duration in A1 to A3 is `tracing`'s and `metrics`' scoped override, and it is per thread. Establish has a duration and may be given again (K5), so this part holds for "installed at the top level" and not for "for its duration".
+- **A backend installed at the top level: holds for all three, by convention, and only once for each global.** A process can hold more than one: one per linked copy of `log` (A1) and one per semver-incompatible version of `metrics` (A3). None of the three installs can end or be repeated (A1 to A3). The only overrides with a duration in A1 to A3 are `tracing`'s and `metrics`' scoped ones, which are per thread. Behind `metrics`' one-shot global, `metrics-util`'s `RecoverableRecorder` lets the application end the recorder, after which the global hands out no-op handles and cannot be installed again (A3). Establish has a duration and may be given again (K5), so this part holds for "installed at the top level" and not for "for its duration".
 - **A scoped override for tests: wrong for `log`, which has none** (A1). It holds, with limits, for `tracing`, whose override is per thread and has open defects (A2), and for `metrics`, whose override is per thread, does not redirect handles registered before it, and restores the previous recorder correctly only when guards drop innermost first (A3). OpenTelemetry Rust removed its override (A4).
 - **Not in the claim, and against K4:** in `metrics` and OpenTelemetry Rust, a handle or tracer obtained before a backend is installed stays a no-op (A3, A4); in `metrics` this is a handle obtained with no recorder set, global or local, since one obtained under a local recorder keeps recording to it. `tracing`'s callsites recover when a dispatcher is created, with open bugs that can leave one muted, while a `Span` keeps the dispatcher that created it (A2). In `log`, a macro call looks the logger up each time and works after install, but a reference kept from `logger()` before install stays the no-op (A1). The comparables where something obtained early works once the backend arrives are Python's `logging` (B1), OpenTelemetry Python's proxies (C2) and, per thread, `tracing`'s callsites (A2).
 
@@ -7448,8 +7560,8 @@ The maintainer made the Rust answer a condition. The answer given rested on this
 - *What holds:* Rust has both forms, and `tracing` and `metrics` offer both for the same scoping, the closure first and the guard later (A2, A3; D2).
 - *What does not hold:* the three are not equivalent at the end of the scope (D1 to D4).
   - A Rust guard can be leaked in safe code. Its `Drop` returns nothing, so it cannot return a failure to the code that ends the scope: it can ignore, log or trace one, or panic, which aborts if the thread is already unwinding (D3). It cannot await on stable Rust.
-  - A closure scope runs its end, the join, inside the scope function after the closure returns or unwinds, so the caller holds nothing it could leak (RFC 1084's stated reason; the mechanism is Inferred, D2). On process exit or abort it is Inferred not to run, and no source covers that (D2; D, side by side). std has no async scope at 1.100.0 (D2), and `metrics`' maintainer called the closure-only local recorder "painful" with async code, the stated reason `metrics` added a guard (A3).
-  - Python's `__exit__` always runs once `__enter__` has returned. It can raise its own exception or suppress one.
+  - A closure scope runs its end (for a thread scope, the join) inside the scope function after the closure returns or unwinds, so the caller holds nothing it could leak (RFC 1084's stated reason; the mechanism is Inferred, D2). On process exit or abort it is Inferred not to run, and no source covers that (D2; D, side by side). std has no async scope at 1.100.0 (D2), and `metrics`' maintainer called the closure-only local recorder "painful" with async code, the stated reason `metrics` added a guard (A3).
+  - Python's `__exit__` runs once `__enter__` has returned, whether the block completes or raises. It can raise its own exception or suppress one. Like the closure scope's end, it is Inferred not to run when the process ends at once, through `os._exit()`, which exits "without calling cleanup handlers" (D4).
 - *So:* the mapping holds for where a scope starts and ends. It does not hold for what the end can guarantee or report, which differs between the two Rust forms and from Python's.
 
 ### Claim 3: the posture claim
@@ -7460,12 +7572,12 @@ The maintainer made the Rust answer a condition. The answer given rested on this
 
 - **Set-up half.** Set-up postures vary across the sample, which cannot show how common each is: set-up is loud in E4, E6 to E10 and E13, and in E3, E11 and E12 apart from one quiet case each. The two Java logging frameworks swallow configuration failures by default (E1, E2; in Log4j 2 an `AsyncAppender` with no usable appender throws, and Logback's explicit `doConfigure` throws), and Micrometer's Prometheus registry has swallowed registration failures since 1.6 (E5).
 - **Serving half.**
-  - The two Java logging frameworks block by default, without a bound (E1, E2), and Python's standard `logging` does synchronous I/O under a lock (B1, E3). The Kafka producer blocks on metadata and buffer space for up to 60 s, and without that bound in user-supplied serializers or the partitioner (E4).
+  - The asynchronous appenders of the two Java logging frameworks block by default on a full queue, without a bound (E1, E2), and Python's standard `logging` does synchronous I/O under a lock (B1, E3). The Kafka producer blocks on metadata and buffer space for up to 60 s, and without that bound in user-supplied serializers or the partitioner (E4).
   - `prometheus_client`, `client_golang` and `cadence` raise, panic or return errors on misuse (E6, E7, E9).
   - The facades themselves promise nothing either way (A1 to A3).
 - **Where the posture is found.** Its serving half is the stated principle of OpenTelemetry's specification (C1) and of Sentry's SDK guidelines (E10, E11). OpenTelemetry permits failing fast at initialisation without a stated reason, and Sentry's guidelines give none for failing loudly at set-up (C1, E10). Dropping rather than blocking on a full queue is the default of the lossy Rust writers (E12, E13), though `lossy(false)` and `Block` block the caller, and `slog-async` returns `Fatal` on poisoning or disconnection, which the documented `.fuse()` turns into a panic at the call site (E13). It is the behaviour of `ddtrace`'s writer path on a full buffer (E14), though there `sync_mode`, on by default in some serverless and job runtimes, flushes in the caller's thread, and set-up was not examined (E14).
-- **What the sample can show.** It was chosen to cover both directions, so it shows that the posture is one of several. It cannot show how common each is, so "usually" is Unverified, not refuted. Under reading (a), "never" on the serving path is wrong: the defaults of Log4j 2, Logback and Python's standard `logging` block, and three of the clients raise on misuse.
-- **Obtaining a handle is not the per-event call.** The sample names where a lookup can fail or wait: Micrometer's lookup-or-register can throw (E5), `client_golang`'s `WithLabelValues` can block behind a scrape (E7), and OpenTelemetry Rust takes a read lock to obtain a tracer through the global (A4). Opening a client handle here is such a lookup, and `NeverFailsNeverBlocks` covers it.
+- **What the sample can show.** It was chosen to cover both directions, so it shows that the posture is one of several. It cannot show how common each is, so "usually" is Unverified, not refuted. Under reading (a), "never" on the serving path is wrong: the defaults of Log4j 2's and Logback's asynchronous appenders, and of Python's standard `logging`, block, and three of the clients raise on misuse.
+- **Obtaining a handle is not the per-event call.** The sample names where a lookup can fail or wait: Micrometer's lookup-or-register can throw (E5), `client_golang`'s `WithLabelValues` can block behind a scrape (E7), and OpenTelemetry Rust takes a read lock to obtain a tracer through the global (A4). Opening a client handle here is the step of that kind, obtaining something to write through before any write, though `OpenClientHandle` creates a handle rather than looking up a backend; `NeverFailsNeverBlocks` covers it.
 
 ### Claim 4: the structured concurrency claim
 
@@ -7501,7 +7613,7 @@ None of those reasons covers a backend with a duration that is given again (K5),
 
 Proposed wording for the maintainer, to replace the agent's answer recorded in `CONTEXT.md` ("the facade pattern of the logging and metrics crates"):
 
-> The shape is the maintainer's design. It is not the facade pattern of `log`, `tracing` and `metrics`: those install one backend once, for good, through an implicit static (one for each linked copy of `log`, and for each semver-incompatible version of `metrics`), with no duration, and only `tracing` and `metrics` offer a per-thread override with a duration. Comparable libraries inform its parts: an application-created provider object that can be published globally (OpenTelemetry Rust); an application-owned registry with no global offered, "by design" "thus far", since users "can define their own within their binary" (`prometheus-client`); named objects obtained early that work once configured (Python's `logging`, unless a later `fileConfig` or `dictConfig` disables them, as both do by default for loggers they do not name; OpenTelemetry Python's proxies); and a top-level value that owns a background writer (`tracing-appender`, `sentry`). Whether the whole is idiomatic Rust is for the maintainer to judge (ticket 16, claim 1).
+> The shape is the maintainer's design. It is not the facade pattern of `log`, `tracing` and `metrics`: those install one backend once, for good, through an implicit static (one for each linked copy of `log`, and for each semver-incompatible version of `metrics`), with no duration; only `tracing` and `metrics` offer a per-thread override with a duration, and `metrics-util`'s `RecoverableRecorder` lets an application end the recorder behind `metrics`' global, though not install another. Comparable libraries inform its parts: an application-created provider object that can be published globally (OpenTelemetry Rust); an application-owned registry with no global offered, "by design" "thus far", since users "can define their own within their binary" (`prometheus-client`); named objects obtained early that work once configured (Python's `logging`, unless a later `fileConfig` or `dictConfig` disables them, as both do by default for existing loggers that they do not name and that have no named ancestor; OpenTelemetry Python's proxies); and a top-level value that owns a background writer (`tracing-appender`, `sentry`). Whether the whole is idiomatic Rust is for the maintainer to judge (ticket 16, claim 1).
 
 ### 2. The failure posture
 
@@ -7509,23 +7621,23 @@ Proposed wording for the maintainer, to replace the agent's answer recorded in `
 
 The record's reason, "the usual posture of observability libraries", is no comparable's stated why, and it is Unverified (claim 3). Other comparables' stated whys cover two of the behaviour's parts:
 
-- *Opening a handle and every write never fail and never block.* OpenTelemetry's error-handling principles (C1): implementations "MUST NOT throw unhandled exceptions at runtime", a custom error handler being "the only exception", and a library "should not block end user application by default". The reason: "We assume that users would prefer to lose telemetry data rather than have the library significantly change the behavior of the instrumented application". That reason fits K2, though K2 has no strict handler and no blocking option. Sentry's guidelines state the same aim without exception, "We never want our SDKs to be the cause of customer breakage" (E10), as its Rust transport's comment does (E11). The Prometheus guideline states it for incrementing (E6), and CPython's `logging` states it for swallowing handler errors (B1).
-- *Declaring a table may fail loudly.* `client_golang`'s reason, that inconsistencies found at registration "will usually be detected at start-up time of a program" (E7), fits. The specification gives the same reason, that declaring "runs at start-up, where the developer can see it".
+- *Opening a handle and every write never fail and never block.* OpenTelemetry's specification (C1), with a reason for each half. On failing, implementations "MUST NOT throw unhandled exceptions at runtime", a custom error handler being "the only exception" to the error-handling principles, because "We assume that users would prefer to lose telemetry data rather than have the library significantly change the behavior of the instrumented application". On blocking, a library "should not block end user application by default", because the "API should not degrade the end user application as possible" (`performance.md`). Both reasons fit K2, though K2 has no strict handler and no blocking option. Sentry's guidelines state the same aim without exception, "We never want our SDKs to be the cause of customer breakage" (E10), as its Rust transport's comment does (E11). The Prometheus guideline states it for incrementing (E6), and CPython's `logging` states it for swallowing handler errors (B1).
+- *Declaring a table may fail loudly.* `client_golang`'s reason, that inconsistencies found at registration "will usually be detected at start-up time of a program" (E7), fits, by the argument in Fit E: a declaration refused quietly would be found only later. The specification gives the same reason, that declaring "runs at start-up, where the developer can see it". Both cover the usual case, since a table may also be declared with a run in force (`DeclareTable`).
 
 No stated why found covers the other two parts:
 
 - *Establish may fail loudly.*
   - OpenTelemetry permits failing fast at initialisation and gives no reason (C1).
-  - Sentry's support is Inferred, and E10 and E11 found none.
+  - Sentry's guideline on alerting "at installation time" is Inferred support and concerns platform support (E10). `sentry` states one narrower reason, for a single failure moved to set-up: a panic at initialisation instead of a deadlock "after capturing the first event", which reporting the panic caused (E11, PR #773). It informs establish failing loudly and does not cover it. A failed establish leaves the confluence "as it was, which is inert if it had no run" (`EstablishProductionCore`). The specification does not say that a write would otherwise hang. Neither E10 nor E11 states a reason for raising or panicking on a malformed DSN.
   - OpenTelemetry Java's reasons for a throwing `set` rest on libraries reading the global early and on a single install, which do not transfer (C3, K5, K7).
   - The stated whys of B1 and of E1 to E14 give none, and E3 and E5 give reasons for quiet set-up instead.
-- *A write returns nothing.* No stated why for it is recorded in this file, and the survey did not look for one. Comparables that never fail still return values: Sentry's event ID (E11) and OpenTelemetry's non-null `Span` (C1).
+- *A write returns nothing.* `cadence`'s owner gave a reason for a method that returns nothing, so that "callers aren't forced to do something perfunctory with" a `Result` (E9, #65). It informs and does not cover this part: it answers the warning on an unused `Result` from `.send()`, which has no counterpart in Python (K1), and `cadence` keeps `try_send` and plain metric calls that return a `Result` beside it. Comparables whose calls on the serving path have no error path still return values: Sentry's event ID (E11) and OpenTelemetry's non-null `Span` (C1). Sentry's capture can still panic: it runs the application's `before_send` on the caller's thread and, in application session mode, takes a session mutex with `.lock().unwrap()` (E11).
 
 So by this file's rule, which asks a stated why for the whole behaviour, the verdict is the third.
 
 Proposed wording for the maintainer, to replace "was chosen by the agent as the usual posture of observability libraries" in `CONTEXT.md`'s "Where a choice was delegated":
 
-> was chosen by the agent. It is not shown to be the usual posture: a purposive sample of fourteen libraries shows it is one of several (ticket 16, claim 3). Its serving half, that opening a client handle and every write never fail and never block, rests on OpenTelemetry's stated reason, that "users would prefer to lose telemetry data rather than have the library significantly change the behavior of the instrumented application". OpenTelemetry applies it to run time and, for blocking, "by default", with a custom error handler as its one exception. Sentry's guidelines state the same aim without exception (ticket 16, C1, E10, E11). Declaring a table failing loudly rests on `client_golang`'s reason, that an inconsistency found at registration "will usually be detected at start-up time of a program" (E7). Ticket 16 records no comparable's stated reason for establish failing loudly, or for a write that returns nothing. OpenTelemetry permits failing fast at initialisation without giving one (C1), and the libraries in ticket 16's posture survey inform the rest (E1 to E14).
+> was chosen by the agent. It is not shown to be the usual posture: a purposive sample of fourteen libraries shows it is one of several (ticket 16, claim 3). Its serving half, that opening a client handle and every write never fail and never block, rests on OpenTelemetry's two stated reasons. Never failing rests on "users would prefer to lose telemetry data rather than have the library significantly change the behavior of the instrumented application", which OpenTelemetry applies to run time, with a custom error handler as "the only exception" to its error-handling principles. Never blocking rests on a separate reason, that the "API should not degrade the end user application as possible", and OpenTelemetry asks that a library "should not block end user application by default". Sentry's guidelines state the same aim without exception (ticket 16, C1, E10, E11). Declaring a table failing loudly rests on `client_golang`'s reason, that an inconsistency found at registration "will usually be detected at start-up time of a program" (E7); it covers declarations made at start-up. Ticket 16 records no comparable's stated reason that covers establish failing loudly. `sentry` gives one for a single failure moved to initialisation, to avoid a deadlock after the first capture, which informs it (E11). For a write that returns nothing, `cadence`'s reason, that callers should not be "forced to do something perfunctory with" a `Result`, informs and does not cover it (E9). OpenTelemetry permits failing fast at initialisation without giving a reason (C1), and the libraries in ticket 16's posture survey inform the rest (E1 to E14).
 
 ### 3. Inert without establish
 
@@ -7538,25 +7650,32 @@ The record and the specification give no reason for this behaviour. Two comparab
 
 Both reasons fit K2 for those parts: a write with no establish in force must not disturb the host. Their constraint, a library instrumented in an application that may never install a backend, is not the same as this client's inert cases: never established, a failed establish the host caught, an establish that has ended, and a forked child's copy (`DiscardWriteWithoutRun`). The reasons transfer because they do not depend on who failed to install the backend.
 
-Counting the discarded writes is this client's own addition, and no stated why for it is found in this file:
+Counting the discarded writes has stated whys of its own. One comparable shows a reason and the count together in one of the four inert cases; the reason reaches a second only by this file's argument, and it is not shown to reach the other two:
 
-- None of the facades counts the calls it discards (A1 to A3), and OpenTelemetry's metrics no-op may not "return a non-empty error or log any message" (C1).
-- The libraries that count drops do so on a full queue with a backend installed, and state no reason for counting (E10, E12, E13, E14, G6).
-- Python's `logging` chose to be loud instead when nothing is configured, so that warnings and errors do not pass silently (`lastResort`, B1). That informs the count and does not cover it.
+- *The stated whys.* Sentry's client-reports protocol counts what an SDK discards, including discards the application configured, such as sampling and `before_send`, because "this loss can be invisible to a customer" (E10). OpenTelemetry Python counts records emitted after its batch processor has shut down, as `already_shutdown`, because they were otherwise dropped "silently" (PR #5509, G6). OpenTelemetry's guidance recommends SDK self-metrics "To identify and monitor data loss occurring before telemetry even leaves the application process", with a full queue as its example (G6), and its specification asks a library that drops "under overwhelming load" to "show warning log to inform when information loss starts and when recovered", and suggests a metric (C1).
+- *Where the libraries count.* While a client is configured, or after it has shut down: on a full queue (E10 to E14, G6); in Sentry's Rust client also when `before_send`, sampling or an event processor drops an event (T10); in OpenTelemetry Python on a record emitted after shutdown (G6); and in `tracing-appender` on any failed `try_send`, including after an early-dropped guard has ended the worker, with no reason given for the count (E12, G1). Sentry and OpenTelemetry Python report their counts only through a backend set up to report. OpenTelemetry Python's needs the processor still in place and the SDK's internal metrics enabled, which they are not by default (G6). Sentry's Rust envelope sender is a no-op unless both a DSN and a transport are set, so what such a client drops is never reported (T10). Here the count is kept on the confluence and read in process (`Diagnostics`), so it does not depend on a core.
+- *Where their authors draw the line, as this file reads them.* A running SDK counts even discards the application configured. One the user has disabled keeps nothing: OpenTelemetry's metrics no-op keeps no state, aggregation included, because users choose it "to disable OpenTelemetry computation overhead and eliminate OpenTelemetry related output" (C1), and Sentry with an empty DSN is a no-op (E10).
+- *An establish that has ended.* This is the closest case. OpenTelemetry Python counts records emitted after shutdown (G6), and its reason, that the drop is otherwise silent, transfers.
+- *A failed establish the host caught.* No comparable surveyed counts here, so no comparable shows the reason and the count together in this case. The host chose to record, so the no-op's reason, a choice to disable, does not arise. That the visibility reason reaches this case is this file's argument, not a comparable's: the reason depends neither on how an item came to be discarded nor on a backend.
+- *Never established.* Whether this is a host that has chosen to turn the client off, on the no-op's side of the line, or one whose writes were meant to be recorded, the specification does not say.
+- *A forked child's copy.* No comparable surveyed discards here: `sentry-sdk` and OpenTelemetry Python start a new worker in the child (G5, G6), so none counts. Whether the visibility reason fits depends on whether the child's writes were meant to be recorded, which is the register's Product entry on forks.
+- *Informs.* None of the facades counts the calls it discards (A1 to A3). Python's `logging` chose to be loud instead: a warning or error that finds no handler goes to `lastResort`, so that warnings and errors do not pass silently (B1). That informs the count and does not cover it.
 
-So by this file's rule, which asks a stated why for the whole behaviour, the verdict is the third.
+So by this file's rule, which asks a stated why for the whole behaviour, the verdict is the third. The record gives no reason, so it is not the second. Stated whys cover the discard, nothing failing, and the count where an establish has ended; they reach a failed establish the host caught only by this file's argument, and none found covers the count in the other two cases, so it is not the first.
+
+Question for the maintainer: is a host that never establishes, or a forked child's copy, one that has turned the client off, or one whose writes were meant to be recorded? The answer decides which comparable's reason bears on counting in those two cases. This file does not answer it.
 
 Proposed wording for the maintainer, for the comment before `DiscardWriteWithoutRun`:
 
-> With no establish in force a write is discarded and nothing fails. OpenTelemetry's API with no SDK lets an application "build and run without failing", and `log` ignores messages logged before a logger is installed; those reasons fit this client (ticket 16, behaviour 3; C1, A1). Ticket 16 found no stated reason for counting the discarded writes: none of the facades surveyed counts them, the libraries that count drops do so with a backend installed and give no reason, and Python's `logging` prints warnings and errors instead when nothing is configured (`lastResort`, ticket 16, B1).
+> With no establish in force a write is discarded and nothing fails. OpenTelemetry's API with no SDK lets an application "build and run without failing", and `log` ignores messages logged before a logger is installed; those reasons fit this client (ticket 16, behaviour 3; C1, A1). None of the facades surveyed counts the discarded writes. Two comparables state a reason for counting what they drop: Sentry, because "this loss can be invisible to a customer" (ticket 16, E10), and OpenTelemetry Python, which counts records refused after shutdown because they were otherwise dropped "silently" (ticket 16, G6). That reason fits an establish that has ended; it reaches a failed establish the host caught only by ticket 16's argument, since no comparable counts there. Where nothing was ever established, OpenTelemetry's metrics no-op keeps no count, because users choose it "to disable OpenTelemetry computation overhead and eliminate OpenTelemetry related output", and a Sentry client with no DSN or transport never reports what it drops (ticket 16, C1, T10). Python's `logging` prints a warning or error that finds no handler instead (`lastResort`, ticket 16, B1). Whether a host that never establishes, or a forked child's copy, has turned the client off is for the maintainer to say (ticket 16, behaviour 3).
 
 ### 4. The establish block owns the data writer
 
 **Rests on a stated why that fits this client.**
 
-The record's reason is structured concurrency, and this behaviour uses only its lifetime part: a production run starts the one data writer and ends only once it has stopped. The framing's claim holds only in part (claim 4), but that part holds in every source. Its stated reasons are about lifetime: encapsulation (S1), a function that cannot return until its children have finished (S2), no thread leaks (S4) and bounded duration (S6). They fit K6 as the specification states it today, as Fit sets out. Claim 4's exceptions do not touch it: the way out is for work that outlives its launcher, and under K6 as it stands the data writer ends with the establish that started it. In Rust a guard-shaped establish can be leaked, so its end may never run (D1, D3); the run then never ends either.
+The record's reason is structured concurrency, and this behaviour uses only its lifetime part: a production run starts the one data writer and ends only once it has stopped. The specification states that ownership in one guarantee, `OneDataWriter`: the establish block "owns the one data writer" and the local databases, and no other thread or process writes them. So the guarantee also carries the count and the exclusivity. Those are not part of this behaviour as the ticket states it ("The establish block owns the data writer", with the lifetime framing), and this verdict does not judge them. The maintainer's note on it names DuckDB ("There can be only one writer process, Especially if we go with DuckDB", `CONTEXT.md`, "Leanings, not decisions"). Ticket 17 checks that rule, and open question 1 asks who keeps the one data writer alive once more than one process is supported. The framing's claim holds only in part (claim 4), but that part holds in every source, with one limit: Rust's `scope` waits only for each thread's main function, and thread-local destructors may still be running when it returns (S7). Its stated reasons are about lifetime: encapsulation (S1), a function that cannot return until its children have finished (S2), no thread leaks (S4) and bounded duration (S6). They fit K6 as the specification states it today, as Fit sets out. Claim 4's exceptions do not touch it: the way out is for work that outlives its launcher, and under K6 as it stands the data writer ends with the establish that started it. In Rust a guard-shaped establish can be leaked, so its end may never run (D1, D3); the run then never ends either.
 
-This verdict rests on the end condition as it stands. `writer_has_stopped` stays Derived, and open question 26 keeps that rule only "Until decided". Nothing here confirms it or answers open question 26, and the verdict is to be taken again if open question 26 is decided otherwise. The settled part of open question 26 is that nothing waits for the queues at the end of establish, where `tracing-appender` and `sentry` drain theirs within a bound (G1, G2).
+This verdict rests on the end condition as it stands. `writer_has_stopped` stays Derived, and open question 26 keeps that rule only "Until decided". Nothing here confirms it or answers open question 26, and the verdict is to be taken again if open question 26 is decided otherwise. The settled part of open question 26 is that nothing waits for the queues at the end of establish, where `tracing-appender` and `sentry` attempt to drain theirs, with different limits. `tracing-appender`'s guard waits about 1.1 s at most, does not join, and may return with lines unwritten. `sentry`'s timeout bounds only the wait for an acknowledgement, not the send before it, and when the transport's last reference then drops, its thread is joined with no bound (G1, G2).
 
 What the sources do with a child's failure differs between them (Fit), and it is not part of this behaviour. How the client reports a dead data writer is the register's Product entry on reporting its own failures, and whether it is restarted is open question 14 (ticket 13). This verdict is about the reason, not about those. The values that own a background writer (G1 to G7) inform the choice, with their recorded costs.
 
@@ -7570,7 +7689,7 @@ None of the ten fakes surveyed promises that it applies the real backend's rules
 
 Proposed wording for the maintainer, for the comment before `EstablishFakeCore`, to sit beside the Derived marker:
 
-> No comparable surveyed promises that its test fake applies the real rules (ticket 16, T1 to T10). The closest, OpenTelemetry's and Sentry's, capture at the exporter or transport, after the SDK processing each test configures. That need not be production's processor or options, and what the replaced exporter or transport would do does not apply (ticket 16, T7, T8, T10).
+> No comparable surveyed promises that its test fake applies the real rules (ticket 16, T1 to T10). The closest, OpenTelemetry's and Sentry's, capture after the SDK processing each test configures, at a span exporter, a metric reader or exporter, or the transport. That need not be production's processor or options, and what the replaced exporter, reader or transport would do does not apply (ticket 16, T6 to T8, T10).
 
 ## What the findings bear on
 
@@ -7598,7 +7717,7 @@ What each name already means elsewhere is in N1 to N3. Facts only:
 - **The fake core applies the same rules.** See stated behaviour 5. No comparable promises it of its fake.
 - **An establish nested inside an open one is refused, and one after another is fine.**
   - The one-shot globals refuse a second install (A1 to A3), and so does OpenTelemetry Java (C3).
-  - None of those allows one after another.
+  - None of those allows one after another in production. OpenTelemetry Java's `resetForTest()` clears its global, for tests only (C3).
   - The per-thread overrides in `tracing` and `metrics` nest and restore the previous one, but out-of-order drops restore the wrong one in both: an open defect in `tracing`, and in `metrics` a hazard raised in PR #523 and not addressed (A2, A3).
   - Python's `logging` and OpenTelemetry Rust's global can be configured again (B1, A4). Replacing OpenTelemetry Rust's global drops the global's clone of the old provider under the write lock, which shuts that provider down if it was the last clone (A4).
 - **A handle may be shared between threads.**
