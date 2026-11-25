@@ -3,7 +3,7 @@
 - **Ticket:** `issues/14-research-the-why-a-library-logging-its-own-failures.md`. It covers the guarantees `StandardFacade` and `OnsetThenTotal` on the surface `HostLog` of `docs/specs/transect-client.allium`, the rules `OpenFailureEpisode`, `LogOnset`, `CountIntoEpisode`, `ReportEpisodesAtEnd` and `LogTotal`, and open question 22.
 - **Sources read:** every source on 2026-11-25 (UTC), which was 2026-11-24 in the researcher's local time.
 - **Web research:** authorised by the maintainer on 2026-11-24 for this ticket, for the agent working it, for its survey and triage subagents, and for its reviewers.
-- **State of this file:** complete. The findings, up to "Candidates not examined, or dropped", passed the first adversarial review in two rounds. Fit, the answer to "is the rule common?", the costs, the two verdicts, the proposed wording and what the findings bear on were written after it, and passed the second review in two rounds. The second round's fixes were not reviewed again, because two rounds is the limit.
+- **State of this file:** complete. The findings, up to "Candidates not examined, or dropped", passed the first adversarial review in two rounds. Fit, the answer to "is the rule common?", the costs, the two verdicts, the proposed wording and what the findings bear on were written after it, and passed the second review in two rounds. The second round's fixes were not reviewed again, because two rounds is the limit. After the reviews, on 2026-11-24, the maintainer asked for `StandardFacade`'s clause on dropped tenants to be given its own verdict. That split moved text and changed no finding, and it was not reviewed.
 
 ## How the sources were checked
 
@@ -1580,7 +1580,7 @@ The onset is emitted when a failure starts, before any later kill. The total is 
 
 ### `StandardFacade`
 
-**Verdict: it rests on a stated why that fits this client, except for one clause, WARNING for dropped tenants, which rests on no stated why.** The guarantee is judged as the specification words it now (see the section on the specification's text, above).
+**Verdict: it rests on a stated why that fits this client.** The guarantee is judged as the specification words it now (see the section on the specification's text, above), except for its clause on dropped tenants, which is judged on its own below, as the maintainer asked.
 
 - No handlers, a named logger, and leaving configuration to the application are each given a reason by the guidance written for libraries: the Python documentation (G1), and the `log` and `tracing` crates (G2). Each reason holds for an in-process library in a host's process.
 - Structured records have a stated purpose in `log`: they can be analysed "without needing to find and parse attributes from unstructured text first".
@@ -1590,13 +1590,20 @@ The onset is emitted when a failure starts, before any later kill. The total is 
   - an OTel Rust member's rule that WARN and ERROR be "user actionable or conveying some important information that they'd not know otherwise" (L5), which bounds both levels and does not choose between them.
 
   The OTel specification asks for a "warning log" when information loss starts and when recovered (G3), and no rationale for it was found. None of these is a project's documented rule. The Python HOWTO also has an ERROR row, for reporting the suppression of an error without raising an exception, and does not say which row applies.
-- WARNING for dropped tenants has no stated why in any source read. A dropped tenant is an accepted row whose tenant was not stored, not lost data. The clause was added in ticket 02, after the elicitation's survey, and that ticket's research widened the guarantee's wording without giving a basis for the level.
 
 The verdict is about the basis. The behaviour is unchanged. Three points the evidence raises are for the maintainer, and this file decides none of them:
 
 - "the language's standard logging facade" has no referent in Rust, where `log` and `tracing` are both de facto facades (G2);
 - "installs no handlers" leaves unsaid whether a `NullHandler` counts (G1, L10);
 - the basis for WARNING on a dropped tenant, which the proposed text below states as having none.
+
+The maintainer's answers, given after the reviews, are recorded in the ticket's hand-back. All three stay open.
+
+### `StandardFacade`: WARNING for dropped tenants
+
+**Verdict: it rests on no stated why.** No source read gives a reason for logging a dropped tenant at WARNING. A dropped tenant is an accepted row whose tenant was not stored, not lost data. The clause was added in ticket 02, after the elicitation's survey, and that ticket's research widened the guarantee's wording without giving a basis for the level. The proposed text below states the clause as having no basis.
+
+### The basis recorded for `StandardFacade`
 
 **The basis as written today is wrong in part.** The ticket says the survey "reported this as common practice", and `CONTEXT.md` records it as "The common practice is the standard logging facade, a library-named logger, no handlers installed". "No handlers" is not what every library read does: ddtrace and sentry-python add a handler at import, and OTel Go's defaults write to standard error. The practice is the guidance's. Counted from the summary table's columns for the facade and name and for installing a handler, over the nine in-process libraries, and on those three properties only:
 
@@ -1665,7 +1672,7 @@ This section reports, and decides nothing.
 
   No source read speaks to rows kept without a tenant.
 - **`OnsetThenTotal` and the rules `OpenFailureEpisode` to `LogTotal`.** The verdict above, no stated why, is not the first. The proposed wording changes only the stated basis.
-- **`StandardFacade`.** The verdict is the first, except for WARNING on a dropped tenant, which rests on no stated why; the proposed text gives that clause's basis. Three points are raised for the maintainer: the Rust facade, `NullHandler`, and the basis for the level on a dropped tenant.
+- **`StandardFacade`.** Its verdict is the first. Its clause on dropped tenants, judged on its own, rests on no stated why, and the proposed text says so. Three points are raised for the maintainer: the Rust facade, `NullHandler`, and the basis for the level on a dropped tenant.
 - **`TwoChannels`.** The diagnostics snapshot is what makes OTel Rust's constraint, a count kept outside the log, hold for this client.
 - **The open-decisions register's Product entry**, on how the client reports its own failures to the host application. It is untouched. The maintainer closes it with a decision record.
 

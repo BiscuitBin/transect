@@ -105,7 +105,8 @@ Every quotation was checked by machine against the author's own re-fetch of its 
   - Between the onset and the total, the log cannot tell an operator whether a failure continues, stopped, or came back. One read of the diagnostics snapshot cannot tell that either.
   - A pod killed by SIGKILL never writes a pending total. That covers the end of the grace period, a hard eviction about 2 s after the stop signal, and an OOM kill of the host's process. An unhandled stop signal usually means the same.
   - The onset is emitted when the failure starts. Whether it reaches a sink depends on the host's logging.
-- **`StandardFacade`: a stated why that fits this client, except for WARNING on a dropped tenant, which rests on no stated why.** The Python HOWTO and the Rust crates give reasons that hold for an in-process library. The basis as written ("common practice") is wrong in part, and the file gives replacement text for the maintainer to place.
+- **`StandardFacade`: a stated why that fits this client.** The Python HOWTO and the Rust crates give reasons that hold for an in-process library. The basis as written ("common practice") is wrong in part, and the file gives replacement text for the maintainer to place.
+- **`StandardFacade`'s clause on dropped tenants, judged on its own: no stated why.** No source read gives a reason for logging a dropped tenant at WARNING. The maintainer asked for this split after the reviews.
 - **`OnsetThenTotal`: no stated why, as the specification applies it.**
   - No source gives a reason for holding the total until the end, nor for applying the rule to all six kinds.
   - Stated whys that fit support the onset (OTel JS's author) and, for a full queue, counting instead of logging each drop (OTel Rust, OTel .NET).
@@ -226,17 +227,24 @@ The reviews, triage files and prompts are under `ai_tmp/client-spec-review/14/`,
 
 **The final consistency pass.** The `code-review` skill ran at a low level on `main...HEAD` before this hand-back. It returned no findings and reported that the branch holds one Markdown file and no code, so it did not compare the file with the ticket. The author then made that comparison against each acceptance box; see "Acceptance" below.
 
-### Open points
+### Open points, and the maintainer's answers
 
-For the maintainer. None is decided here.
+The maintainer answered these on 2026-11-24, after the reviews. Each answer is quoted as the option they chose, with any note they added. None is decided by this ticket.
 
-1. **On what basis was onset-then-total chosen?** The choices are as the common practice, as OTel Rust's rule, or for another reason. `CONTEXT.md` records the survey's general practice and the maintainer's choice separately, and no record links them.
+1. **On what basis was onset-then-total chosen?** `CONTEXT.md` records the survey's general practice and the maintainer's choice separately, and no record linked them.
+   - **Answer:** "OTel Rust's rule, adopted". The option read: "Chosen knowingly as OTel Rust's queue-full rule, then extended to all six failure kinds. The basis would name that library instead of saying 'common practice'."
 2. **Which Rust facade does "the language's standard logging facade" mean?** `log` and `tracing` are both de facto facades, and neither is standard.
+   - **Answer:** "Leave it open".
 3. **Does a `NullHandler` count as installing a handler?** The Python HOWTO allows one, and regards printing WARNING to standard error when nothing is configured as "the best default behaviour".
+   - **Answer:** "Leave it open".
 4. **What is the basis for WARNING on a dropped tenant?** No source read gives one.
-5. **Is the one verdict the ticket asks for, for `StandardFacade`, met by a verdict that excepts one clause?** The file judges the guarantee as worded now.
-6. **Neither proposed wording is placed anywhere tracked.** Both are text for `CONTEXT.md`'s survey line, or a comment beside each guarantee. This ticket edits neither file.
+   - **Answer:** "Reconsider the level", with the note "Leave as an open question.."
+5. **Does a verdict that excepts one clause meet the "one verdict" box for `StandardFacade`?**
+   - **Answer:** "Split into two verdicts". The research file now gives `StandardFacade` a stated why that fits, and its clause on dropped tenants no stated why. The split moved text and changed no finding. It was not reviewed, and both quotation checks still pass.
+6. **Neither proposed wording is placed anywhere tracked.** This ticket edits neither `CONTEXT.md` nor the specification.
+   - **Answer:** record the answers here, and carry the questions and the basis wording into the specification through a new ticket. That is `18-carry-ticket-14s-answers-into-the-specification.md`, added on this branch at the maintainer's request.
 7. **The second key moment's second-round fixes were not reviewed again.** Two rounds is the limit. They passed both quotation checks.
+   - **Answer:** "No, accept as is".
 
 ### Gates and files
 
@@ -248,7 +256,7 @@ For the maintainer. None is decided here.
 
   > All checks passed and the worktree is unchanged.
 
-- **Changed files:** `git diff main...HEAD --stat`, against the merge base `90f0abb`, shows only this ticket and its research file. `main` has moved on since this branch was cut, by pull request #7, which closed tickets 01 and 02. So a two-dot `git diff main` also shows those files' changes on `main`, which this branch did not make. The specification is unchanged, and open question 22 is still in it. `docs/project/open-decisions.md` is unchanged. No code was added.
+- **Changed files:** `git diff main...HEAD --stat`, against the merge base `90f0abb`, shows this ticket, its research file, and ticket 18, which the maintainer asked for. `main` has moved on since this branch was cut, by pull request #7, which closed tickets 01 and 02. So a two-dot `git diff main` also shows those files' changes on `main`, which this branch did not make. The specification is unchanged, and open question 22 is still in it. `docs/project/open-decisions.md` is unchanged. No code was added.
 - **`git status --short`** is empty.
 
 ### Acceptance
@@ -257,9 +265,9 @@ For the maintainer. None is decided here.
 - [x] Every field under "Citing a comparable" for each system, L1 to L12 and G1 to G3, with fit under "Fit".
 - [x] Comparables that chose otherwise, with their why, under "Comparables that chose otherwise".
 - [x] The count of libraries read, and the plain answer, under "Is the rule common?": one library's rule.
-- [x] One verdict for each of `StandardFacade` and `OnsetThenTotal`, under "Verdicts". `StandardFacade`'s verdict excepts one clause, so whether it meets this box is subject to open point 5.
-- [x] Proposed wording where a verdict is not the first: for `OnsetThenTotal`, and for `StandardFacade`'s excepted clause. The specification is not edited.
+- [x] One verdict for each of `StandardFacade` and `OnsetThenTotal`, under "Verdicts". At the maintainer's request, `StandardFacade`'s clause on dropped tenants has a verdict of its own (open point 5).
+- [x] Proposed wording where a verdict is not the first: for `OnsetThenTotal`, and for `StandardFacade`'s clause on dropped tenants. The specification is not edited.
 - [x] What the evidence bears on open question 22, with no recommendation; the question is still open, and the register's entry is untouched.
 - [x] This hand-back, pointing to the research file, both committed.
 - [x] The adversarial review at both key moments, with reviewers that opened the sources; every finding is listed above with its verdict, its resolution and the reviewing model.
-- [x] No tracked file other than this ticket and its research file changed against the merge base, and no code added.
+- [x] No tracked file other than this ticket and its research file changed against the merge base, and no code added, apart from ticket 18, a new file the maintainer asked for on this branch (open point 6).
