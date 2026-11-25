@@ -231,7 +231,9 @@ Before the first review, a preflight confirmed that Codex ran `gpt-6.2-sol` and 
 
   > All checks passed and the worktree is unchanged.
 
-- **Final**: recorded in the commit after the hand-back.
+- **Final**, at `30ce4e8`, the research file and this hand-back as reviewed and fixed. The commit that records this line changes only the line itself.
+
+  > All checks passed and the worktree is unchanged.
 - **Changed files:** `git diff main --stat` shows only this ticket and its research file. The specification, `CONTEXT.md`, `REVIEW.md` and ticket 07 are unchanged. Open questions 8 and 17 are still open in the specification. No code was added.
 
 ### Acceptance
