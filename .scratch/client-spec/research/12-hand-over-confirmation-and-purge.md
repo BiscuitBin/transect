@@ -8,7 +8,7 @@
 ## How the sources were checked
 
 - Each comparable was read from its official documentation, a specification, or source code at a named tag or commit. GitHub links are pinned to a tag or a commit, except issue, pull request and discussion threads, which have no version, and the Fluentd wiki, which is read at its current revision. Kafka KIPs are linked by Confluence page id, Apache JIRA issues by their browse URL, and RFCs by the RFC Editor's plain-text rendition. Two design documents are Google Docs, linked by their text export. The AWS, Google Cloud, Microsoft Learn, OASIS MQTT, ActiveMQ, RabbitMQ quorum queues and Prometheus governance pages, the PromCon 2023 talk abstract, and the Flickr, NATS, Robust Perception and ganeshvernekar.com posts are unversioned, and were read as the pages served that day; the AWS pages as the Markdown rendition the site serves. Etsy's 2011 post is read from the Wayback Machine's copy of 2012-01-03, because etsy.com refused the request. The Elasticsearch 8.19 reference guide is read at its versioned URL.
-- Every blockquote sits under the `Source:` line it was copied from. Each was checked as a substring of raw source text the researcher fetched again: GitHub files from `raw.githubusercontent.com`, GitHub threads and commits through the GitHub API, Confluence pages through the Confluence REST API, JIRA issues through the JIRA REST API, and other pages as HTML with their tags stripped. 425 quotations were checked; 352 match exactly, and 73 match only once whitespace is collapsed: 27 passages of RFC 9562 and RFC 5426, whose plain text indents and wraps lines; nine of the PostgreSQL documentation's SGML, which wraps lines; 22 code comments and code lines whose indentation differs; one Markdown passage whose second line is indented; six passages of HTML pages that wrap lines elsewhere, four of them on Google Cloud pages, one in the Elasticsearch 8.19 guide and one in the OASIS MQTT specification; three passages of a GitHub pull request body whose lines end in CRLF; and five passages that carry a non-breaking space, three in the Robust Perception post, one on the ActiveMQ page and one in a JIRA issue.
+- Every blockquote sits under the `Source:` line it was copied from. Each was checked as a substring of raw source text the researcher fetched again: GitHub files from `raw.githubusercontent.com`, GitHub threads and commits through the GitHub API, Confluence pages through the Confluence REST API, JIRA issues through the JIRA REST API, and other pages as HTML with their tags stripped. 465 quotations were checked; 387 match exactly, and 78 match only once whitespace is collapsed: 28 passages of RFC 9562 and RFC 5426, whose plain text indents and wraps lines; nine of the PostgreSQL documentation's SGML, which wraps lines; 26 code comments and code lines whose indentation differs; one Markdown passage whose second line is indented; six passages of HTML pages that wrap lines elsewhere, four of them on Google Cloud pages, one in the Elasticsearch 8.19 guide and one in the OASIS MQTT specification; three passages of a GitHub pull request body whose lines end in CRLF; and five passages that carry a non-breaking space, three in the Robust Perception post, one on the ActiveMQ page and one in a JIRA issue.
 - A quotation inside a sentence was checked against the blockquotes, the ticket and `CONTEXT.md`.
 - What no primary source confirmed is marked "Unverified". A reason the researcher worked out, and no author stated, is marked "Inferred".
 
@@ -38,12 +38,12 @@ The elicitation's survey made eight claims, recorded in `CONTEXT.md` with no lin
 | --- | --- | --- | --- |
 | 1 | Filebeat states "at least once" and deletes only after the downstream side confirms. | **Partly wrong.** The statement is confirmed, and it is about the registry, a read position on a file Filebeat does not own: by default Filebeat deletes no source data, and the application or logrotate deletes it, which Filebeat names as a loss case. Where Filebeat does delete, the two triggers differ. A disk queue segment is deleted once the output has acknowledged all its events. A source file with `delete.enabled` is deleted once the input's acknowledgement has run for all its events. The documentation calls this the output's acknowledgement; with the disk queue on, the code at `v9.5.7` runs it when the event is written to the queue, after a sync whose result it ignores. Either acknowledgement includes dropped events. | C3: [how-filebeat-works.md](https://raw.githubusercontent.com/elastic/beats/v9.5.7/docs/reference/filebeat/how-filebeat-works.md), [filebeat-input-filestream.md](https://raw.githubusercontent.com/elastic/beats/v9.5.7/docs/reference/filebeat/filebeat-input-filestream.md) |
 | 2 | The OTel Collector's persistent queue deletes in the same step as the acknowledgement. | **Partly wrong.** The timing holds when storage works: the logical delete and the dispatched-list update are tried as one storage transaction, and only if that fails does the queue delete the item and then write the list in a second call, which can fail after the delete. But the step follows any finish, not only an acknowledgement: a permanent error and an exhausted retry budget delete too, an OTLP partial success deletes the whole request, its rejected part included, and only a shutdown error leaves the item for a restart, which puts it back unless reading, decoding or writing it again fails. An item that cannot be read or decoded as it is taken from the queue is deleted before any export. Disk space comes back only by compaction, off by default. | C4: [persistent_queue.go](https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector/v0.166.0/exporter/exporterhelper/internal/queue/persistent_queue.go) |
-| 3 | Vector deletes after confirmation when acknowledgements are on. | **Partly wrong.** A data file is deleted once every record read from it is finalized, and finalization includes a failure or a drop. It does not depend on `acknowledgements.enabled`: end-to-end acknowledgements stop at the disk buffer. Since `v0.58.0` the physical delete is a background task. | C5: [ledger.rs](https://raw.githubusercontent.com/vectordotdev/vector/v0.62.0/lib/vector-buffers/src/variants/disk_v2/ledger.rs), [writer.rs](https://raw.githubusercontent.com/vectordotdev/vector/v0.62.0/lib/vector-buffers/src/variants/disk_v2/writer.rs) |
+| 3 | Vector deletes after confirmation when acknowledgements are on. | **Partly wrong.** A data file the writer has moved past is deleted once every record read from it is finalized, and finalization includes a failure or a drop. It does not depend on `acknowledgements.enabled`: end-to-end acknowledgements stop at the disk buffer. Since `v0.58.0` the physical delete is a background task. | C5: [ledger.rs](https://raw.githubusercontent.com/vectordotdev/vector/v0.62.0/lib/vector-buffers/src/variants/disk_v2/ledger.rs), [writer.rs](https://raw.githubusercontent.com/vectordotdev/vector/v0.62.0/lib/vector-buffers/src/variants/disk_v2/writer.rs) |
 | 4 | In-memory SDK buffers are at-most-once: OTel batch processors drop a failed export. | **Partly wrong.** The processor does drop a failed batch, and drops on a full queue. But the path is not at-most-once: the OTLP exporter must retry transient errors, and OTLP accepts the duplicates that follow as "a deliberate choice". | C7: [trace/sdk.md](https://raw.githubusercontent.com/open-telemetry/opentelemetry-specification/v1.63.0/specification/trace/sdk.md), [OTLP specification](https://raw.githubusercontent.com/open-telemetry/opentelemetry-proto/v1.11.1/docs/specification.md) |
 | 5 | Pull sources keep their data: Prometheus purges nothing, and Kafka retains by time or size. | **Prometheus: true only in a narrow sense.** A client holds no rows waiting for collection, only current values, and a scrape resets nothing; the server deletes by time or size. **Kafka: confirmed**, with three exceptions: compaction, which retains the latest value for each key; `DeleteRecords`, which deletes below an offset its caller supplies; and the Kafka Streams repartition purge, which supplies its committed offset. | C8: [writing_clientlibs.md](https://raw.githubusercontent.com/prometheus/docs/31957d4da93dd215cad8c91be3e5205181dd11f1/docs/instrumenting/writing_clientlibs.md); C9: [storage.md](https://raw.githubusercontent.com/prometheus/prometheus/v3.16.0/docs/storage.md); C10: [introduction.md](https://raw.githubusercontent.com/apache/kafka/4.4.0/docs/getting-started/introduction.md) |
-| 6 | A per-producer sequence number (Kafka) is the only documented way to recognise a duplicate. | **Wrong.** Documented alternatives: an id the sender assigns (NATS `Nats-Msg-Id`, or the subject under discard-new-per-subject; SQS FIFO; Azure Service Bus `MessageId`; Elasticsearch `_id`; MQTT's packet id within a session), content (Elasticsearch time series data streams, SQS content-based deduplication, Prometheus series and timestamp), a position in the sender's log recorded by the receiver (PostgreSQL LSN), and Kafka's own handbook on the consuming side (a primary key, or the offset stored with the output). Pulsar is a per-producer sequence, but keeps two high marks, persisted and pushed, rather than a window of batches, and allows holes. | C13: [model_deep_dive.md](https://raw.githubusercontent.com/nats-io/nats.docs/f115becf6563e3bbe16bb94cbf87bfceb84199c1/using-nats/jetstream/model_deep_dive.md); O5: [API_SendMessage](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_SendMessage.html); O3, O4, O6, O8, C9, C14, C11, C12 |
-| 7 | Nobody documents an asynchronous purge except in the Kafka style, where deletion is decoupled from reading. | **Wrong.** Purges off the confirming path are documented by Vector (a background scan, every second by default, that retries a failed delete), the libbeat disk queue (a separate deleter), Filebeat's `delete.enabled` (a grace period), Pulsar (a whole ledger at a time, once the ledger holding the message is closed and the slowest durable cursor has passed it, by a background trim), PostgreSQL (at a checkpoint), Google Cloud Pub/Sub (asynchronously, once every subscription has acknowledged) and Kafka Streams (purging its repartition topics up to the committed offset, on an interval). Kafka's `DeleteRecords` deletes, off the reading path, below an offset its caller supplies; KIP-107 added it so that data could be deleted once consumed. NATS interest streams may defer a purge "for performance reasons" after the last interested consumer is removed; and in a clustered stream an acknowledgement that leaves no interest leads to a delete proposed to the replicas and applied after it. The Prometheus agent truncates on a timer that consults what was sent. | C5, C3, C12, C13, C14, C10, C9, O7 |
-| 8 | Unverified at the time: Fluent Bit's and Vector's exact delete trigger. | **Now verified from source.** Fluent Bit unlinks a chunk file synchronously when its task is released: all outputs done, no retries pending, which covers success, error, an exhausted retry and a retry the scheduler could not schedule. "Done" is the output plugin's return to the engine, not the destination's receipt: unless its buffered file has reached its upload size or timeout, the S3 output returns `FLB_OK` once the chunk is in its own buffer, whose file it deletes once the file is uploaded, whole or as one part of a multipart upload. Vector completes a data file logically when every record read from it is finalized, and a background scan, every second by default, deletes it physically, retrying at a later scan if a delete fails or the process exits first. | C6: [flb_task.h](https://raw.githubusercontent.com/fluent/fluent-bit/v5.2.0/include/fluent-bit/flb_task.h); C5 |
+| 6 | A per-producer sequence number (Kafka) is the only documented way to recognise a duplicate. | **Wrong.** Documented alternatives: an id the sender assigns (NATS `Nats-Msg-Id`, or the subject under discard-new-per-subject; SQS FIFO; Azure Service Bus `MessageId`; Elasticsearch `_id`; MQTT's packet id within one exchange), content (Elasticsearch time series data streams, SQS content-based deduplication, Prometheus series and timestamp), a position in the sender's log that the receiver may record (PostgreSQL LSN), and Kafka's own handbook on the consuming side (a primary key, or the offset stored with the output). Pulsar is a per-producer sequence, but keeps two high marks, persisted and pushed, rather than a window of batches, and allows holes. | C13: [model_deep_dive.md](https://raw.githubusercontent.com/nats-io/nats.docs/f115becf6563e3bbe16bb94cbf87bfceb84199c1/using-nats/jetstream/model_deep_dive.md); O5: [API_SendMessage](https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/API_SendMessage.html); O3, O4, O6, O8, C9, C14, C11, C12 |
+| 7 | Nobody documents an asynchronous purge except in the Kafka style, where deletion is decoupled from reading. | **Wrong.** Purges off the confirming path are documented by Vector (a background scan, every second by default, that retries a failed delete), the libbeat disk queue (a separate deleter), Filebeat's `delete.enabled` (a grace period), Pulsar (a whole ledger at a time, once the ledger holding the message is closed and the slowest durable cursor has passed it, by a background trim), PostgreSQL (at a checkpoint), Google Cloud Pub/Sub (asynchronously, once every subscription has acknowledged, where no retention keeps the message longer) and Kafka Streams (purging its repartition topics up to the committed offset, on an interval). Kafka's `DeleteRecords` deletes, off the reading path, below an offset its caller supplies; KIP-107 added it so that data could be deleted once consumed. NATS interest streams may defer a purge "for performance reasons" after the last interested consumer is removed; and in a clustered stream an acknowledgement that leaves no interest leads to a delete proposed to the replicas and applied after it; its file store also leaves the physical cleanup of a message deleted out of order, unless it compacts the block at once, to a periodic sync. The Prometheus agent truncates on a timer that consults what was sent. | C5, C3, C12, C13, C14, C10, C9, O7 |
+| 8 | Unverified at the time: Fluent Bit's and Vector's exact delete trigger. | **Now verified from source.** Fluent Bit unlinks a chunk file synchronously when its task is released: all outputs done, no retries pending, which covers success, error, an exhausted retry and a retry the scheduler could not schedule. "Done" is the output plugin's return to the engine, not the destination's receipt: unless its buffered file has reached its upload size or timeout, the S3 output returns `FLB_OK` once the chunk is in its own buffer, whose file it deletes once the file is uploaded, whole or as one part of a multipart upload, or once its retries are exhausted, if `retry_exhausted_action` is `delete` or, under the default `quarantine`, if the quarantine is full or the move fails. Vector completes a data file logically when the writer has moved past it and every record read from it is finalized, and a background scan, every second by default, deletes it physically, retrying at a later scan if a delete fails or the process exits first. | C6: [flb_task.h](https://raw.githubusercontent.com/fluent/fluent-bit/v5.2.0/include/fluent-bit/flb_task.h); C5 |
 
 ## Summary
 
@@ -53,16 +53,16 @@ The elicitation's survey made eight claims, recorded in `CONTEXT.md` with no lin
 | C2 RFC 9562 UUIDv7 | n/a | n/a | n/a: an identifier, not a delivery mechanism | n/a | Yes, for time order and index locality; none for one id per run |
 | C3 Filebeat / libbeat | Source file: never by default; with `delete.enabled`, after the input's acknowledgement (with the disk queue on, the write to the queue) and a 30-minute grace period. Disk queue segment: once the output has acknowledged all its events | No: a separate deleter; a grace timer | Not recognised; the docs push an id to the receiver (O3) | Elasticsearch: the document id, while the document exists | Partly (PR threads) |
 | C4 OTel Collector persistent queue | On any finish: success, permanent error, exhausted retries; also when an item cannot be read or decoded as it is taken, or put back at a restart | Logical: yes, one local storage transaction once the exporter returns, or two calls if that transaction fails. Physical: only on compaction | Not recognised | Nothing | Partly (issue #2285, design document; PR #9090 for an exhausted retry); none for a permanent error beyond OTLP's rule |
-| C5 Vector disk buffer v2 | Once every record read from a data file is finalized, whatever its status | No: a background scan, every second by default; a failed delete is retried at a later scan | Not recognised | Nothing | Yes (issue #7065, RFCs, code comments) |
-| C6 Fluent Bit | When the task is released: success, error, exhausted retry, or a retry that could not be scheduled, where success is the plugin's return, which for S3 usually precedes the upload, S3's own buffer file then going once it is uploaded, whole or as one part of a multipart upload, bounded by `store_dir_limit_size`; evicted at `storage.total_limit_size` in a fixed order of steps, oldest first within an input but not across inputs | Yes, synchronous | Not recognised | Not addressed | Partly (issue #2408); none for deleting on failure |
+| C5 Vector disk buffer v2 | Once the writer has moved past a data file and every record read from it is finalized, whatever its status; the file being written stays | No: a background scan, every second by default; a failed delete is retried at a later scan | Not recognised | Nothing | Yes (issue #7065, RFCs, code comments) |
+| C6 Fluent Bit | When the task is released: success, error, exhausted retry, or a retry that could not be scheduled, where success is the plugin's return, which for S3 usually precedes the upload, S3's own buffer file then going once it is uploaded, whole or as one part of a multipart upload, or on an exhausted retry when it is not quarantined, bounded by `store_dir_limit_size`; evicted at `storage.total_limit_size` in a fixed order of steps, oldest first within an input but not across inputs | Yes, synchronous | Not recognised | Not addressed | Partly (issue #2408); none for the engine deleting on failure; a code comment on S3's terminal cleanup |
 | C7 OTel SDK batch processor | When the batch is taken for export, whatever the outcome; on a full queue | n/a: nothing is kept | None in the protocol; a span carries a required trace id and span id; an idempotency key was proposed and not merged | Nothing | Yes (performance principles, OTLP specification, PR #219) |
 | C8 Prometheus client | Never: holds only current values | n/a | n/a | n/a | Yes, for the pull model, and for cumulative counters from a core contributor's post (2016); a later stated benefit in a PromCon 2023 talk abstract |
 | C9 Prometheus server | TSDB: by time or size. WAL: at head compaction (server) or on a 2-hour timer (agent) | No | Series and timestamp, for an in-order sample: identical repeat accepted, different value refused | The newest in-order sample per series | Partly: a purpose for retention and WAL truncation; none for the 15-day default or for truncating regardless of remote write |
 | C10 Kafka retention | By time or size, or by key; below an offset a caller supplies (`DeleteRecords`), which the Streams purge sets from its committed offsets | No: a 5-minute task, then a 60 s file delay | n/a | n/a | Yes (design handbook, KIP-107, KIP-811, a code comment) |
 | C11 Kafka consumer offsets | Nothing, in plain Kafka | n/a | On the consuming side: a primary key, or the offset stored with the output | For a repeat: the output, which keeps the primary key or the offset stored with it, for as long as it keeps them. The group coordinator keeps the committed offset, a restart point, by default until 7 days after the group empties, or 7 days after the last commit for a consumer with manual assignment; C11 lists the other terms | Yes (design handbook) |
-| C12 Pulsar | Once every durable subscription acknowledges, or a TTL acknowledges it on expiry; a retention policy can keep acknowledged messages longer; storage a whole ledger at a time, once the ledger holding it is closed, by a background trim | No | Producer name and two high marks, persisted and pushed; a sequence between them is answered as unknown | Broker: 6 hours after the producer disconnects | Partly (PIP-6) |
-| C13 NATS JetStream | Work queue: on acknowledgement, a termination (`AckTerm`) included. Interest: once all interested consumers acknowledge or terminate | In the code at `v2.15.3`: yes on a single server, in the acknowledgement handler; no in a cluster, where the delete is proposed to the replicas and applied later. Possibly deferred after the last interested consumer is deleted | `Nats-Msg-Id` within a window | Server: 2 minutes by default | Partly; none for the window |
-| C14 PostgreSQL replication slot | WAL kept until no slot needs it; removed at a checkpoint; capped by `max_slot_wal_keep_size` | No | The receiver records the last LSN and skips repeats | The receiver (replication origins) | Yes (documentation, commit c655077, code comments) |
+| C12 Pulsar | Once every durable subscription acknowledges, or a TTL acknowledges it on expiry; a retention policy can keep acknowledged messages longer; storage a whole ledger at a time, once the ledger holding it is closed, by a background trim, which a deduplication cursor also holds back | No | Producer name and two high marks, persisted and pushed; a sequence between them is answered as unknown | Broker: 6 hours after the producer disconnects | Partly (PIP-6) |
+| C13 NATS JetStream | Work queue: on acknowledgement, a termination (`AckTerm`) included. Interest: once all interested consumers acknowledge or terminate | In the code at `v2.15.3`: yes on a single server, in the acknowledgement handler, though reclaiming the space of a message removed out of order is mostly left to a periodic sync; no in a cluster, where the delete is proposed to the replicas and applied later. Possibly deferred after the last interested consumer is deleted | `Nats-Msg-Id` within a window | Server: 2 minutes by default | Partly; none for the window |
+| C14 PostgreSQL replication slot | WAL kept until no slot needs it; removed at a checkpoint; capped by `max_slot_wal_keep_size` | No | The client may record the last LSN it saw and skip repeats | The receiver (replication origins) | Yes (documentation, commit c655077, code comments) |
 
 ## Identity and sequence
 
@@ -111,6 +111,23 @@ The elicitation's survey made eight claims, recorded in `CONTEXT.md` with no lin
   > filter(metadata -> firstSeq == metadata.firstSeq() && lastSeq == metadata.lastSeq())
 
   Inferred from that code: a retry older than the five retained batches does not match and fails the continuity check, so it is rejected as out of order rather than recognised as a repeat.
+
+  The producer does not always treat that rejection as fatal. Without a `transactional.id`, the producer at 4.4.0 retries an out-of-sequence error, bumping its epoch where it finds a real gap, and its documentation says it may go on sending, at the cost of order:
+
+  Source: https://raw.githubusercontent.com/apache/kafka/4.4.0/clients/src/main/java/org/apache/kafka/clients/producer/KafkaProducer.java
+
+  > It is a similar picture when idempotence is enabled, but no <code>transactional.id</code> has been configured.
+
+  > Additionally, it is possible to continue
+  >  * sending after receiving an {@link org.apache.kafka.common.errors.OutOfOrderSequenceException}, but doing so
+  >  * can result in out of order delivery of pending messages.
+
+  Source: https://raw.githubusercontent.com/apache/kafka/4.4.0/clients/src/main/java/org/apache/kafka/clients/producer/internals/TransactionManager.java
+
+  > // For the idempotent producer, retry all OUT_OF_ORDER_SEQUENCE_NUMBER errors. If there are no
+  > // unresolved sequences, or this batch is the one immediately following an unresolved sequence, we know
+  > // there is actually a gap in the sequences, and we bump the epoch. Otherwise, retry without bumping
+  > // and wait to see if the sequence resolves
 
 - **Is the sequence also an acknowledgement or a read position?** No source says so. The produce response returns offsets, and consumers track offsets, never sequences (C11). Looked in: the KIP-98 page, its design document, `design.md`, `ProducerAppendInfo.java`, `ProducerStateEntry.java`, `UnifiedLog.java` and KAFKA-5494. Inferred: the sequence is a device between one producer and one partition leader, for recognising a retry and detecting a gap.
 - **The five batches** follow from the producer's in-flight limit:
@@ -372,12 +389,16 @@ The state lives on the partition leader and is replicated through the log. The g
 
 **Stated why.**
 
-- Time-ordered UUIDs answer index locality and the cost of coordinating sequential keys across a network (§2.1):
+- UUIDs answer the cost of coordinating sequential keys across a network, and time-ordered versions answer as well the poor index locality of versions that are not (§2.1):
 
   > In such cases, "auto-increment" schemes that are often
   > used by databases do not work well: the effort required to coordinate
   > sequential numeric identifiers across a network can easily become a
   > burden.
+
+  > The fact that UUIDs can be used to create unique, reasonably
+  > short values in distributed systems without requiring coordination
+  > makes them a good alternative,
 
   > UUID versions that are not time ordered, such as UUIDv4
   > (described in Section 5.4), have poor database-index locality.
@@ -774,7 +795,7 @@ Source: https://github.com/open-telemetry/opentelemetry-collector/issues/8382#is
 
 **What it does.**
 
-- Records go to append-only data files of up to 128 MiB. A data file is logically complete once every record read from it has been finalized; a background task, woken every second, then deletes it. Physical deletion is asynchronous to the acknowledgement:
+- Records go to append-only data files of up to 128 MiB. A data file is logically complete once the writer has moved on to a later file and every record read from it has been finalized; a background task, woken every second, then deletes it. The file the writer is still writing stays: at its end the reader waits for the writer rather than rolling past it, and the scan skips every file from the reader's checkpoint to the writer's. Physical deletion is asynchronous to the acknowledgement:
 
   Source: https://raw.githubusercontent.com/vectordotdev/vector/v0.62.0/lib/vector-buffers/src/variants/disk_v2/mod.rs
 
@@ -784,6 +805,8 @@ Source: https://github.com/open-telemetry/opentelemetry-collector/issues/8382#is
 
   Source: https://raw.githubusercontent.com/vectordotdev/vector/v0.62.0/lib/vector-buffers/src/variants/disk_v2/ledger.rs
 
+  > /// Deletes data files that are outside the durable reader/writer checkpoint window.
+
   > /// The reader advances the durable reader file checkpoint as soon as a data file's records are
   > /// fully acknowledged. Physical deletion can then happen asynchronously: if deletion fails or
   > /// the process exits first, this scan will retry later.
@@ -791,6 +814,12 @@ Source: https://github.com/open-telemetry/opentelemetry-collector/issues/8382#is
   Source: https://raw.githubusercontent.com/vectordotdev/vector/v0.62.0/lib/vector-buffers/src/variants/disk_v2/common.rs
 
   > pub const DEFAULT_DATA_FILE_CLEANUP_INTERVAL: Duration = Duration::from_secs(1);
+
+  Source: https://raw.githubusercontent.com/vectordotdev/vector/v0.62.0/lib/vector-buffers/src/variants/disk_v2/reader.rs
+
+  > if reader_file_id != writer_file_id {
+
+  > self.ledger.wait_for_writer().await;
 
 - **History.** Up to `v0.57.0` the reader deleted the file inline; PR #25845 (merged 2026-07-27, first in `v0.58.0`) moved the delete to the background task:
 
@@ -927,7 +956,7 @@ Source: https://github.com/open-telemetry/opentelemetry-collector/issues/8382#is
 
   > the `storage.total_limit_size` parameter isn't meaningful for S3 since it has its own buffering system in the `store_dir`.
 
-- **S3's own buffer has its own delete and its own bound.** The S3 output deletes its buffer file once the file has been uploaded whole, or once it has been uploaded as one part of a multipart upload, before that upload is completed. `store_dir_limit_size` bounds that buffer, and at the limit data is discarded:
+- **S3's own buffer has its own delete and its own bound.** The S3 output deletes its buffer file once the file has been uploaded whole, or once it has been uploaded as one part of a multipart upload, before that upload is completed. A file whose uploads have failed past the output's retry limit is moved by default to a quarantine directory, unbounded by default; it is deleted instead when `retry_exhausted_action` is `delete`, when the quarantine has reached `quarantine_dir_limit_size`, or when the move fails (quoted below). `store_dir_limit_size` bounds that buffer, and at the limit data is discarded:
 
   Source: https://raw.githubusercontent.com/fluent/fluent-bit/v5.2.0/plugins/out_s3/s3.c
 
@@ -941,6 +970,22 @@ Source: https://github.com/open-telemetry/opentelemetry-collector/issues/8382#is
   > You must use `store_dir_limit_size` to limit the space on disk used by S3 buffer files.
 
   > If the limit is reached, data will be discarded.
+
+  The default action, the cases that delete, and the terminal cleanup's code comment, which says what that cleanup must release:
+
+  Source: https://raw.githubusercontent.com/fluent/fluent-bit/v5.2.0/plugins/out_s3/s3.c
+
+  > FLB_CONFIG_MAP_STR, "retry_exhausted_action", "quarantine",
+
+  > "'delete' (remove permanently) and 'quarantine' (move to quarantine and "
+
+  > "retry-exhausted chunks are deleted. Default is 0 (unlimited)."
+
+  > "could not quarantine, deleting retry-exhausted chunk");
+
+  > * Terminal retry exhaustion must permanently remove local buffer files.
+  >  * Unlike inactive state (recoverable/restart-resumable), terminal cleanup
+  >  * must release store_dir_limit_size accounting and delete on-disk state.
 
 - **`storage.total_limit_size`** caps the filesystem chunks routed to one output. When a new chunk would exceed it, space is freed in a fixed order of steps. Chunks the storage-backlog input has loaded are destroyed outright, even if they are routed to other outputs. Then chunks still waiting in that input's queue for this output are closed and deleted. Then come ordinary inputs, the arriving chunk's own input first and the others in configuration order, oldest first within each input. Chunks of an ordinary input go in two passes: first those routed to this output alone, which are destroyed; then the rest, which only lose this output's route, their file going once no route remains. Inferred from that order: an older chunk shared with another output can outlive a newer one routed to this output alone.
 
@@ -979,7 +1024,7 @@ Source: https://github.com/fluent/fluent-bit/issues/2408
 
 > Will drop the oldest log data chunks when offline buffer size exceeds this limit.
 
-No stated rationale found for deleting a chunk on `FLB_ERROR` or on an exhausted retry. Looked in `src/flb_engine.c` and `include/fluent-bit/flb_task.h` at `v5.2.0`, `administration/scheduling-and-retries.md` and `pipeline/buffering.md` at the docs commit, issue #2408 with PRs #2435 and #2520, and discussion #11362, where a contributor advises a retry limit so that an offline output stops blocking a healthy one; that is advice to a user, not a reason for the rule.
+No stated rationale found for the engine deleting a chunk on `FLB_ERROR` or on an exhausted retry; the S3 output's comment on its own terminal cleanup, quoted above, says what that cleanup must release, not why the file is not kept. Looked in `src/flb_engine.c` and `include/fluent-bit/flb_task.h` at `v5.2.0`, `administration/scheduling-and-retries.md` and `pipeline/buffering.md` at the docs commit, issue #2408 with PRs #2435 and #2520, and discussion #11362, where a contributor advises a retry limit so that an offline output stops blocking a healthy one; that is advice to a user, not a reason for the rule.
 
 **Constraints.** One agent process; buffering per input, limits per output; `Retry_Limit` 1 by default; an optional dead letter queue (`storage.keep.rejected`).
 
@@ -1100,7 +1145,7 @@ No stated rationale found for deleting a chunk on `FLB_ERROR` or on an exhausted
 
   > But persistence mechanisms will be complicated to implement in the SDK, and its not clear that there is enough user demand to justify the investment.
 
-  The same issue names language-specific disk buffers in opentelemetry-java-contrib (`disk-buffering`) and in Swift. Swift's delete trigger is Unverified. The Java module at `v1.60.0`, by default, deletes each item its reader has taken once the reader asks for another, without seeing the export's outcome. Configured otherwise, it deletes an item only when the reader removes it, for example after a successful export. Size and age limits purge files in either mode:
+  The same issue names language-specific disk buffers in opentelemetry-java-contrib (`disk-buffering`) and in Swift; the Swift one is described after the Java one. The Java module at `v1.60.0`, by default, deletes each item its reader has taken once the reader asks for another, without seeing the export's outcome. Configured otherwise, it deletes an item only when the reader removes it, for example after a successful export. Size and age limits purge files in either mode:
 
   Source: https://raw.githubusercontent.com/open-telemetry/opentelemetry-java-contrib/v1.60.0/disk-buffering/README.md
 
@@ -1126,6 +1171,34 @@ No stated rationale found for deleting a chunk on `FLB_ERROR` or on an exhausted
   Source: https://github.com/open-telemetry/opentelemetry-java-contrib/issues/2540
 
   > its [`next` method](https://docs.oracle.com/en/java/javase/21/docs/api/java.base/java/util/Iterator.html#next()) has a side-effect, namely that it deletes a file from the disk.
+
+  The Swift persistence exporter at `2.6.0` states its goal as an environment that "can't guarantee stable export". Its export worker deletes a batch file once the export has not failed, and otherwise keeps it and lengthens the delay before the next try. The span, log and metric decorators each report a failure as needing a retry, a check PR #1030 (merged 2026-01-09) added to the span decorator. Size and age limits delete files whatever was exported: the oldest files once the directory is too big, and a file too old to read. Its authors run the size purge only when a new file is created, because it is "a memory-expensive operation":
+
+  Source: https://raw.githubusercontent.com/open-telemetry/opentelemetry-swift/2.6.0/Sources/Exporters/Persistence/README.md
+
+  > The goal is to allow dealing with situations where telemetry data is generated in an environment that can't guarantee stable export.
+
+  Source: https://raw.githubusercontent.com/open-telemetry/opentelemetry-swift/2.6.0/Sources/Exporters/Persistence/Export/DataExportWorker.swift
+
+  > // Delete or keep batch depending on the export status
+  >         if exportStatus.needsRetry {
+
+  Source: https://raw.githubusercontent.com/open-telemetry/opentelemetry-swift/2.6.0/Sources/Exporters/Persistence/PersistenceSpanExporterDecorator.swift
+
+  > return DataExportStatus(needsRetry: result == .failure)
+
+  Source: https://github.com/open-telemetry/opentelemetry-swift/pull/1030
+
+  > Now checks the export result and sets needsRetry: result == .failure
+
+  Source: https://raw.githubusercontent.com/open-telemetry/opentelemetry-swift/2.6.0/Sources/Exporters/Persistence/Storage/FilesOrchestrator.swift
+
+  > /// Removes oldest files from the directory if it becomes too big.
+
+  > if fileAge > performance.maxFileAgeForRead {
+
+  > // NOTE: As purging files directory is a memory-expensive operation, do it only when we know
+  >       // that a new file will be created.
 
 - An open issue (#5178) proposes opt-in blocking; its author states the current intent:
 
@@ -1369,7 +1442,7 @@ Source: https://raw.githubusercontent.com/prometheus/prometheus/v3.16.0/tsdb/hea
 **Costs and dissent.**
 
 - Size-based retention can briefly exceed its limit during compaction, as `docs/storage.md` says.
-- A remote away for longer than the bound loses data: two hours for the server, by its documentation. For the agent at `v3.16.0` the bound is not a fixed time: the cut-off trails by at most `MaxWALTime`, four hours by default, so data goes at that age at the earliest, since a truncation runs on its timer, two hours by default, and drops only from the older two-thirds of the segments, as above. An operator's account of the trade-off, and the open work towards at-least-once:
+- A remote away for longer than the bound loses data: two hours for the server, by its documentation. For the agent at `v3.16.0` the bound is not a fixed time: the cut-off trails by at most `MaxWALTime`, four hours by default, so unsent data goes at that age at the earliest, since a truncation runs on its timer, two hours by default, and drops only from the older two-thirds of the segments, as above. An operator's account of the trade-off, and the open work towards at-least-once:
 
   Source: https://github.com/prometheus/prometheus/issues/17616
 
@@ -1527,6 +1600,21 @@ Source: https://raw.githubusercontent.com/apache/kafka/4.4.0/group-coordinator/s
 
 > Note that when a group is deleted via the delete-group request, its committed offsets will also be deleted without extra retention period;
 
+What a consumer fetches carries marks apart from the records: the Fetch response gives each partition, beside its records, its high watermark, its last stable offset and its log start offset, among other fields:
+
+Source: https://raw.githubusercontent.com/apache/kafka/4.4.0/clients/src/main/resources/common/message/FetchResponse.json
+
+> { "name": "HighWatermark", "type": "int64", "versions": "0+",
+>           "about": "The current high water mark." },
+
+> { "name": "LastStableOffset", "type": "int64", "versions": "4+", "default": "-1", "ignorable": true,
+
+> The last stable offset (or LSO) of the partition. This is the last offset such that the state of all transactional records prior to this offset have been decided (ABORTED or COMMITTED).
+
+> "about": "The current log start offset." },
+
+> { "name": "Records", "type": "records", "versions": "0+", "nullableVersions": "0+", "about": "The record data."}
+
 **Stated why.** A per-message acknowledgement re-delivers anyway and costs the broker state for every message:
 
 Source: https://raw.githubusercontent.com/apache/kafka/4.4.0/docs/design/design.md
@@ -1661,6 +1749,13 @@ Source: https://raw.githubusercontent.com/apache/kafka/4.4.0/clients/src/main/ja
   > if (cursor.isDurable()) {
   > positionForOrdering = cursor.getMarkDeletedPosition();
 
+  With deduplication on, the broker keeps a cursor of its own, moved when it takes a snapshot, and the code says that cursor holds back the trim:
+
+  Source: https://raw.githubusercontent.com/apache/pulsar/8c04f6cdcb9c3561746b9f890df106ad9a333e93/pulsar-broker/src/main/java/org/apache/pulsar/broker/service/persistent/MessageDeduplication.java
+
+  > // Not deduplicated (see isDuplicate), but the entry counts toward the snapshot interval: the snapshot moves
+  > // the deduplication cursor, which bounds the replay on recovery and holds back the trimming of the ledgers
+
   Whether one acknowledgement covers a range depends on the subscription type. A cumulative acknowledgement covers every message up to the one it names; Shared and Key_Shared subscriptions acknowledge each message on its own:
 
   Source: https://raw.githubusercontent.com/apache/pulsar-site/4b4a7815eb9bd2e9027e506828a437e4e870a691/docs/concepts-messaging.md
@@ -1687,6 +1782,12 @@ Source: https://raw.githubusercontent.com/apache/pulsar-site/4b4a7815eb9bd2e9027
 > Messages over the retention limit are kept because other messages in the same segment are still within retention period.
 
 Inferred: storage is in BookKeeper ledgers, which are removed whole.
+
+For deleting only after an acknowledgement, the messaging concepts page says what an acknowledgement is for, and gives no reason beyond it:
+
+Source: https://raw.githubusercontent.com/apache/pulsar-site/4b4a7815eb9bd2e9027e506828a437e4e870a691/docs/concepts-messaging.md
+
+> An acknowledgment (ack) is Pulsar's way of knowing that the message can be deleted from the system.
 
 **Constraints.** Deduplication across a restart needs a stable, unique producer name:
 
@@ -1757,6 +1858,21 @@ Source: https://raw.githubusercontent.com/apache/pulsar-site/4b4a7815eb9bd2e9027
 
   > // If this consumer is clustered this will be handled by
   > // processReplicatedAck after the ack has propagated.
+
+  That removal is the file store's bookkeeping. A message removed out of order from a block that still holds others is recorded as deleted; the block is compacted in that step only when a simple check finds it worth it, and otherwise is left to a sync that runs on a timer, two minutes by default, and compacts it when its own check holds. A block left empty is removed at once.
+
+  Source: https://raw.githubusercontent.com/nats-io/nats-server/v2.15.3/server/filestore.go
+
+  > // Out of order delete.
+
+  > // Make simple check here similar to Compact(). If we can save 50% and over a certain threshold do inline.
+  > // All other more thorough cleanup will happen in syncBlocks logic.
+
+  > // If empty remove this block and check if we need to update first sequence.
+
+  > defaultSyncInterval = 2 * time.Minute
+
+  > fs.syncTmr = time.AfterFunc(start, fs.syncBlocks)
 
 - **A termination removes too.** `AckTerm` stops redelivery without acknowledging success. The server handles it as an acknowledgement, and that acknowledgement tells a work-queue or interest stream to remove the message once no consumer is still interested. The streams page says a work-queue stream deletes only on limits or a successful acknowledgement. The two are reported as found and not reconciled.
 
@@ -1870,6 +1986,13 @@ Source: https://raw.githubusercontent.com/nats-io/nats.docs/f115becf6563e3bbe16b
 
   > replication slots may retain an unlimited amount of WAL files.
 
+- **The hand-over.** The receiver starts it with `START_REPLICATION`, naming its slot, and the server then streams WAL to it:
+
+  Source: https://raw.githubusercontent.com/postgres/postgres/REL_18_7/doc/src/sgml/protocol.sgml
+
+  > On success, the server responds with a CopyBothResponse
+  >        message, and then starts to stream WAL to the frontend.
+
 **Stated why.**
 
 Source: https://raw.githubusercontent.com/postgres/postgres/REL_18_7/doc/src/sgml/high-availability.sgml
@@ -1915,6 +2038,8 @@ Source: https://raw.githubusercontent.com/postgres/postgres/REL_18_7/doc/src/sgm
 > even when there is no connection using them.
 
 **Costs and dissent.**
+
+Source: https://raw.githubusercontent.com/postgres/postgres/REL_18_7/doc/src/sgml/logicaldecoding.sgml
 
 > In extreme cases this could cause the database to shut down to prevent
 > transaction ID wraparound
@@ -2048,7 +2173,7 @@ Source: https://raw.githubusercontent.com/elastic/docs-content/96870a908ce76d263
 
 > {{es}} uses dimensions and timestamps to generate time series document `_id` values. Two documents with the same dimensions and timestamp are considered duplicates. Duplicates are rejected during ingestion with a `409 Conflict` status.
 
-The 8.19 reference guide says a repeat sent through `_bulk` overwrites the first, and the pull request that introduced the derived id shows, on a time series index, an `index` action overwriting and a `create` action writing only if the document is absent. The specification quoted under O3 says data streams support only the `create` action. These are reported as found and not reconciled.
+The 8.19 reference guide says a repeat sent through `_bulk` overwrites the first, and the pull request that introduced the derived id shows, on a time series index, an `index` action overwriting and a `create` action writing only if the document is absent. The specification quoted under O3 says data streams support only the `create` action. The code at `v8.19.0` refuses any other action written through a data stream's name, while allowing one written directly to a backing index by its name, and the 8.19 bulk API says a `create` fails when a document with the id already exists (both quoted below). Whether the guide's overwrite happens only through a backing index was not checked; the guide's sentence and these are reported as found and not reconciled.
 
 Source: https://www.elastic.co/guide/en/elasticsearch/reference/8.19/tsds.html#time-series-dimension
 
@@ -2059,6 +2184,16 @@ Source: https://github.com/elastic/elasticsearch/pull/82633
 > The ID comes from the dimensions and the `@timestamp`. So you can overwrite the document:
 
 > Or you can write only if it doesn't already exist:
+
+Source: https://raw.githubusercontent.com/elastic/elasticsearch/v8.19.0/server/src/main/java/org/elasticsearch/action/bulk/BulkOperation.java
+
+> throw new IllegalArgumentException("only write ops with an op_type of create are allowed in data streams");
+
+> // avoid valid cases when directly indexing into a backing index
+
+Source: https://www.elastic.co/guide/en/elasticsearch/reference/8.19/docs-bulk.html
+
+> create fails if a document with the same ID already exists in the target,
 
 **Stated why.** For the derived id, pull request #82633 (merged 2022-03-10) gives its purpose, document GET, DELETE and versioning for time series documents, and names the cost of an id that must be looked up on every write:
 
@@ -2106,7 +2241,7 @@ Source: https://docs.aws.amazon.com/AWSSimpleQueueService/latest/APIReference/AP
 
 #### O6. MQTT QoS 2
 
-OASIS MQTT 5.0 and 3.1.1. The sender assigns a packet identifier unused in the session. The receiver remembers it from PUBLISH until PUBREL and answers a repeat in that window without delivering it again; after it sends PUBCOMP the receiver treats the identifier as new, and the sender may reuse it once it has received PUBCOMP, or a PUBREC with a Reason Code of 0x80 or greater. The state belongs to the session, which lasts as long as the connection plus the session expiry interval.
+OASIS MQTT 5.0 and 3.1.1. The sender assigns a packet identifier not in use by another of its own exchanges; the client and the server assign theirs independently. The receiver remembers it from PUBLISH until PUBREL and answers a repeat in that window without delivering it again; after it sends PUBCOMP the receiver treats the identifier as new, and the sender may reuse it once it has received PUBCOMP, or, in 5.0 only, a PUBREC with a Reason Code of 0x80 or greater. The state belongs to the session, which lasts as long as the connection plus the session expiry interval.
 
 Source: https://docs.oasis-open.org/mqtt/mqtt/v5.0/os/mqtt-v5.0-os.html
 
@@ -2155,7 +2290,7 @@ Source: https://cloud.google.com/pubsub/docs/exactly-once-delivery
 
 > exactly-once delivery semantics don't align well with push subscriptions.
 
-**Deletion.** By default a subscription discards a message once it is acknowledged, and keeps an unacknowledged one for seven days; a subscription can be set to keep acknowledged messages too, for replay. Once every subscription on the topic has acknowledged a message, it is deleted from storage asynchronously.
+**Deletion.** By default a subscription discards a message once it is acknowledged, and keeps an unacknowledged one for seven days; a subscription can be set to keep acknowledged messages too, for replay. Once every subscription on the topic has acknowledged a message, it is deleted from storage asynchronously. Retention on the topic is off by default. Its page says that once the topic's retention duration is over, Pub/Sub may discard a message whatever its acknowledgements; the subscription retention page says that with topic retention also on, messages are deleted from the subscription only once older than the longer of the two durations.
 
 Source: https://docs.cloud.google.com/pubsub/docs/subscription-message-retention
 
@@ -2167,6 +2302,19 @@ Source: https://docs.cloud.google.com/pubsub/docs/pubsub-basics
 
 > If all the subscriptions on a topic have acknowledged the message, the message is asynchronously deleted from the publish message source and from storage.
 
+Source: https://docs.cloud.google.com/pubsub/docs/subscription-message-retention
+
+> If you also enable message retention on the subscription's topic, then messages
+> are deleted from the subscription only when their age exceeds the maximum of the
+> subscription retention and topic retention durations.
+
+Source: https://docs.cloud.google.com/pubsub/docs/topic-properties
+
+> After the message retention duration is over, Pub/Sub
+> might discard the message regardless of its acknowledgment state.
+
+> Default = Not enabled
+
 #### O8. Azure Service Bus duplicate detection
 
 The service remembers an application-controlled `MessageId`, with the partition key when partitioning is enabled, for a configured window, and accepts and drops a repeat sent within it.
@@ -2177,7 +2325,11 @@ Source: https://learn.microsoft.com/en-us/azure/service-bus-messaging/duplicate-
 
 > When partitioning is enabled, MessageId+PartitionKey is used to determine uniqueness.
 
-**Stated why.**
+**Stated why.** The failures it answers are a sender restarted after a fatal error that sends again, and a send committed whose acknowledgement was lost:
+
+> If an application fails due to a fatal error immediately after sending a message, and the restarted application instance mistakenly believes that the prior message delivery didn't occur, a subsequent send causes the same message to appear in the system twice.
+
+> It's also possible for an error at the client or network level to occur a moment earlier, and for a sent message to be committed into the queue, with the acknowledgment not successfully returned to the client.
 
 > Application control of the identifier is essential because it allows the application to tie the MessageId to a business process context from which it can be predictably reconstructed when a failure occurs.
 
@@ -2206,9 +2358,8 @@ Source: https://learn.microsoft.com/en-us/azure/service-bus-messaging/duplicate-
 ## Candidates not examined
 
 - Snowflake-style identifiers (a worker id plus a per-worker sequence), named in RFC 9562's survey of implementations.
-- The disk buffer in OpenTelemetry Swift, named in specification issue #3645: its delete trigger is Unverified. The Java one is described under C7.
 - Out-of-order sample handling in the Prometheus TSDB, which has its own repeat check.
-- What the Azure Event Hubs service remembers. For Google Cloud Pub/Sub, only the exactly-once delivery, subscription retention and service overview pages were read (O7).
+- What the Azure Event Hubs service remembers. For Google Cloud Pub/Sub, only the exactly-once delivery, subscription retention, topic properties and service overview pages were read (O7).
 - ActiveMQ Classic's KahaDB, read only on one FAQ page: it cleans up unreferenced journal files every 30 seconds by default, and keeps a file that holds an acknowledgement while the acknowledged message's file is still in use.
 
   Source: https://activemq.apache.org/components/classic/documentation/why-do-kahadb-log-files-remain-after-cleanup
@@ -2253,33 +2404,33 @@ Source: https://learn.microsoft.com/en-us/azure/service-bus-messaging/duplicate-
 What the specification states, and what is only a leaning, are kept apart here. A leaning recorded in `CONTEXT.md` is cited as a leaning.
 
 - **The sender is an in-process library.** The client runs inside the host application, which it must never harm: a queue is bounded and never blocks the worker, and a write never fails. One data writer stores rows in local databases. Purging is off the hot path and never required; that it is the data writer's work, so that nothing is purged once the data writer has stopped, is marked Derived in `PurgeRow`.
-- **A run is one establish, in a process that may be short-lived.** Each establish mints a new run id (`uuid_v7(now)`) and starts positions at 1; one establish after another is a new run each time. When establish ends, what is still queued is discarded and counted, the batch in hand is finished and the data writer stops, so a run can end with stored rows that no collection has confirmed. What a later establish does with databases a previous run left at the location is open question 6. A forked child's establish is refused. That the usual host is an ephemeral pod is a leaning, not a decision.
+- **A run is one establish, in a process that may be short-lived.** Each establish mints a new run id (`uuid_v7(now)`) and starts positions at 1; one establish after another is a new run each time (Derived, `EstablishProductionCore`). When establish ends, what is still queued is discarded and counted, the batch in hand is finished and the data writer stops, so a run can end with stored rows that no collection has confirmed. What a later establish does with databases a previous run left at the location is open question 6. A forked child's production establish is refused (`EstablishProductionCore`). That the usual host is an ephemeral pod is a leaning, not a decision.
 - **A run id is minted without coordination.** The specification has one writer process per instance, the location being the instance, and leaves more than one process per instance to open questions 1 and 17. It does not say that several instances or pods hand over to one collection: the collector's internals are outside it. That they would, with each run id minted on its own host, is a reading of the ephemeral-pod leaning, not a statement of the specification. The maintainer's standing guidance prefers coordination-free or low-coordination solutions.
-- **The client holds the data it hands over.** The rows live in the client's own local databases, at a location one live process claims; the specification gives no other process a way to remove them, though what happens to a previous run's databases is open question 6. The local databases are bounded, and anything removed uncollected is counted (settled), but what bounds them is open question 8. Until it is decided, no rule removes a stored row that has not been confirmed.
+- **The client holds the data it hands over.** The rows live in the client's own local databases, at a location one live process claims; the specification gives no other process a way to remove them, though what happens to a previous run's databases is open question 6. The local databases are bounded, and anything removed uncollected is counted (settled), but what bounds them is open question 8. Until it is decided, open question 8 says, no rule removes a stored row that has not been confirmed. Keyed values are the case the rules already make: a newer value for a slot replaces the stored value, confirmed or not (`ReplaceKeyedValue`), and the replaced value is not handed over (`LatestValuePerKey`), as the first worked hand-over example in `CONTEXT.md` shows.
 - **The collector may pull.** Whether the hand-over is a push or a pull, and in what form, is open question 15; the maintainer leans towards a pull.
 - **Nothing is decided about what a collector remembers.** Which collector confirms when more than one reads an instance is open question 7, and whether a hand-over carries the stored position is open question 25. A collector is not known to be a server cluster, a single process, or something that keeps state between collections.
 - **Positions have gaps.** A row is given its position when it is accepted, so a row lost afterwards leaves a visible gap (marked Derived in `AcceptRow`); earlier values of a key that a later one replaced are not sent (`LatestValuePerKey`); and a hand-over offers nothing above the stored position (marked Derived), so rows above a row still waiting are held back. The worked hand-over examples in `CONTEXT.md`, which were read back to the maintainer, show all three.
-- **A confirmation is cumulative.** The collector states the highest position it has safely received (`ConfirmPosition`), and a row at or below it may be purged later (`PurgeRow`). One integer per run stands for what has been collected. That a confirmation above the stored position is refused, and one at or below the confirmed position changes nothing, is marked Derived.
+- **A confirmation is cumulative.** The collector states the highest position it has safely received (`ConfirmPosition`), and a row at or below it may be purged later, a keyed value only while no newer value for its key exists (`PurgeRow`). One integer per run stands for what has been collected. That a confirmation above the stored position is refused, and one at or below the confirmed position changes nothing, is marked Derived.
 - **The storage engine is undecided.** DuckDB was named once, as a possibility; the local databases' on-disk format is not decided.
 
 ### Fit of each comparable
 
-- **C1, Kafka's idempotent producer.** *Holds:* the failure it answers, a retry after a lost acknowledgement producing a duplicate, arises for any hand-over that re-sends, push or pull. The identity is per producer session, and a restart without a `transactional.id` gets a new one, as a new establish gets a new run. *Does not hold:* the producer id is assigned by the broker, a coordination this client avoids; the checking side is a broker cluster that remembers the last five batches per producer and partition for a bounded time, where nothing is decided about what a collector remembers; the check is exact continuity, with a gap fatal, where this client's positions have gaps by design; the sequence is per partition, where a position is per run across all its tables; and the sequence is not an acknowledgement or a read position (Inferred, C1), where a position is also what the collector confirms. KIP-98's own scope note, that idempotence holds "within a single producer session", matches a run.
-- **C2, RFC 9562.** *Holds:* §2.1's stated reason, that coordinating sequential identifiers across a network "can easily become a burden", fits many runs minted without coordination, and §6.4 says no coordination is required. *Does not hold, or not shown:* the RFC says nothing about one identifier per run or per process, and its counters sit inside the UUID; its index-locality reason applies only where something stores and indexes by run id, which no decision says the collector does; one id per run needs none of §6.2's monotonicity guidance. The §8 warnings carry over unchanged: a run id must not be treated as a capability, and it signals when the run began.
+- **C1, Kafka's idempotent producer.** *Holds:* the failure it answers, a retry after a lost acknowledgement producing a duplicate, arises for any hand-over that re-sends, push or pull. The identity is per producer session, and a restart without a `transactional.id` gets a new one, as a new establish gets a new run. *Does not hold:* the producer id is assigned by the broker, a coordination this client avoids; the checking side is a broker cluster that remembers the last five batches per producer and partition for a bounded time, where nothing is decided about what a collector remembers; the check, wherever the leader holds the producer's state, is exact continuity, a gap being rejected as out of sequence (fatal in KIP-98's words; the idempotent producer at 4.4.0 retries it, bumping its epoch on a real gap), where this client's positions have gaps by design; the sequence is per partition, where a position is per run across all its tables; and the sequence is not an acknowledgement or a read position (Inferred, C1), where a position is also what the collector confirms. KIP-98's own scope note, that idempotence holds "within a single producer session", matches a run.
+- **C2, RFC 9562.** *Holds:* §2.1's stated reason for UUIDs in general, that coordinating sequential identifiers across a network "can easily become a burden", fits many runs minted without coordination, and §6.4 says no coordination is required. *Does not hold, or not shown:* the RFC says nothing about one identifier per run or per process, and its counters sit inside the UUID; its index-locality reason, the one it gives for a time-ordered version such as UUIDv7, applies only where something stores and indexes by run id, which no decision says the collector does; one id per run needs none of §6.2's monotonicity guidance. The §8 warnings carry over unchanged: a run id must not be treated as a capability, and its timestamp signals the order of creation, here read from the client's clock at establish (`uuid_v7(now)`).
 - **C3, Filebeat.** *Holds:* the registry is a confirmed read position, like the confirmed position; `delete.enabled` deletes only once every event is acknowledged, and its reviewer's stated reason, not to discard data still to be sent, fits the settled rule that nothing uncollected is removed uncounted. *Does not hold:* Filebeat reads files another process owns, so its stated loss case (rotation or deletion before reading) is someone else's purge, where this client owns its data; and its acknowledgement can be the disk queue's, or a drop, rather than the destination's receipt.
 - **C4, the OpenTelemetry Collector's persistent queue.** *Holds:* its stated motive, data lost when a memory buffer overfills or the process crashes (issue #2285), is the motive for any durable local buffer. *Does not hold:* it is a pipeline agent with a retry budget, and it deletes on giving up as well as on success; this client has no give-up rule on the hand-over, and its purge requires a confirmation. That the delete is in the same step as the outcome has no counterpart: this client's purge is a separate, later step by design.
-- **C5, Vector.** *Holds:* the stated reason for the asynchronous physical delete, that a failed or interrupted delete is retried by the next scan, fits a short-lived process whose purge is off the hot path and may not finish before exit. *Does not hold:* its deletion follows finalization of any status, and its end-to-end acknowledgements stop at the buffer, so the confirmation is one hop's; this client's confirmation is the collector's own statement.
-- **C6, Fluent Bit.** *Holds:* the size limit's stated reason, not filling the disk other applications use (issue #2408), fits a client that must never harm its host. *Does not hold:* it deletes on an error and on an exhausted retry with no stated reason, and an output's `FLB_OK` can precede delivery; neither has a counterpart here.
-- **C7, the OpenTelemetry SDK and OTLP.** *Holds:* the deployment is the same, a library inside the application, and its stated principles, not blocking the application and not using unbounded memory, are this client's settled promises. OTLP's stated choice, that duplicates are "the right tradeoff for telemetry data", fits a hand-over that may repeat. *Does not hold:* the SDK keeps nothing on disk and drops a failed batch, where this client keeps rows until confirmed: it chose otherwise, and its maintainers declined persistent retry in the SDK as complex and of unclear demand. The one SDK disk buffer read, opentelemetry-java-contrib's, deletes by default an item its reader has taken without seeing the export's outcome. OTLP's reason for rejecting a request id, that load-balanced and re-batching collectors cannot share it, applies only if this client's collector has that shape, which open question 7 leaves open.
+- **C5, Vector.** *Holds:* the stated reason for the asynchronous physical delete, that a failed delete is retried by a later scan, fits a purge that is off the hot path, may fail and is never required, for as long as the data writer runs. *Does not hold:* the same comment's retry after the process exits needs a later process to open the same buffer, where here nothing is purged once the data writer has stopped (Derived, `PurgeRow`) and what a later establish does with a previous run's databases is open question 6; its deletion follows finalization of any status, and its end-to-end acknowledgements stop at the buffer, so the confirmation is one hop's; this client's confirmation is the collector's own statement.
+- **C6, Fluent Bit.** *Holds:* the size limit's stated reason, not filling the disk other applications use (issue #2408), fits a client that must never harm its host. *Does not hold:* its engine deletes on an error and on an exhausted retry with no stated reason, the S3 output's own buffer can go on an exhausted retry too, and an output's `FLB_OK` can precede delivery; neither has a counterpart here.
+- **C7, the OpenTelemetry SDK and OTLP.** *Holds:* the deployment is the same, a library inside the application, and its stated principles, not blocking the application and not using unbounded memory, are this client's settled promises. OTLP's stated choice, that duplicates are "the right tradeoff for telemetry data", fits a hand-over that may repeat. *Does not hold:* the SDK keeps nothing on disk and drops a failed batch, where this client keeps rows until confirmed: it chose otherwise, and its maintainers declined persistent retry in the SDK as complex and of unclear demand. Of the two SDK disk buffers read, opentelemetry-java-contrib's deletes by default an item its reader has taken without seeing the export's outcome, and OpenTelemetry Swift's deletes a batch file once its export has not failed, with size and age limits that delete whatever was exported. OTLP's maintainer objected to a request id because load-balanced and re-batching collectors cannot share it without coordinating, and its author withdrew it, judging it unneeded once an instance id and each point's timestamp are required; the objection applies only if this client's collector has that shape, which open question 7 leaves open.
 - **C8, the Prometheus client.** *Holds:* it is a pull from a library inside the application, as the leaning has it. A keyed state table, which hands over one latest value per key, is close to a Prometheus series. *Does not hold:* as a comparable for a purge rule it does not transfer at all, because a Prometheus client holds no rows waiting for collection and so purges nothing; a time series table of rows has no cumulative value that makes a missed collection harmless.
 - **C9, the Prometheus server and agent.** *Holds:* the agent is a local write-ahead buffer feeding a remote, with a time cut-off past which unsent data may go, which is the situation open question 8 describes. *Does not hold:* the server's WAL belongs to its storage engine, and remote write reads a log it does not own; the agent's purge follows what was sent, not what was confirmed.
-- **C10, Kafka's retention.** *Holds:* the stated reason for deleting off the reading path in an interval rather than at every commit (KIP-811: throughput and log volume) fits a purge kept off the hot path, and so does the reason for deleting a renamed segment later, that a reader may still have it open. *Does not hold:* retention by time or size serves many consumer groups re-reading a shared log on a broker, where this client's rows are handed over and then purged. *Dissent that applies:* the handbook's authors rejected a "store-and-forward" producer, one that keeps its own local log, for "thousands of producers", because involving thousands of disks would be "a nightmare to operate". This client has that shape: one local store per process, and on the ephemeral-pod leaning, per pod.
-- **C11, Kafka's consumer offsets.** *Holds:* the stated reason for one integer per partition, that it makes "the equivalent of message acknowledgements very cheap" compared with state per message, fits a cumulative confirmed position. The at-least-once order, process then commit, is the hand-over's: a collector confirms what it has safely received, and anything after the confirmation is offered again. *Does not hold:* the integer is the next offset to read, where the confirmed position is the highest received; and it stands for what is consumed only because one consumer reads a partition in a consumer group; Kafka's share groups, where consumers share a partition, acknowledge records one by one instead. Which collector confirms is open question 7.
+- **C10, Kafka's retention.** *Holds:* Kafka Streams purges on an interval, off the path that commits, as this client purges off the path that confirms. *Does not hold, or not shown:* the stated reason for the interval (KIP-811) is the cost of sending the brokers a delete request at every commit, in throughput and broker log volume, where this client's purge is the data writer's local work, whose cost depends on a storage engine that is undecided; and the reason for deleting a renamed segment later, that a reader may still have it open, applies only if something reads the local databases' files while the data writer purges: their on-disk form is private to the client and what a hand-over transmits is a separate concern (`PrivateOnDiskForm`), and the form of the hand-over is open question 15. Both inform an asynchronous purge here; neither justifies it. Retention by time or size serves many consumer groups re-reading a shared log on a broker, where this client's rows are handed over and then purged. *Dissent that bears on it:* the handbook's authors rejected a "store-and-forward" producer, one that keeps its own local log, as "not very suitable for our target use cases which have thousands of producers", because involving thousands of disks would be "a nightmare to operate". This client keeps a local store for each writing process, the shape the objection names. Whether its deployments reach the number of producers the objection is scoped to is not known: one store per pod is a reading of the ephemeral-pod leaning, and whether the one-process rule holds per container if collection is a pull is open question 17.
+- **C11, Kafka's consumer offsets.** *Holds:* the stated reason for one integer per partition, that it makes "the equivalent of message acknowledgements very cheap" compared with state per message, fits a cumulative confirmed position. The at-least-once order, process then commit, is the hand-over's: a collector confirms what it has safely received, and anything stored after the confirmation, up to the stored position (marked Derived), is offered again, except a keyed value that a newer one has replaced (`ReplaceKeyedValue`): a keyed state table offers only its latest value per key (`LatestValuePerKey`). *Does not hold:* the integer is the next offset to read, where the confirmed position is the highest received; and it stands for what is consumed only because one consumer reads a partition in a consumer group; Kafka's share groups, where consumers share a partition, acknowledge records one by one instead. Which collector confirms is open question 7.
 - **C12, Pulsar.** *Holds:* its deduplication keeps the highest sequence seen and allows holes, closer to positions with gaps than Kafka's continuity check. Its stated reason, resuming after an application crash from a known sequence with the same producer name, fits only rows handed over again after the process that wrote them has gone; a new establish mints a new run id, and whether a previous run's rows are handed over at all is open question 6. *Does not hold:* the broker remembers producers for six hours, a server's bounded memory; deletion waits for every durable subscription, a multi-reader rule open question 7 leaves open here.
-- **C13, NATS JetStream.** *Holds:* an id the publisher chooses, remembered by the receiver for a window, is a way to recognise a repeat that needs no continuity. *Does not hold:* the window is bounded and its stated cost is the server's; a repeat after the window is stored again.
-- **C14, PostgreSQL replication slots.** *Holds:* it is the closest in structure within a run. The sender keeps data until the receiver confirms a position, removes it later at a checkpoint rather than in the confirming step, and on a crash sends again what follows the persisted position, which the receiver recognises by position. Its stated reasons fit: keep exactly what the receiver still needs, even while it is disconnected; and bound it, because unbounded retention "can lead to the primary failing because of running out of space". *Does not hold:* the sender is a long-lived database server and a slot persists across crashes, where a run ends with its establish and a later establish is a new run (open question 6); and one receiver reads a slot at a time (open question 7).
+- **C13, NATS JetStream.** *Holds:* an id the publisher chooses, remembered by the receiver for a window, is a way to recognise a repeat that needs no continuity. *Does not hold:* the window is bounded, and the documentation cautions against large windows without saying why (that the cost is the server's id map is Inferred, C13); a repeat after the window is stored again (Inferred).
+- **C14, PostgreSQL replication slots.** *Holds:* it is the closest in structure within a run. The sender keeps the WAL a slot may still need, from its `restart_lsn`, which a confirmation can move on; it removes that WAL later, at a checkpoint, rather than in the confirming step; and after a crash it may send again what follows the slot's persisted position, which the documentation leaves the client to handle, suggesting it may record the last LSN it saw. Its stated reasons fit: keep exactly what the receiver still needs, even while it is disconnected; and bound it, because unbounded retention "can lead to the primary failing because of running out of space". *Does not hold:* the sender is a long-lived database server and a slot persists across crashes, where a run ends with its establish and a later establish is a new run (open question 6); and one receiver reads a slot at a time (open question 7).
 - **O1 and O2, statsd and syslog over UDP.** *Holds:* Etsy's stated reason, that the application should not care whether the collector is up, is this client's promise never to harm the host. *Does not hold:* neither keeps anything to hand over again.
-- **O3 to O8, an id the sender assigns, or content.** *Holds:* a run id with a position is an id the sender assigns to each row and keeps across a re-send. Azure Service Bus's stated reason for an application-controlled id, that the application can reconstruct it "predictably" after a failure, fits a position stored with its row, for as long as the row and its run id are kept; across an establish the run id changes (open question 6). *Does not hold:* each of them names a receiver that remembers the id for a stated lifetime (five minutes for SQS, a configured window for Service Bus, a session for MQTT, a document's life for Elasticsearch); this client's collector has none decided.
+- **O3 to O8, an id the sender assigns, or content.** *Holds:* a run id with a position is an id the sender assigns to each row and keeps across a re-send, as in O3, O5 with a deduplication id, O6 and O8. Azure Service Bus's stated reason for an application-controlled id, that the application can reconstruct it "predictably" after a failure, fits a position stored with its row, for as long as the row and its run id are kept; across an establish the run id changes (open question 6). *Does not hold:* each of O3, O5, O6 and O8 names what its receiver remembers, and for how long (five minutes for SQS, a configured window for Service Bus, one exchange from PUBLISH to PUBREL for MQTT, a document's life for Elasticsearch); for this client's collector nothing is decided. Content (O4, and SQS's content-based deduplication) recognises a repeat by what a message carries, not by an id the sender keeps for it, a different mechanism from a position; and O7's id is one Pub/Sub assigns, not the sender, which prevents its redelivery to a subscriber, not a publisher's repeat.
 
 ## Is a run id with a position like Kafka's sequence number?
 
@@ -2291,8 +2442,8 @@ What the specification states, and what is only a leaning, are kept apart here. 
 | Scope of the number | Per producer id and partition | Per run, across all its tables |
 | Unit | Each record is numbered; a batch carries its first number and is matched by its first and last | Each row has its own position |
 | Who checks it | The partition leader, at append | Undecided: no rule says what a collector does with it |
-| The check | Exact continuity: one more than the last, a gap is fatal; a retry is recognised by matching one of the last five batches | None defined; gaps are normal, from lost rows, replaced keyed values and the stored position holding rows back |
-| What the receiving side remembers | Per producer and partition, up to the last five batches, for a day after the last write by default, longer while a transaction is open | Undecided (open questions 7 and 25) |
+| The check | Exact continuity where the leader holds the producer's state: one more than the last, a gap rejected as out of sequence (fatal in KIP-98; retried by the idempotent producer at 4.4.0, which bumps its epoch on a real gap); with no state, any sequence is accepted; a retry is recognised by matching one of the last five batches | None defined; gaps are normal, from lost rows, replaced keyed values and the stored position holding rows back |
+| What the receiving side remembers | Per producer and partition, up to the last five batches, for a day after the last write by default, longer while a transaction is open | Undecided: a collector's internals are outside the specification (`Collector`) |
 | What the number is for | Recognising a retry and detecting loss; never a read position | Recognising a repeat, and the position the collector confirms and purging follows |
 
 So in two respects a position is closer to other comparables than to Kafka's sequence. As the unit a collector confirms, it is Kafka's consumer offset (C11) or PostgreSQL's confirmed position (C14), not the producer's sequence. As the identity of a repeat, a run id with a position is an id the sender assigns to each row (O3, O5, O8), and since positions have gaps it cannot be checked by continuity, as Kafka's is; Pulsar's highest-seen check, which allows holes (C12), is the nearest sequence-based one.
@@ -2305,46 +2456,46 @@ One verdict per stated behaviour: **(i)** it rests on a stated why that fits thi
 
 `CONTEXT.md` says the run id and position follow Kafka's per-producer sequence number, "the only documented way to recognise a duplicate". That claim is wrong (claims row 6), and Kafka's stated why transfers only in part. The failure KIP-98 answers, a retry after a lost acknowledgement, is this client's. But the reasons for Kafka's shape (a broker-assigned id, sized for the message set; a continuity check a broker enforces with bounded memory) rest on constraints this client does not share. So Kafka informs the position; it does not justify it.
 
-The two halves split. **The run id** rests on a stated why that fits: RFC 9562's reason for time-based UUIDs, that coordinating identifiers across a network is a burden, fits runs minted with no coordination. The RFC says nothing about one identifier per run, and its index-locality reason applies only if something indexes by run id. **The position** as an identity for a repeat rests on Kafka's why in part, and on stated whys from comparables that recognise an id the sender assigns (Azure Service Bus, O8) or a position in the sender's log (PostgreSQL, C14). As the unit a collector confirms, it rests on Kafka's stated why for consumer offsets (C11), which fits only where one reader confirms, a condition open question 7 leaves open.
+The two halves split. **The run id** rests, as a UUID, on a stated why that fits: RFC 9562's reason for UUIDs in general over sequential keys, that coordinating sequential identifiers across a network "can easily become a burden" and UUIDs need no coordination (§2.1), fits runs minted with no coordination. Its reasons for a time-ordered version such as UUIDv7 in particular (§2.1: database-index locality, a common epoch, ordering by byte comparison) apply only if something sorts or indexes by run id, which no decision says, so for version 7 in particular the RFC informs the choice; and the RFC says nothing about one identifier per run. **The position** as an identity for a repeat is informed by Kafka's why, and rests on stated whys from comparables that recognise an id the sender assigns (Azure Service Bus, O8) or a position in the sender's log (PostgreSQL, C14). As the unit a collector confirms, it is informed by Kafka's stated why for consumer offsets (C11), which Kafka's design ties to one consumer per partition in a group; which collector confirms here is open question 7.
 
 **Proposed wording for the maintainer**, replacing the last two sentences of the bullet on recognising a duplicate under "When buffered data may be deleted" in `CONTEXT.md` (the ticket does not edit that file):
 
 ```text
-Documented ways to recognise a repeat include a producer identity with a sequence number (Kafka, Pulsar), an id the sender assigns to each message (NATS, SQS FIFO, Azure Service Bus, Elasticsearch), content (Elasticsearch time series, Prometheus), and a position in the sender's log that the receiver records (PostgreSQL). The run id and position in the specification are an id the sender assigns to each row. Kafka's idempotent producer informs them, since it answers the same failure, a retry after a lost acknowledgement; its broker-assigned producer id, its continuity check and its bounded broker memory do not transfer. Kafka's consumer offset informs the position a collector confirms: one integer stands for what has been received, which Kafka's design ties to one consumer per partition in a group.
+Documented ways to recognise a repeat include a producer identity with a sequence number (Kafka, Pulsar), an id the sender assigns to each message (NATS, SQS FIFO, Azure Service Bus, Elasticsearch), content (Elasticsearch time series, Prometheus), and a position in the sender's log that the receiver may record (PostgreSQL). The run id and position in the specification are an id the sender assigns to each row. Kafka's idempotent producer informs them, since it answers the same failure, a retry after a lost acknowledgement; its broker-assigned producer id, its continuity check and its bounded broker memory do not transfer. Kafka's consumer offset informs the position a collector confirms: one integer stands for what has been received, which Kafka's design ties to one consumer per partition in a group.
 ```
 
 No change to the specification's text is proposed: `Run.id` and `PositionsOnlyIncrease` cite no comparable.
 
 ### 2. Purge only after confirmation: (i), a stated why that fits
 
-Two comparables state a reason for waiting for the downstream side that fits this client within a run: Filebeat's review of `delete.enabled` (C3: not discarding data still to be sent) and PostgreSQL's slots (C14: keep what the receiver still needs while it is away). The OpenTelemetry Collector states why it keeps data on disk at all (C4: data lost on overfill or crash), but not why it waits, and its delete rule does not transfer; Fluent Bit and Vector state no reason for waiting. The asynchronous purge has stated reasons that fit: Vector's (C5: a failed or interrupted delete is retried later) and Kafka's (C10: purging at every commit costs throughput; a reader may still have a segment open).
+Two comparables state a reason for waiting for the downstream side that fits this client within a run: Filebeat's review of `delete.enabled` (C3: not discarding data still to be sent), though with the disk queue on, the acknowledgement Filebeat waits for is the write to that queue; and PostgreSQL's slots (C14: keep what the receiver still needs while it is away). Pulsar states what an acknowledgement is for, that the message can be deleted, and no reason beyond that (C12). The OpenTelemetry Collector states why it keeps data on disk at all (C4: data lost on overfill or crash), but not why it waits, and its delete rule does not transfer. For Fluent Bit and Vector no stated reason for waiting is recorded, and where else to look was not recorded either, so for both the absence is Unverified: C6 quotes issue #2408 saying a copy is kept "until it is fully delivered", which says what and not why, and C5 records reasons for acknowledging the source at the buffer, for deleting whole files and for the asynchronous delete. The asynchronous purge has one stated reason that fits within a run, Vector's (C5: a failed delete is retried at a later scan, while the data writer runs). Vector's retry after the process exits needs a later process to open the same buffer, where nothing is purged once the data writer has stopped (Derived, `PurgeRow`) and what a later establish does with a previous run's databases is open question 6. Kafka's two reasons (C10) are that delete requests sent to the brokers at every commit cost throughput and log volume, where this client's purge is local work, and that a reader may still have a segment open, which applies only if something reads the local databases while the data writer purges. These rest on premises not shown for this client, so they inform the asynchronous purge and do not justify it. The verdict's category rests on the reasons for waiting.
 
 The fit holds within a run and no further. Each comparable that waits is a long-lived holder, or keeps its position across a restart: Filebeat's registry, the Collector's queue at its next start, a PostgreSQL slot across crashes. A run can end with stored rows unconfirmed, and nothing is purged once its data writer has stopped (Derived, `PurgeRow`). What a later establish does with them is open question 6, and no comparable read says anything about it that transfers.
 
-Two further qualifications go with the verdict, and both are findings, not proposals. The survey's description was wrong: those buffers also delete without a confirmation, on giving up (C4, C5, C6) or at a size or time bound (C6, C9, C14), and an "acknowledgement" can be an intermediate hop's or include a drop (C3, C5). And the reasons for the bound are stated as firmly as the reasons for waiting: PostgreSQL added its bound because unbounded retention filled the disk (C14). The specification already names its bound as the one exception (`PurgedRowsWereConfirmed`), and leaves it to open question 8.
+Two further qualifications go with the verdict, and both are findings, not proposals. The survey's description was wrong. Those buffers also delete without a confirmation: on a failure, at once or after retries (C4, C6); on any finalization, a drop included (C5); or at a size or time bound (C6, C9, C14); and an "acknowledgement" can be an intermediate hop's or include a drop (C3, C5). And the reasons for the bound are stated as firmly as the reasons for waiting: PostgreSQL added its bound because unbounded retention filled the disk (C14). The specification already names its bound as the one exception (`PurgedRowsWereConfirmed`), and leaves it to open question 8.
 
 ### 3. A re-send keeps its position: (i), a stated why that fits
 
-PostgreSQL states the case exactly: after a crash, changes are sent again, and clients "may wish to record the last LSN they saw when decoding and skip over any repeated data" (C14). Azure Service Bus states why the sender should control the identifier: so that it "can be predictably reconstructed when a failure occurs" (O8); a position stored with its row is such an identifier. OTLP states why a repeat is acceptable for telemetry at all (C7), and KIP-98 why one occurs (C1). These fit a client that, within a run, hands over what is still unconfirmed and may hand it over again. PostgreSQL's and Azure Service Bus's cases are a sender that restarts and reconstructs the same identity; a new establish mints a new run id, so they transfer to a previous run's rows only if those are handed over after their process has gone, which is open question 6.
+PostgreSQL states the case exactly: after a crash, changes are sent again, and clients "may wish to record the last LSN they saw when decoding and skip over any repeated data" (C14). Azure Service Bus states why the sender should control the identifier: so that it "can be predictably reconstructed when a failure occurs" (O8); a position stored with its row is such an identifier. OTLP states why a repeat is acceptable for telemetry at all (C7), and KIP-98 why one occurs (C1). These fit a client that, within a run, hands over what is still unconfirmed and may hand it over again. Azure Service Bus names two cases (O8): a sender restarted after a fatal error, and a send committed whose acknowledgement did not reach the client, which can happen while the sender is still running, within one run. PostgreSQL's case is a server that restarts and sends again from a position persisted in its own log (C14). Within a run, the lost acknowledgement fits as it stands. The restart cases, Azure Service Bus's restarted sender and PostgreSQL's server, need a sender that reconstructs the same identity after a restart; a new establish mints a new run id, so they transfer to a previous run's rows only if those are handed over after their process has gone, which is open question 6.
 
-The guarantee says a repeat is *recognisable*; whether a collector recognises one depends on what it remembers, which is undecided (open questions 7 and 25). Every comparable that recognises a repeat names a receiver that remembers, for a stated time.
+The guarantee says a repeat is *recognisable*; whether a collector recognises one depends on what it remembers, and a collector's internals are outside the specification (`Collector`). The comparables that recognise a repeat differ in what the receiving side remembers, who keeps it and for how long: an id for a window (NATS, SQS FIFO, Azure Service Bus), one exchange in flight (MQTT), up to five batches per producer for a day by default (Kafka), the newest in-order sample per series (Prometheus), a document while it exists (Elasticsearch), or a last position the client may choose to record (PostgreSQL).
 
 ## Corrections to the survey in `CONTEXT.md`
 
 The ticket does not edit `CONTEXT.md`. The claims table above shows which survey statements are wrong or partly wrong. For the maintainer, replacement wording for the bullets under "When buffered data may be deleted", besides the one given under verdict 1:
 
 ```text
-- Durable local buffers wait for the downstream side before deleting, and also delete without it: on giving up after retries (the OpenTelemetry Collector, Vector, Fluent Bit) and at a size or time bound (Fluent Bit, the Prometheus agent, PostgreSQL slots). What counts as confirmation varies: an intermediate queue's write (Filebeat with a disk queue, Vector's source acknowledgement), and drops counted as acknowledged (Filebeat, Vector).
+- Durable local buffers wait for the downstream side before deleting, and also delete without it: on a failure, at once or once retries run out (the OpenTelemetry Collector, Fluent Bit); on any finalization, a failure or a drop included (Vector); and at a size or time bound (Fluent Bit, the Prometheus agent, PostgreSQL slots). What counts as confirmation varies: an intermediate queue's write (Filebeat with a disk queue, Vector's source acknowledgement), and drops counted as acknowledged (Filebeat, Vector).
 - The OpenTelemetry SDK's batch processor drops a failed batch after the exporter's retries; OTLP accepts the duplicates retries cause, and defines no way to recognise them.
 - A Prometheus client holds current values only, with no rows waiting for collection; the server deletes by time or size. Kafka retains by time or size, and `DeleteRecords` deletes below an offset its caller supplies.
-- Asynchronous purges after confirmation are documented by Vector, the libbeat disk queue, Filebeat's `delete.enabled`, Pulsar, PostgreSQL and Kafka Streams.
+- Asynchronous purges after what each counts as confirmation are documented by Vector, the libbeat disk queue, Filebeat's `delete.enabled`, Pulsar, PostgreSQL and Kafka Streams.
 ```
 
 ## What the findings bear on in the specification
 
 This section reports. It recommends no answer to any open question.
 
-- **Open question 7, which collector confirms when more than one reads an instance.** A single confirmed integer stands for what is consumed only where one reader owns it: Kafka's offset is per consumer group, with one consumer per partition in a group (C11), and a PostgreSQL slot has one receiver at a time (C14). Where several readers each need the data, deletion waits for all of them: Pulsar deletes once every durable subscription acknowledges (C12), NATS interest streams once every interested consumer acknowledges or terminates, while a work queue deletes on the first (C13), Kafka's share groups acknowledge records one by one (C11), and PostgreSQL keeps WAL until no slot needs it (C14). Prometheus avoids the question: nothing is confirmed or purged, so several scrapers read one target without interfering (C8). OTLP's maintainers rejected a request-level identity because load-balanced collectors do not share state (C7).
+- **Open question 7, which collector confirms when more than one reads an instance.** In the comparables read, a single confirmed integer belongs to one reader and stands for what that reader has consumed: Kafka's offset is per consumer group, with one consumer per partition in a group (C11), and a PostgreSQL slot has one receiver at a time (C14). Where several readers each need the data, each keeps its own position or acknowledgements and deletion waits for all of them: Pulsar trims below the slowest durable cursor's position, one position derived from many, and with deduplication on, its own cursor holds the trim back too (C12); NATS interest streams delete once every interested consumer acknowledges or terminates, while a work queue deletes on the first (C13); Kafka's share groups acknowledge records one by one (C11); and PostgreSQL keeps WAL until no slot needs it (C14). Prometheus avoids the question: nothing is confirmed or purged, so several scrapers read one target without interfering (C8). OTLP's maintainer objected to a request-level identity because load-balanced collectors would have to coordinate to share it, and its author withdrew it for another reason (C7).
 - **Open question 8, what bounds the local databases when no collection happens, and what is lost at the bound.** Every durable comparable read can be bounded, and they lose in different places; Filebeat's disk queue can also be left unbounded (C3). Fluent Bit evicts the oldest chunks at `storage.total_limit_size` (C6); PostgreSQL invalidates a slot that overruns `max_slot_wal_keep_size`, releasing its WAL (C14); the Prometheus agent drops, at each truncation, samples older than a cut-off that trails the current time by at most `MaxWALTime`, whatever was sent (C9); Kafka retains by time or size and a lagging consumer loses what retention passed (C10). Others refuse or block the newest instead: the OpenTelemetry Collector rejects new data at `queue_size` or blocks if configured (C4), Vector blocks by default or drops the newest (C5), and Filebeat's disk queue pauses an input or discards, per input (C3). Pulsar bounds an unacknowledged backlog by a TTL or a quota with a discarding policy (C12). The stated reasons for a bound are the host's disk: Fluent Bit's issue #2408 (C6) and PostgreSQL's commit c655077 (C14).
-- **Open question 15, whether the hand-over is a push or a pull, and in what form.** Pull comparables: the Prometheus client, which holds no rows (C8); Kafka consumers, which pull from a broker and commit an offset (C11); PostgreSQL's receiver, which streams from a slot and reports positions back (C14); SQS consumers, which receive and then delete (O5); and Pub/Sub, whose exactly-once delivery is pull-only because a push subscriber cannot know its acknowledgement arrived (O7). Push comparables: Filebeat, the OpenTelemetry Collector, Vector and Fluent Bit (C3 to C6), and OTLP (C7). Kafka's handbook rejected a producer that keeps a local log for brokers to pull from, for its own target of thousands of producers (C10).
-- **Open question 25, whether a hand-over also carries the stored position.** Kafka's sequence detects loss because it is contiguous by construction: a gap is an out-of-sequence error (C1). Pulsar's allows holes, and so a gap tells it nothing (C12). This client's positions have gaps by design, so a gap alone cannot tell a lost row from one still waiting, which is the question as stated. PostgreSQL keeps two positions for a slot, what the consumer confirmed and the oldest still needed (C14); Vector's ledger keeps a reader and a writer position (C5). Whether any comparable sends its receiver a separate mark for what is stored, apart from the data, was not researched.
+- **Open question 15, whether the hand-over is a push or a pull, and in what form.** Pull comparables: the Prometheus client, which holds no rows (C8); Kafka consumers, which pull from a broker and commit an offset (C11); SQS consumers, which receive and then delete (O5); and Pub/Sub, whose exactly-once delivery is pull-only because a push subscriber cannot know its acknowledgement arrived (O7). Push comparables: Filebeat, the OpenTelemetry Collector, Vector and Fluent Bit (C3 to C6), and OTLP (C7). PostgreSQL's receiver is in neither list: it opens a stream from a slot, the server then streams WAL on it, and the receiver reports positions back (C14). Kafka's handbook rejected a producer that keeps a local log for brokers to pull from, for its own target of thousands of producers (C10).
+- **Open question 25, whether a hand-over also carries the stored position.** Kafka's sequence detects loss because it is contiguous by construction: where the partition leader holds the producer's state, a gap is an out-of-sequence error (C1). Pulsar's allows holes, and so a gap tells it nothing (C12). This client's positions have gaps by design. If a hand-over offers nothing above the stored position, which is marked Derived, then between the confirmed position and the highest position offered a missing position is a row lost or a keyed value replaced; above that, up to `last_position`, a row still waiting and a row lost look alike, which is the question as stated. PostgreSQL keeps two positions for a slot, what the consumer confirmed and the oldest still needed (C14); Vector's ledger keeps a reader and a writer position (C5). Kafka's fetch response sends its receiver, beside the records, marks for each partition: its high watermark; its last stable offset, the last offset below which every transactional record has been decided; and its log start offset (C11). What they mean was not compared with the stored position, and whether other comparables send such a mark was not researched.
