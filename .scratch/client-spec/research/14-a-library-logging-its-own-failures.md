@@ -1522,7 +1522,7 @@ The snapshot answers all three at any moment (`TwoChannels`), so the cost falls 
 
 - **The diagnostics snapshot.** It does not survive the process either.
 
-So the maintainer's reason for the onset holds in the sources read. The record written when a failure starts is the one a killed pod has already written. The total is the record it may never write. Among the comparables that log a count before the end, the count reaches the log while the process is alive, on the next record (L1, L4, L12), or on the next export or worker wake (L2, L6; OTel Go's is hidden by default). OTel .NET, whose only record is at shutdown, would log nothing at all for a pod killed this way.
+The record written when a failure starts is the one a killed pod has already written. The total is the record it may never write. Among the comparables that log a count before the end, the count reaches the log while the process is alive, on the next record (L1, L4, L12), or on the next export or worker wake (L2, L6; OTel Go's is hidden by default). OTel .NET, whose only record is at shutdown, would log nothing at all for a pod killed this way.
 
 ## Verdicts
 
@@ -1557,13 +1557,13 @@ Rests on the guidance written for libraries: the Python logging HOWTO's "Configu
 
 - **The stated basis is "common practice", as the rule OTel Rust follows.** It is one library's rule among the twelve read (see "Is the rule common?"). The maintainer asked not to be novel here, and on the evidence read the rule is not what most libraries do. The maintainer's choice came from the survey's options, where it was described as what the OTel Rust SDK does, and that description is accurate.
 - **OTel Rust's stated reason fits a full queue.** "We certainly don't want to log each time the buffer is full", with the count kept in a metric and logged at shutdown. The constraint behind it holds for this client, whose snapshot keeps the count.
-- **That reason does not transfer to the other kinds.** OTel Rust logs a failed export on every occurrence, at ERROR, under a member's rule that a WARN or an ERROR be "user actionable". So do OTel Java, Python, Go, .NET and JS, each in its own way. The specification applies onset-then-total to `store_failed`, `invalid`, `oversize`, `shutdown` and `tenant_dropped` too, and no library read gives a reason for that.
+- **That reason does not transfer to the other kinds.** OTel Rust logs a failed export on every occurrence, at ERROR, under a member's rule that a WARN or an ERROR be "user actionable". The other OpenTelemetry SDKs read log a failed export on every occurrence (Python, Go, .NET, JS) or under a rate limit (Java's `ThrottlingLogger`), and none holds it back for a total. The specification applies onset-then-total to `store_failed`, `invalid`, `oversize`, `shutdown` and `tenant_dropped` too, and no library read gives a reason for that.
 - **The onset has a stated why, though not OTel Rust's.**
   - OTel Rust gives none.
   - OTel JS's author does: the onset shows "at what time those drops started" (L8).
   - A dd-trace-go reviewer does too: it gives "at least one useful timestamp to look at when troubleshooting" (A1).
 
-  Each holds for this client. So does the maintainer's own reason, that the onset is "more likely to go through".
+  Each holds for this client. So does the maintainer's own reason, that the onset is "more likely to go through": under "What the rule costs", the onset is the record a killed pod has already written.
 - **The total at the end has OTel Rust's and OTel .NET's stated whys,** for a full queue. Neither addresses a process killed before shutdown, which a killed pod is.
 
 **Proposed wording for the maintainer.** It changes only the stated basis, not the behaviour, and is for `CONTEXT.md`'s survey line, or a comment beside the guarantee, wherever the maintainer chooses to place it:
