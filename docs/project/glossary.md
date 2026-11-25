@@ -45,6 +45,7 @@ renamed.
 | Collector | The service that is handed stored rows. It is outside this repository. |
 | Hand-over | What a collector is given: the run, its table definitions and its stored rows. |
 | Position | A row's place in its run, from a counter that only increases. |
+| Observed time | When the client accepted a row, from its own clock; for a keyed value, when its latest write was accepted. Application code does not supply it. |
 
 ## Process
 
