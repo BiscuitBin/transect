@@ -257,7 +257,7 @@ Before the first review, a preflight confirmed that Codex ran `gpt-6.2-sol` and 
 
   > All checks passed and the worktree is unchanged.
 
-- **Addition**, at `1d332db`, the research file and this hand-back with the addition on how DuckDB writes its own file reviewed and fixed. The commit that records this line changes only the line itself.
+- **Addition**, at `2f72975`, the research file and this hand-back with the addition on how DuckDB writes its own file reviewed and fixed. The commit that records this line changes only the line itself.
 
   > All checks passed and the worktree is unchanged.
 - **Changed files:** `git diff c3a33eb --stat`, against the branch's merge base with `main`, shows only this ticket and its research file. The specification, `CONTEXT.md`, `REVIEW.md` and ticket 07 are unchanged. Open questions 8 and 17 are still open in the specification. No code was added.
