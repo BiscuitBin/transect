@@ -3,7 +3,7 @@
 - **Ticket:** `issues/14-research-the-why-a-library-logging-its-own-failures.md`. It covers the guarantees `StandardFacade` and `OnsetThenTotal` on the surface `HostLog` of `docs/specs/transect-client.allium`, the rules `OpenFailureEpisode`, `LogOnset`, `CountIntoEpisode`, `ReportEpisodesAtEnd` and `LogTotal`, and open question 22.
 - **Sources read:** every source on 2026-11-25 (UTC), which was 2026-11-24 in the researcher's local time.
 - **Web research:** authorised by the maintainer on 2026-11-24 for this ticket, for the agent working it, for its survey and triage subagents, and for its reviewers.
-- **State of this file:** for the second adversarial review. The findings, up to "Candidates not examined, or dropped", passed the first review in two rounds. Fit, the answer to "is the rule common?", the costs, the two verdicts, the proposed wording and what the findings bear on were written after it.
+- **State of this file:** complete. The findings, up to "Candidates not examined, or dropped", passed the first adversarial review in two rounds. Fit, the answer to "is the rule common?", the costs, the two verdicts, the proposed wording and what the findings bear on were written after it, and passed the second review in two rounds. The second round's fixes were not reviewed again, because two rounds is the limit.
 
 ## How the sources were checked
 
@@ -68,7 +68,7 @@ The elicitation's survey kept no links. Each claim below was checked against the
 | No handlers installed | **Corrected.** It is the Python guidance, and urllib3, OTel Python, OTel Java and OTel Rust follow it. ddtrace and sentry-python each add a `StreamHandler` at import, and OTel Go's defaults write to standard error. | L1, L6, L9, G1 |
 | WARNING for dropped data | **Corrected in part.** WARNING for a full queue in ddtrace, OTel Java (spans), OTel Python, OTel Rust, OTel .NET and urllib3. But OTel Go logs span drops only at Debug and log-record drops through a `Warn` helper that `logr` receives as `V(1)` Info, which its default logger hides. OTel JS logs the onset at Debug. sentry-python logs nothing by default. The Collector logs at Error. Vector logs a drop it did not intend at Error, and a full buffer's drops, which happen only with `drop_newest`, at debug. ddtrace logs a failed send at ERROR. | L1 to L12 |
 | A stable name per kind of event | **Corrected.** Only OTel Rust (named events) and OTel .NET (numeric event IDs) have one. Vector's internal event types do not put their name on the record. The others log a message template. OTel Rust's own maintainer calls stable names an aim it has "not there yet" reached. | L5, L7, L12 |
-| The first occurrence logged at once, then throttled | **Corrected in part.** True of ddtrace, OTel Python (unless another processor's identical warning came last in the same 20 s bucket), the kernel, OTel Rust, the Collector, and Vector for a drop it did not intend. OTel Rust's record is collected only once the application installs a `tracing` subscriber. urllib3 logs the first occurrence at once but never throttles, so it bears out only the first half, and its `NullHandler` keeps the record silent until the application configures logging. Not true of OTel Java (spans: at the next export), OTel Go, OTel .NET (only at shutdown), sentry-python (nothing by default), OTel JS, whose onset is at Debug, or Vector's full buffer, reported at debug. | L1 to L12 |
+| The first occurrence logged at once, then throttled | **Corrected in part.** True of ddtrace (unless another of its writer's warnings, logged through the same helper, already passed in its 60 s window), OTel Python (unless another processor's identical warning came last in the same 20 s bucket), the kernel, OTel Rust, the Collector, and Vector for a drop it did not intend. OTel Rust's record is collected only once the application installs a `tracing` subscriber, or enables `tracing`'s `log` feature and sets a `log` logger. urllib3 logs the first occurrence at once but never throttles, so it bears out only the first half, and its `NullHandler` keeps the record silent until the application configures logging. Not true of OTel Java (spans: at the next export), OTel Go, OTel .NET (only at shutdown), sentry-python (nothing by default), OTel JS, whose onset is at Debug, or Vector's full buffer, reported at debug. | L1 to L12 |
 | Records are structured | **Confirmed in part.** Key-value fields in OTel Rust, OTel Go (key-value arguments to `logr`), the Collector (zap fields), Vector and OTel .NET (event payloads). The Python libraries and OTel Java format a text message. | L1 to L12 |
 | ddtrace: one record per call site per 60 s, with "[N skipped]" | **Confirmed, with two corrections.** The key is the logger name, level, file and line. The count is a suffix on the next record that passes, never a record of its own, so if no record follows it is never written. | L1 |
 | OTel Java: 5 per minute, then 1 | **Confirmed for `ThrottlingLogger`**, read as a token bucket: a burst of 5 refilled at 5 a minute, then, for good, a bucket of 1 refilled at 1 a minute. But that class throttles the exporters and the metrics SDK, not the batch processors. The span processor logs a count per export cycle, and the log-record processor logs no drop at all. Until `v1.48.0` a bug let 5 a minute through when throttled. | L2 |
@@ -190,7 +190,15 @@ Source: https://github.com/rust-lang/log/blob/v0.4.35/src/lib.rs
 > //! If no logging implementation is selected, the facade falls back to a "noop"
 > //! implementation that ignores all log messages.
 
-**There is no standard Rust facade.** `log` and `tracing` are both third-party crates, and each tells libraries to use itself. A record sent through one reaches the other only through an adapter the executable installs. Which of the two a Rust client should use is not settled by either crate's documentation.
+**There is no standard Rust facade.** `log` and `tracing` are both third-party crates, and each tells libraries to use itself. A `tracing` event becomes a `log` record when the build enables `tracing`'s `log` feature and no `tracing` subscriber is active, or in every case with `log-always`, which libraries are told not to enable. A `log` record reaches a `tracing` subscriber only through a compatibility layer.
+
+Source: https://github.com/tokio-rs/tracing/blob/tracing-0.1.44/tracing/src/lib.rs
+
+> //! cause [spans] and [events] to emit `log` records. When the "log" feature is
+> //! enabled, if no `tracing` `Subscriber` is active, invoking an event macro or
+> //! creating a span with fields will emit a `log` record.
+
+Which of the two a Rust client should use is not settled by either crate's documentation.
 
 **On levels, structure and names.**
 
@@ -307,14 +315,14 @@ What each writes to the host's log for lost data, at the tag read. "At once" mea
 
 | # | Library | Rule for a full queue | Key | Numbers | Other failures | Facade, name | Installs a handler | Level | Stable name | At once |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| L1 | ddtrace | rate limit, count on the next record | logger, level, file, line | 1 per 60 s | failed send: same limit, at ERROR | `logging`, module name | yes, `StreamHandler` | WARNING | no | yes |
+| L1 | ddtrace | rate limit, count on the next record | logger, level, file, line | 1 per 60 s | failed send: same limit, at ERROR | `logging`, module name | yes, `StreamHandler` | WARNING | no | yes, unless another warning the writer logs through the same `_safelog` line already passed in its 60 s window (inferred, see L1) |
 | L2 | OTel Java | spans: count per cycle; log records: none | per processor | spans: once per non-empty export (5 s or 512 spans by default; flush; shutdown) | export failure: every occurrence in the batch processors (FINE for a failed result, WARNING for a thrown exception); the OTLP exporters' own records through `ThrottlingLogger` | `java.util.logging`, class name | no | WARNING | no | no |
 | L3 | OTel Python | every occurrence, through a duplicate filter | last record, per logger | 20 s bucket | export failure: ERROR, same filter | `logging`, module name | no (opt-in only) | WARNING | no | yes, unless another processor's identical warning passed last in the same 20 s bucket |
 | L4 | Linux kernel | rate limit, count on the next call | call site | 10 per 5 s | — | `printk`, caller's level | n/a | caller's | no | yes |
-| L5 | OTel Rust | **onset then total** | per processor | once, then a snapshot when shutdown begins | export failure: every occurrence, ERROR; flush timeout: not logged | `tracing`, target `opentelemetry_sdk` | no | WARN | yes | yes, but collected only once the application installs a `tracing` subscriber |
+| L5 | OTel Rust | **onset then total** | per processor | once, then a snapshot when shutdown begins | export failure: every occurrence, ERROR; flush timeout: not logged | `tracing`, target `opentelemetry_sdk` | no | WARN | yes | yes, but collected only once the application installs a `tracing` subscriber, or enables `tracing`'s `log` feature and sets a `log` logger |
 | L6 | OTel Go | spans: none at default level; log records: count per cycle, hidden by default | per processor | log records: each worker wake (1 s timer, full batch, flush, shutdown) | export failure: every occurrence to the error handler; returned to the caller on flush, and on log-record shutdown | `ErrorHandler` and `logr`, no name | yes, standard error | Debug; `V(1)` Info, named Warn | no | no |
 | L7 | OTel .NET | total at shutdown only | per processor | once, at shutdown | export failure: every occurrence, Error | `EventSource` `OpenTelemetry-Sdk` | no output by default | Warning | yes, event ID | no |
-| L8 | OTel JS | spans: onset at Debug, total at recovery; log records: none | per processor | once per episode | export failure: every occurrence | `diag`, no name | no (no-op) | Debug, then Warn | no | no |
+| L8 | OTel JS | spans: onset at Debug, total at recovery; log records: none | per processor | once per episode | export failure: every occurrence on the export timer, through the global error handler (`diag.error` by default); returned to the caller on `forceFlush` and shutdown | `diag`, no name | no (no-op) | Debug, then Warn | no | no |
 | L9 | sentry-python | none in the host log; a count to Sentry, carried on later sends | category and reason | at the next send, after 30 s or 60 s; on flush, queued without the time test, best effort | — | `logging`, `sentry_sdk.errors` | yes, gated by `debug` | — | no | no |
 | L10 | urllib3 | every occurrence (a discarded connection) | — | — | retry: every occurrence | `logging`, module name | `NullHandler` only | WARNING | no | yes, but silent until the application configures logging (`NullHandler`) |
 | L11 | OTel Collector | sampling, no count | level and message | 10 per 10 s, then 1 in 100 | the same sampling | zap, per component | yes; it is the host | Error | no | usually; not when its counter is already spent, by the same message for another reason or by a message hashed to the same counter |
@@ -358,7 +366,7 @@ urllib3's record is a connection discarded from a full pool, not lost telemetry.
   >     if get_config("DD_TRACE_LOG_STREAM_HANDLER", True, asbool):
   >         ddtrace_logger.addHandler(logging.StreamHandler())
 
-**Inferred.** The writer logs its drops through a helper, `_safelog`, so the file and line in the key are the helper's, not the call site's. All the writer's drop records at one level would then share one 60 s bucket. Nothing in `writer.py` passes `stacklevel`, which would change that.
+**Inferred.** The writer logs its drops through a helper, `_safelog`, so the file and line in the key are the helper's, not the call site's. All the writer's drop records at one level would then share one 60 s bucket. Nothing in `writer.py` passes `stacklevel`, which would change that. The count on the next record can then include warnings of other kinds from the same helper.
 
 **Stated why.** By its author, a member of Datadog, in the pull request that added the limiter (#822, merged 2019):
 
@@ -684,11 +692,15 @@ Source: https://github.com/torvalds/linux/commit/6b1d174b0c27b5de421eda55c2731f3
 
   >                 message = "Last reference of LoggerProvider dropped, initiating shutdown."
 
-- **Collected only if the application installs a subscriber.** With none, `tracing` drops the record:
+- **Collected only if the application installs a `tracing` subscriber, or the build enables `tracing`'s `log` feature and the application sets a `log` logger.** OTel Rust does not enable that feature itself; inferred from Cargo's feature unification, a host that enables it for its own use of `tracing` enables it for the SDK's events too. With neither, `tracing` drops the record:
 
   Source: https://github.com/tokio-rs/tracing/blob/tracing-0.1.44/tracing/src/lib.rs
 
   > //! Any trace events generated outside the context of a subscriber will not be collected.
+
+  Source: https://github.com/open-telemetry/opentelemetry-rust/blob/opentelemetry_sdk-0.33.1/Cargo.toml
+
+  > tracing = { version = ">=0.1.40", default-features = false }
 
 - **Facade, name and level.** The `otel_warn!` macros call `tracing`, with the crate's package name as target and a `name` for each event. The `internal-logs` feature that enables them is a default feature. The SDK installs no subscriber: `git grep -n -E 'set_global_default|\.init\(\)' -- opentelemetry/src opentelemetry-sdk/src` at `372ebbc` finds nothing.
 
@@ -717,7 +729,7 @@ Source: https://github.com/torvalds/linux/commit/6b1d174b0c27b5de421eda55c2731f3
 
   > for the very first time, lets also emit an internal log informing the user about data drop.
 
-  Its one reply, by the pull request's author, a member, only links the change, and no review summary gives a reason. In the same review a member proposed moving the total into the worker's handling of the shutdown message, to avoid keeping a field only for the log. It was not done at the tag:
+  The request gives it a purpose, informing the user, and no reason for logging it at the first drop. Its one reply, by the pull request's author, a member, only links the change, and no review summary gives a reason. In the same review a member proposed moving the total into the worker's handling of the shutdown message, to avoid keeping a field only for the log. It was not done at the tag:
 
   Source: https://github.com/open-telemetry/opentelemetry-rust/pull/2357#discussion_r1860944762
 
@@ -853,7 +865,15 @@ A pull request to log a Warn on dropped spans (#3289) was closed as stale, unmer
 
 **What it does.** Read at `core-1.21.0`.
 
-- A full queue increments a counter and a metric. The count is written once, as `EventSource` event 32 at Warning, inside the processor's shutdown, and as event 31 at Informational when it is zero. Checked by `git grep -n DroppedExportProcessorItems -- src` at `51c6db1` (`core-1.21.0`): the only call is in `OnShutdown`.
+- A full queue, or an enqueue that gives up after 50,000 spins under contention, increments a counter and a metric; event 32 reports both as "due to buffer full".
+
+  Source: https://github.com/open-telemetry/opentelemetry-dotnet/blob/core-1.21.0/src/OpenTelemetry/BatchExportProcessor.cs
+
+  >         if (this.circularBuffer.TryAdd(data, maxSpinCount: 50_000, out var count))
+
+  >         // either the queue is full or exceeded the spin limit, drop the item on the floor
+
+  The count is written once, as `EventSource` event 32 at Warning, inside the processor's shutdown, and as event 31 at Informational when it is zero. Checked by `git grep -n DroppedExportProcessorItems -- src` at `51c6db1` (`core-1.21.0`): the only call is in `OnShutdown`.
 
   Source: https://github.com/open-telemetry/opentelemetry-dotnet/blob/core-1.21.0/src/OpenTelemetry/Internal/OpenTelemetrySdkEventSource.cs
 
@@ -926,6 +946,15 @@ Source: https://github.com/open-telemetry/opentelemetry-dotnet/issues/3881#issue
 
 - Inferred: if no span is accepted after the drops, as at shutdown, the Warn is never written.
 - Log records are dropped with a metric and no log.
+- A failed span export on the export timer goes to the global error handler, which by default logs it at error through `diag`. On `forceFlush` and shutdown the failure is returned to the caller instead.
+
+  Source: https://github.com/open-telemetry/opentelemetry-js/blob/v3.1.1/packages/sdk-trace/src/export/BatchSpanProcessorBase.ts
+
+  >           globalErrorHandler(e);
+
+  Source: https://github.com/open-telemetry/opentelemetry-js/blob/v3.1.1/packages/opentelemetry-core/src/common/logging-error-handler.ts
+
+  >     diag.error(stringifyException(ex));
 - The `diag` logger is a no-op until the application sets one. Since pull request #6668, `startNodeSDK()` sets a console logger at INFO by default. At `v3.1.1` it is deprecated and delegates to `startNodeSdk()`, which also defaults to INFO.
 
 **Stated why.** By the pull request's author, a contributor (#3610, merged 2023). The review discussed the onset line:
@@ -938,9 +967,13 @@ Source: https://github.com/open-telemetry/opentelemetry-js/pull/3610
 
 > This change only adds diagnostic logging with minimal logic to prevent flooding diagnostic logs, which is not externally visible.
 
+> An alternate would be to add a private event emitter that would emit an event any time a span were dropped, allowing the consumer to subscribe and perform whatever action they deemed appropriate in reaction. However, this would require changing the publicly exposed API, so the diagnostic logging mechanism is utilized instead.
+
 Source: https://github.com/open-telemetry/opentelemetry-js/pull/3610#discussion_r1113714666
 
 > This debug diagnostic can be used to identify at what time those drops started.
+
+> It's recorded as debug, which should be able to be filtered out if debug diagnostics aren't interesting or desired.
 
 > I found it useful as there are two knobs that can be adjusted to prevent dropping spans: queue size and the export interval. The warning message makes it easier to adjust the queue size, but the debug message can make it apparent how often one should be exporting if they don't want to carry a larger memory load associated with a larger queue.
 
@@ -1123,7 +1156,7 @@ Source: https://github.com/open-telemetry/opentelemetry-collector/pull/8134#disc
 
 > I do not think merely passing a single sampled logger to every component to be used for every message is good enough since it can result in critical one-off messages being lost.
 
-The Collector's documentation also lists, as events it logs, both when dropping begins and when it stops. The page names no version. At `v0.166.0` the memory limiter logs such a pair, with no count: a Warn when it starts refusing data and an Info when it resumes. The exporter queue in the table logs each rejection and no stop. The project's own observability document lists start and stop events among the aspects that "need to be observable":
+The Collector's documentation also lists, as events it logs, both when dropping begins and when it stops. The page names no version. At `v0.166.0` the memory limiter logs such a pair, with no count: a Warn when it starts refusing data, and an Info when a check that starts below its soft limit follows refusal. It enters and leaves refusal on the one soft-limit test. When a forced GC brings memory below that limit within the same check, it reports the change through component status and writes no Info. The exporter queue in the table logs each rejection and no stop. The project's own observability document lists start and stop events among the aspects that "need to be observable":
 
 Source: https://opentelemetry.io/docs/collector/internal-telemetry/
 
@@ -1136,6 +1169,10 @@ Source: https://github.com/open-telemetry/opentelemetry-collector/blob/v0.166.0/
 > 		ml.logger.Warn("Memory usage is above soft limit. Refusing data.", memstatToZapField(ms))
 
 > 			ml.logger.Info("Memory usage back within limits. Resuming normal operation.", memstatToZapField(ms))
+
+> 	return ms.Alloc >= d.memAllocLimit-d.memSpikeLimit
+
+> 		// GC brought memory back within limits in this same tick — report OK immediately.
 
 Source: https://github.com/open-telemetry/opentelemetry-collector/blob/v0.166.0/docs/observability.md
 
@@ -1161,6 +1198,12 @@ Source: https://github.com/open-telemetry/opentelemetry-collector/blob/v0.166.0/
   >             if previous_count > 1 {
 
   >                     "Internal log [{}] has been suppressed {} times.",
+
+  The notice and the count are built from the original event's metadata, so they carry its level, not a fixed warning. An event whose metadata has neither a `message` nor an `internal_log_rate_limit` field gets neither.
+
+  >             let event = Event::new(metadata, &valueset);
+
+  >             // If the event metadata has neither a "message" nor "internal_log_rate_limit" field,
 
 - Unintended dropped events are logged at error, as an internal event type with a count field, whose name is not on the record. Intended drops are logged at debug.
 
@@ -1330,13 +1373,15 @@ Source: https://issues.apache.org/jira/browse/LOG4J2-1080
 
 These bear on what a total at the end can reach. They are facts about the platform and the runtimes, not comparables.
 
-- **Graceful termination.** If a container defines a `preStop` hook, the kubelet runs it first. The runtime then sends the stop signal: typically TERM, or the image's `STOPSIGNAL` where it sets one. A stop signal set in the container's lifecycle is alpha and off by default. After the grace period, 30 s by default and shared with the hook, it sends SIGKILL. The stop signal goes to process 1 in each container. If a `preStop` hook is still running when the grace period ends, the kubelet extends it once, by 2 s.
+- **Graceful termination.** If a container defines a `preStop` hook, the kubelet runs it first. The runtime then sends the stop signal: typically TERM, or the image's `STOPSIGNAL` where it sets one. A stop signal set in the container's lifecycle is alpha and off by default. After the grace period, 30 s by default and shared with the hook, it sends SIGKILL. The stop signal goes to the main process in each container. If a `preStop` hook is still running when the grace period ends, the kubelet extends it once, by 2 s.
 
   Source: https://kubernetes.io/docs/concepts/workloads/pods/pod-termination/
 
   > The default terminationGracePeriodSeconds setting is 30 seconds.
 
   > The container runtime sends SIGKILL to any processes still running in any container in the Pod.
+
+  > to the main process in each container.
 
   > Many container runtimes respect the STOPSIGNAL value defined in the container image and,
   > if different, send the container image configured STOPSIGNAL instead of TERM.
@@ -1389,13 +1434,17 @@ These bear on what a total at the end can reach. They are facts about the platfo
 
   (line breaks collapsed)
 
-- **SIGTERM, unhandled, ends the process, unless the process is its PID namespace's init, as a container's process 1 is.** Its default action is to terminate. But a signal from an ancestor namespace reaches init only if init has a handler for it, SIGKILL and SIGSTOP excepted. So a host running as process 1 that handles no TERM keeps running until SIGKILL.
+- **SIGTERM, unhandled, ends the process, unless the process is its PID namespace's init, as a container's main process is unless the pod shares its process namespace.** Its default action is to terminate. But a signal from an ancestor namespace reaches init only if init has a handler for it, SIGKILL and SIGSTOP excepted. So a host that is its namespace's init and handles no TERM keeps running until SIGKILL.
 
   Source: https://man7.org/linux/man-pages/man7/pid_namespaces.7.html
 
   > a process in an ancestor namespace can—subject to the usual permission checks described in kill(2)—send signals to the "init" process of a child PID namespace only if the "init" process has established a handler for that signal.
 
   (line breaks collapsed)
+
+  Source: https://kubernetes.io/docs/tasks/configure-pod-container/share-process-namespace/
+
+  > The container process no longer has PID 1.
 
   - Python installs no SIGTERM handler, and its exit handlers do not run when a signal it does not handle kills it:
 
@@ -1436,7 +1485,7 @@ Each is cited for what it is: a settled promise of the specification, the mainta
 - **In-process, inside a host application.** Settled by the specification's shape: the client is a library the host calls. The host owns the process and its logging.
 - **The client never harms the host.** Standing guidance: a queue is bounded and never blocks the worker. Logging that floods the host's logs, or that adds load when the host is already overloaded, is a harm of this kind.
 - **One behaviour for Rust and Python.** Standing guidance.
-- **Two channels.** Settled in the proposal, while the register's entry on how the client reports its own failures stays open: the guarantee `TwoChannels` says the client reports on itself through the diagnostics snapshot and the host's logs, and nothing else. The snapshot exposes every counter exactly, at any time, so the log is not the only place a count can be read.
+- **Two channels.** Settled in the proposal, while the register's entry on how the client reports its own failures stays open: the guarantee `TwoChannels` says the client reports on itself through the diagnostics snapshot and the host's logs, and nothing else. The snapshot exposes the latest run's counters, by table and kind, at any time, so the log is not the only place a count can be read. That it describes the most recent run, and keeps describing it after that run has ended, is marked "Derived" in the specification.
 - **Six kinds of failure, all under one rule.** Settled in the proposal: `FailureKind` is `queue_full`, `oversize`, `invalid`, `store_failed`, `shutdown` and `tenant_dropped`, and the rules apply onset-then-total to each, keyed on one kind for one table within one run.
 - **Ephemeral pods.** A leaning, not a fact: the most common host is "an ephemeral cloud environment such as a Kubernetes worker pod". A process may also live for days.
 - **Not novel.** The maintainer's guidance on this topic: "we should generally follow best practice and do what most other frameworks and libraries do. We shouldn't be novel here".
@@ -1445,20 +1494,20 @@ Each is cited for what it is: a settled promise of the specification, the mainta
 ### Fit of each comparable
 
 - **G1, the Python logging documentation.** Its reasons, that handlers are "the prerogative of the application developer" and that a library's handlers "might well interfere" with the developer's tests and logs, hold for this client. It is an in-process library, and the host owns its logging. The HOWTO also regards printing WARNING and above to standard error, when the application has configured nothing, as "the best default behaviour". A library that adds a `NullHandler` gives that up, as urllib3 does (L10). The specification says only "installs no handlers", which leaves `NullHandler` unsaid.
-- **G2, the Rust `log` and `tracing` crates.** Their reasons, that a global default set by a library "will cause conflicts" with the executable's, and that the max level features should be avoided "because they're global and can't be changed", hold for this client. But neither crate is the language's standard facade, because Rust has none, and a record sent through one reaches the other only through an adapter. The phrase "the language's standard logging facade" names nothing definite for Rust.
+- **G2, the Rust `log` and `tracing` crates.** Their reasons, that a global default set by a library "will cause conflicts" with the executable's, and that the max level features should be avoided "because they're global and can't be changed", hold for this client. But neither crate is the language's standard facade, because Rust has none, and a record sent through one reaches the other only through a feature of `tracing` or a compatibility layer, each chosen by the build or the executable. The phrase "the language's standard logging facade" names nothing definite for Rust.
 - **G3, the OpenTelemetry specification.** Its reason for logging instead of failing, that users "would prefer to lose telemetry data rather than have the library significantly change the behavior of the instrumented application", holds: it is the same posture as this client's promise never to harm the host. Its one sentence on lost data asks for a warning "when information loss starts and when recovered". No rationale for that sentence was found.
 - **L1, ddtrace.** Its reason, "do not spam user's application logs", holds. Its key, a call site, and its count, carried on the next record, are Python-specific mechanisms that a Rust core would have to reproduce. Its handler, added at import, is the practice G1 advises against.
 - **L2, OpenTelemetry Java.** The reason for its count per export, that it shows "how severe the backpressure is" and is "naturally throttled by the export cycle", holds where the client has a cycle. The client's data writer takes batches, but the specification gives it no export interval. The member's question, whether a log should "duplicate" what a metric shows, holds too, because the client has its snapshot.
 - **L3, OpenTelemetry Python.** Its reasons concern recursion when the SDK's own log feeds its own pipeline. That holds for this client only if a host routes the client's log records back into the client as rows, which nothing in the specification does.
 - **L4, the Linux kernel.** Its reason, making "a denial-of-service attack impossible" on a shared kernel log, does not hold. The client is not a kernel, and only the host's own writes reach it.
-- **L5, OpenTelemetry Rust.** Its stated reason, "We certainly don't want to log each time the buffer is full", with keeping a count as "A good balance", holds for the client's `queue_full`. Its design gives no reason for logging that count at shutdown rather than earlier. Its constraint that the count is "best exposed as an internal metric" holds too, through the client's snapshot. Four things do not hold:
+- **L5, OpenTelemetry Rust.** Its stated reason, "We certainly don't want to log each time the buffer is full", with keeping a count as "A good balance", holds for the client's `queue_full`. Its design gives no reason for logging that count at shutdown rather than earlier. Its constraint that the count is "best exposed as an internal metric" holds too, through the client's snapshot, with one difference: at the tag read, OTel Rust's self-diagnostics metrics need a feature that is not enabled by default, so by default its log is the only place its count appears. Four things do not hold:
   - it applies the rule to a full queue only, and logs every failed export at ERROR, while the specification applies the rule to `store_failed` as well;
   - its key is a processor's lifetime, while the client's is a table and a kind within one run;
-  - no reason is stated for its onset record;
+  - no reason is stated for logging its onset at the first drop, beyond "informing the user about data drop";
   - its total is a snapshot taken when shutdown begins and counts nothing dropped after it, while the specification's is written when the run has ended and counts every occurrence until then.
 - **L6, OpenTelemetry Go.** Its member's reason against a Warn on every drop, that logging "may exacerbate that load", holds. Its default of showing only errors, which a user calls "nearly impossible to understand", is the cost of a level the host does not see.
 - **L7, OpenTelemetry .NET.** Its reason, "to let users know somehow that we are dropping items", holds. Its channel, `EventSource`, is a .NET runtime mechanism and has no counterpart in Rust or Python.
-- **L8, OpenTelemetry JS.** Its reasons hold in part. A count at recovery helps size a queue, and the client's tables have a capacity. An onset gives the time drops started, which holds for troubleshooting; the use its author gave for that time, judging "how often one should be exporting", needs an export interval, which the specification does not give the client's data writer (see L2). Its onset at Debug is not shown by default. Its end of an episode, "a span is received that is successfully enqueued", is a definition of "stopped" for a full queue.
+- **L8, OpenTelemetry JS.** Its reasons hold in part. A count at recovery helps size a queue, and the client's tables have a capacity. An onset gives the time drops started, which holds for troubleshooting; the use its author gave for that time, judging "how often one should be exporting", needs an export interval, which the specification does not give the client's data writer (see L2). Its onset at Debug is not shown by default, which its author chose so that it "should be able to be filtered out". Its end of an episode, "a span is received that is successfully enqueued", is a definition of "stopped" for a full queue.
 - **L9, sentry-python.** Its reason for logging nothing by default, a "network hiccup could then blow up people's logging bills", holds as a cost. Its alternative, sending the count to its own service, does not exist for this client, whose only other channel is the snapshot.
 - **L10, urllib3.** No reason is stated for logging every discarded connection. Its `NullHandler` follows G1.
 - **L11, the OpenTelemetry Collector, and L12, Vector.** Their reasons, capping the "global CPU and I/O load that logging puts on your process" and not letting logging "saturate IO", hold as costs to avoid. Each is its own host, though, and owns its logger, so a sampler or a rate-limiting layer is configuration it can impose. A library cannot impose one on its host's logger.
@@ -1484,14 +1533,16 @@ What the other nine do, for lost data:
 | Sampling, with no count | the Collector | 0 |
 | Nothing in the host's log by default | sentry-python | 1 |
 
+Vector is placed by a drop it did not intend. Placed by its full buffer, which drops only with `drop_newest`, it would be a count every 2 s at debug. It is not an in-process library, so the last column does not change.
+
 No rule is used by a majority, and neither is the elicitation's general description. Two elements are each shared by some:
 
-- **the first occurrence logged when it happens:** ddtrace, OTel Python, the kernel, OTel Rust, urllib3, the Collector and Vector for a drop it did not intend, seven of the twelve, or six with Vector counted by its full buffer; and four of the nine in-process libraries. For OTel Python and the Collector it holds unless a shared filter or sampling counter is already spent;
+- **the first occurrence logged when it happens:** counted, as the summary table's "At once" is, by a call at a level the facade passes by default: ddtrace, OTel Python, the kernel, OTel Rust, urllib3, the Collector and Vector for a drop it did not intend, seven of the twelve, or six with Vector counted by its full buffer; and four of the nine in-process libraries. Counted by the call alone, whatever its level, OTel JS's Debug onset makes it eight of the twelve, or seven, and five of the nine. For ddtrace, OTel Python and the Collector it holds unless a shared rate limit, filter or sampling counter is already spent: ddtrace's writer logs its warnings through one helper, so they share one 60 s bucket (L1, inferred);
 - **something that limits repeats:** every library but urllib3. OTel Python's filter passes any record that differs from the last one it passed, and OTel JS writes a pair of records for each episode, with no limit on the number of episodes.
 
-Both together, the elicitation's "the first occurrence logged at once, then throttled", describe ddtrace, OTel Python, the kernel, OTel Rust, the Collector and Vector for a drop it did not intend: six of the twelve, or five with Vector counted by its full buffer, and three of the nine in-process libraries. Its claim about OTel Rust is accurate for a full queue. Its claim that the chosen rule is common practice is not shown.
+Both together, the elicitation's "the first occurrence logged at once, then throttled", describe ddtrace, OTel Python, the kernel, OTel Rust, the Collector and Vector for a drop it did not intend: six of the twelve, or five with Vector counted by its full buffer, and three of the nine in-process libraries. Its claim about OTel Rust is accurate for a full queue. It does not claim that the chosen rule is common practice. It records the rule as OTel Rust's and, separately, as the maintainer's choice, and on the evidence read the rule is not common.
 
-**The claim "Separate periodic summary logs are uncommon" gets its final status here: confirmed, with a qualification.** Two of the nine in-process libraries write a count on a cycle into the host's log: OTel Java's span processor, at WARNING, before each non-empty export, and OTel Go's log processor, at each worker wake, whether or not there is a batch, through a `Warn` helper its default logger hides. Two write a total at the end: OTel .NET, through `EventSource`, which writes nothing until configured, and OTel Rust, after an onset. Neither practice is common among the libraries read.
+**The claim "Separate periodic summary logs are uncommon" gets its final status here: confirmed, with a qualification.** Two of the nine in-process libraries make a call that writes a count on a cycle into the host's log: OTel Java's span processor, at WARNING, before each non-empty export, and OTel Go's log processor, at each worker wake, whether or not there is a batch, through a `Warn` helper its default logger hides. Counted, as the onset is, by a call at a level the facade passes by default, one does: OTel Java. Two write a total at the end: OTel .NET, through `EventSource`, which writes nothing until configured, and OTel Rust, after an onset. Outside the in-process libraries, a full Vector buffer with `drop_newest` reports a count every 2 s at debug (L12). Neither practice is common among the libraries read.
 
 ## What the rule costs
 
@@ -1503,7 +1554,7 @@ This section describes. It weighs nothing against the maintainer's choice.
 - how many rows have been lost so far;
 - whether another kind, or another table, is the cause of what they see now. Each of those has its own onset, so this one at least is visible.
 
-The snapshot (`TwoChannels`) answers the second at any moment, since `RunDiagnostics` exposes each table's counters by kind, and it gives the counts behind the third. It answers the first only in part. One read shows the counts so far and some current state, such as `queued_now` against the table's capacity, `last_store_at` and the data writer's status, but not when a count last grew: a failure still happening, one that stopped an hour ago, and one that stopped and came back can leave the same counts. A host that reads the snapshot more than once can see whether a count grew between its reads. So the whole cost falls on an operator who reads only the log, and its first part also on one who reads the snapshot once. Four comparables state this cost or its remedy:
+The snapshot (`TwoChannels`) answers the second at any moment, since `RunDiagnostics` exposes each table's counters by kind, and it gives the counts behind the third. It answers the first only in part. One read shows the counts so far and some current state, such as `queued_now` against the table's capacity, `last_store_at` and the data writer's status, but not when a count last grew: a failure still happening, one that stopped an hour ago, and one that stopped and came back can leave the same counts. A host that reads the snapshot more than once can see whether a count grew between two reads that show the same `run.id`. So the whole cost falls on an operator who reads only the log, and its first part also on one who reads the snapshot once. Four comparables state this cost or its remedy:
 
 - the OTel Java contributor who asked for a count per batch, because a log of the first few drops shows "_that_ spans were being dropped, but not how bad the problem is" (L2);
 - the dd-trace-go author, who rejected an onset followed by silence because the user would "see an error message and then the rest will be suppressed without a hint" (A1). OTel Rust's onset record answers that hint in its own text: "No further log will be emitted for further drops until Shutdown";
@@ -1512,8 +1563,8 @@ The snapshot (`TwoChannels`) answers the second at any moment, since `RunDiagnos
 
 **What a killed pod never logs.** The total is written when establish ends. Under the facts above ("Facts about a killed pod"):
 
-- **SIGKILL.** A host whose process receives SIGKILL never writes the total of any episode still open. SIGKILL comes at the end of the grace period; at a hard eviction, about 2 s after the stop signal, with containerd; and at once when the OOM killer picks the host's process. Each onset was handed to the host's logging facade when its failure began. Whether it reached a sink before the kill depends on the host's logging: a Rust host with no `tracing` subscriber drops it (L5), and, inferred, a host that buffers its log output can lose what it holds with the process.
-- **An unhandled stop signal.** A host that does not handle SIGTERM is either ended by it, when it is not its PID namespace's init, and then a Python host runs no exit handlers and a Rust host no destructors; or, as a container's process 1, it does not receive the signal and runs on until SIGKILL. Either way, the total is not written on a graceful termination unless the host acts on the signal, or a `preStop` hook leads it to end establish, within the grace period.
+- **SIGKILL.** A host whose process receives SIGKILL never writes the total of any episode still open. SIGKILL comes at the end of the grace period; at a hard eviction, about 2 s after the stop signal, with containerd; and at once when the OOM killer picks the host's process. Each onset was handed to the host's logging facade when its failure began. Whether it reached a sink before the kill depends on the host's logging: a Rust host with no `tracing` subscriber drops it, unless its build enables `tracing`'s `log` feature and it sets a `log` logger (G2, L5), and, inferred, a host that buffers its log output can lose what it holds with the process.
+- **An unhandled stop signal.** The stop signal goes to the main process in each container. It is TERM unless the image or the container's lifecycle sets another, which has its own default action. A host that is that process and does not handle TERM is either ended by it, when it is not its PID namespace's init, as in a pod that shares its process namespace, and then a Python host runs no exit handlers and a Rust host no destructors; or, when it is its namespace's init, it does not receive the signal and runs on until SIGKILL. Inferred: a host that runs as a child of the container's main process receives the signal only if that process passes it on. In each case, the total is not written on a graceful termination unless the host acts on the signal, or a `preStop` hook leads it to end establish, within the grace period.
 - **The host's own logging may be closing.** A record written at shutdown may meet streams that are already closed. ddtrace's writer guards each of its drop records against exactly that:
 
   Source: https://github.com/DataDog/dd-trace-py/blob/v4.17.2/ddtrace/internal/writer/writer.py
@@ -1523,13 +1574,13 @@ The snapshot (`TwoChannels`) answers the second at any moment, since `RunDiagnos
 
 - **The diagnostics snapshot.** It does not survive the process either.
 
-The onset is emitted when a failure starts, before any later kill. The total is the record a killed pod may never emit. Among the comparables that log a count before the end, the count is emitted while the process is alive only when a later event triggers it: the next record for the same key (L1, L4, L12), the next non-empty export (L2), the next worker wake (L6, hidden by default), or, in OTel JS, the next span accepted after the drops (L8). Where no such event comes before the kill, that count is not written either. OTel .NET, whose only record is at shutdown, would log nothing at all for a pod killed this way.
+The onset is emitted when a failure starts, before any later kill. The total is the record a killed pod may never emit. Among the comparables that log a count before the end, the count is emitted while the process is alive only when a later event triggers it: the next record for the same key (L1, L4, L12), the next non-empty export (L2), the next worker wake (L6, hidden by default), the buffer reporter's next 2 s tick after a drop (L12, with `drop_newest` only, at debug and through the same rate limit), or, in OTel JS, the next span accepted after the drops (L8). Where no such event comes before the kill, that count is not written either. OTel .NET writes its only record inside its processor's shutdown, so it logs nothing at all for a pod killed before that record is written.
 
 ## Verdicts
 
 ### `StandardFacade`
 
-**Verdict: it rests on a stated why that fits this client.**
+**Verdict: it rests on a stated why that fits this client, except for one clause, WARNING for dropped tenants, which rests on no stated why.** The guarantee is judged as the specification words it now (see the section on the specification's text, above).
 
 - No handlers, a named logger, and leaving configuration to the application are each given a reason by the guidance written for libraries: the Python documentation (G1), and the `log` and `tracing` crates (G2). Each reason holds for an in-process library in a host's process.
 - Structured records have a stated purpose in `log`: they can be analysed "without needing to find and parse attributes from unstructured text first".
@@ -1539,28 +1590,40 @@ The onset is emitted when a failure starts, before any later kill. The total is 
   - an OTel Rust member's rule that WARN and ERROR be "user actionable or conveying some important information that they'd not know otherwise" (L5), which bounds both levels and does not choose between them.
 
   The OTel specification asks for a "warning log" when information loss starts and when recovered (G3), and no rationale for it was found. None of these is a project's documented rule. The Python HOWTO also has an ERROR row, for reporting the suppression of an error without raising an exception, and does not say which row applies.
+- WARNING for dropped tenants has no stated why in any source read. A dropped tenant is an accepted row whose tenant was not stored, not lost data. The clause was added in ticket 02, after the elicitation's survey, and that ticket's research widened the guarantee's wording without giving a basis for the level.
 
 The verdict is about the basis. The behaviour is unchanged. Three points the evidence raises are for the maintainer, and this file decides none of them:
 
 - "the language's standard logging facade" has no referent in Rust, where `log` and `tracing` are both de facto facades (G2);
 - "installs no handlers" leaves unsaid whether a `NullHandler` counts (G1, L10);
-- WARNING for dropped tenants has no stated why in any source read. A dropped tenant is an accepted row whose tenant was not stored, not lost data. The clause was added in ticket 02, after the elicitation's survey, and that ticket's research widened the guarantee's wording without giving a basis for the level.
+- the basis for WARNING on a dropped tenant, which the proposed text below states as having none.
 
-**The basis as written today is wrong in part.** `CONTEXT.md` says the survey "reported this as common practice". "No handlers" is not what every library read does: ddtrace and sentry-python add a handler at import, and OTel Go's defaults write to standard error. The practice is the guidance's. Four of the nine in-process libraries follow all of it, a standard or de facto facade, a named logger and no handler of their own: OTel Java, OTel Python, OTel Rust, and urllib3, whose only handler is the `NullHandler` the HOWTO allows. Six of the nine install no handler of their own. Proposed text for that line, for the maintainer to place, since `CONTEXT.md` is not edited by this ticket:
+**The basis as written today is wrong in part.** The ticket says the survey "reported this as common practice", and `CONTEXT.md` records it as "The common practice is the standard logging facade, a library-named logger, no handlers installed". "No handlers" is not what every library read does: ddtrace and sentry-python add a handler at import, and OTel Go's defaults write to standard error. The practice is the guidance's. Counted from the summary table's columns for the facade and name and for installing a handler, over the nine in-process libraries, and on those three properties only:
+
+- three log through a standard or de facto facade, under a named logger, and add no handler: OTel Java, OTel Python and OTel Rust. urllib3 does the same but adds a `NullHandler`, which the HOWTO allows, so four do if that exception is taken;
+- five add no handler of their own: those three, OTel .NET and OTel JS. With urllib3's `NullHandler`, which writes nothing, six add nothing that writes output. ddtrace and sentry-python add a `StreamHandler`, and OTel Go's default logger and error handler write to standard error.
+
+Proposed text for that line, for the maintainer to place, since `CONTEXT.md` is not edited by this ticket:
 
 ```text
-Rests on the guidance written for libraries: the Python logging HOWTO's "Configuring Logging for a Library", and the `log` and `tracing` crates' advice to libraries. Four of the nine in-process libraries read follow all of it, and six install no handler of their own; ddtrace and sentry-python add a handler, and OTel Go writes to standard error by default (ticket 14).
+Rests on the guidance written for libraries: the Python logging HOWTO's "Configuring Logging for a Library", and the `log` and `tracing` crates' advice to libraries. Of the nine in-process libraries read for ticket 14, three log through a standard or de facto facade under a named logger and add no handler (OTel Java, OTel Python, OTel Rust), and a fourth, urllib3, adds only the NullHandler the HOWTO allows; ddtrace and sentry-python add a handler, and OTel Go writes to standard error by default. WARNING for lost data rests on one stated reason, an OpenTelemetry Java pull request author's, that dropped data is actual data loss. WARNING for dropped tenants rests on none; it was added when ticket 02's A2 was adopted.
 ```
 
 ### `OnsetThenTotal`
 
-**Verdict: it rests on a stated why that does not transfer as the specification applies it.**
+**Verdict: it rests on no stated why, as the specification applies it.** No source read gives a reason for holding the total until the end, and none for applying the rule to every kind of failure. Stated whys that fit this client support two of its parts: logging the onset at once, and, for a full queue, keeping a count instead of logging each drop. The stated whys the rule draws on, OTel Rust's, OTel .NET's, OTel JS's and the dd-trace-go reviewer's, each fit within its own scope, so the verdict is not "does not transfer": the time of the total and the extension to five more kinds have no stated why to transfer.
+
+| Part | `queue_full` | `store_failed`, `invalid`, `oversize`, `shutdown`, `tenant_dropped` |
+| --- | --- | --- |
+| The onset at once | Stated, fits: OTel JS's author (L8), and a dd-trace-go reviewer, whose request that library's author declined (A1). OTel Rust gives a purpose only | Stated, fits, for errors in general: the dd-trace-go reviewer's request, declined. No other source states one |
+| Nothing more while it continues | Stated, fits: OTel Rust (L5) | Not stated. OTel Rust itself logs a failed export on every occurrence |
+| One total, at the end | The count: stated, fits (OTel Rust, OTel .NET). Its time: not stated | Not stated |
 
 - **The recorded basis is in two separate records.** `CONTEXT.md` records the survey's general practice as "the first occurrence logged at once, then throttled", and, separately, "OTel Rust: onset once, total at shutdown. The maintainer chose this rule." The maintainer's note asks to "do what most other frameworks and libraries do". No record says on which basis the rule was chosen. On the evidence read it is one library's rule among the twelve (see "Is the rule common?"). The survey's description of it as what the OTel Rust SDK does is accurate.
 - **OTel Rust's stated reason fits a full queue.** "We certainly don't want to log each time the buffer is full", with the count kept in a metric and logged at shutdown. The constraint behind it holds for this client, whose snapshot keeps the count.
-- **That reason was stated for a full queue only, and OTel Rust does not apply it to its other failures.** OTel Rust logs a failed export on every occurrence, at ERROR, under a member's rule that a WARN or an ERROR be "user actionable". The other OpenTelemetry SDKs read report a failed export when it happens, and none holds it back for a total. OTel Java's batch processors log a failed result at FINE and a thrown exception at WARNING each time, and its OTLP exporters log through `ThrottlingLogger`. OTel Python logs an exception each time, through its duplicate filter, and its shared processor does not read the result the exporter returns. OTel Go passes a failure to its error handler each time, or returns it to the caller on flush and on log-record shutdown. OTel .NET and OTel JS log one each time. The specification applies onset-then-total to `store_failed`, `invalid`, `oversize`, `shutdown` and `tenant_dropped` too, and no library read gives a reason for that.
+- **That reason was stated for a full queue only, and OTel Rust does not apply it to its other failures.** OTel Rust logs a failed export on every occurrence, at ERROR, under a member's rule that a WARN or an ERROR be "user actionable". The other OpenTelemetry SDKs read report a failed export when it happens, and none holds it back for a total. OTel Java's batch processors log a failed result at FINE and a thrown exception at WARNING each time, and its OTLP exporters log through `ThrottlingLogger`. OTel Python logs an exception each time, through its duplicate filter, and its shared processor does not read the result the exporter returns. OTel Go passes a failure to its error handler each time, or returns it to the caller on flush and on log-record shutdown. OTel .NET logs one each time. OTel JS passes one to its global error handler each time on its export timer, and returns one from flush and shutdown to the caller. The specification applies onset-then-total to `store_failed`, `invalid`, `oversize`, `shutdown` and `tenant_dropped` too, and no library read gives a reason for that.
 - **The onset has a stated why, though not OTel Rust's.**
-  - OTel Rust gives none.
+  - OTel Rust's reviewer gives only its purpose, "informing the user about data drop", and no reason for logging it at the first drop.
   - OTel JS's author does: the onset shows "at what time those drops started" (L8).
   - A dd-trace-go reviewer does too: it gives "at least one useful timestamp to look at when troubleshooting" (A1).
 
@@ -1570,7 +1633,7 @@ Rests on the guidance written for libraries: the Python logging HOWTO's "Configu
 **Proposed wording for the maintainer.** It changes only the stated basis, not the behaviour, and is for `CONTEXT.md`'s survey line, or a comment beside the guarantee, wherever the maintainer chooses to place it:
 
 ```text
-Informs, and does not justify: OpenTelemetry Rust logs the first queue-full drop of a batch processor at once and its total at shutdown. The count and the total come from issue #2273, after OpenTelemetry .NET, which logs the total at shutdown only (pull request #2331); the onset comes from the review of pull request #2357, where no reason is given for it. Neither project states why the total waits for shutdown. Among the twelve libraries read for ticket 14 it is one library's rule, and no library among the twelve applies it to a failed store or export: each reports a failed export when it happens, or returns it to the caller. The onset is informed by OpenTelemetry JS, whose pull request author states that it shows when drops began, by a dd-trace-go reviewer's request for it, which that library's author declined, and by the maintainer's reason that it is more likely to go through.
+Informs, and does not justify: OpenTelemetry Rust logs the first queue-full drop of a batch processor at once and its total at shutdown. The count and the total come from issue #2273, after OpenTelemetry .NET, which logs the total at shutdown only (pull request #2331); the onset comes from the review of pull request #2357, where it is given a purpose, informing the user, and no reason for its timing. Neither project states why the total waits for shutdown. Among the twelve libraries read for ticket 14 it is one library's rule, and no library among the twelve applies it to a failed store or export: each reports a failed export when it happens, or returns it to the caller. The onset is informed by OpenTelemetry JS, whose pull request author states that it shows when drops began, by a dd-trace-go reviewer's request for it, which that library's author declined, and by the maintainer's reason that it is more likely to go through.
 ```
 
 Whether the behaviour itself changes is the maintainer's choice, not this file's. A total logged before establish ends is what open question 22 asks about.
@@ -1579,7 +1642,7 @@ Whether the behaviour itself changes is the maintainer's choice, not this file's
 
 This section reports, and decides nothing.
 
-- **Open question 22, its first half: when a kind of failure counts as stopped.** It stays open. The comparables read end what they report in four ways. Two test that the condition changed: OTel JS writes its total when the next span is accepted (L8), and the Collector's memory limiter logs when memory use is back within its limits (L11), under a project guideline that start and stop events need "an appropriate hysteresis". The others write at a boundary that is not a test that the failure stopped, so their count can be written while it continues: the next record after a window (ddtrace, the kernel and Vector: L1, L4, L12), or the next export or worker wake (OTel Java and OTel Go: L2, L6). OTel Rust and OTel .NET write only at shutdown (L5, L7), as the specification does until the question is decided.
+- **Open question 22, its first half: when a kind of failure counts as stopped.** It stays open. The comparables read end what they report in four ways. Two test that the condition changed. OTel JS writes its total when the next span is accepted (L8). The Collector's memory limiter logs that memory use is back within its limits when a check that starts below its soft limit follows refusal (L11). It enters and leaves refusal on the same soft-limit test, and when a forced GC ends refusal within one check it reports the change through component status and writes no such log. The project's guideline says start and stop events need "an appropriate hysteresis". The others write at a boundary that is not a test that the failure stopped, so their count can be written while it continues: the next record after a window (ddtrace, the kernel and Vector: L1, L4, L12), the next export or worker wake (OTel Java and OTel Go: L2, L6), or a timer tick (a full Vector buffer with `drop_newest`, every 2 s at debug: L12). OTel Rust and OTel .NET write their totals only at shutdown (L5, L7), as the specification does until the question is decided.
 
   The OTel specification asks for a warning "when information loss starts and when recovered" (G3). The Collector's documentation lists "Data dropping due to throttling stops" as an event it logs (L11). The log4j2 discussion asked for a start and a stop event, and only the start was built (A2). Under the rules as written, an episode is kept after its total: `OpenFailureEpisode` opens one only when none exists for that table and kind, `LogTotal` marks it reported without removing it, and `CountIntoEpisode` counts a later occurrence into it. So, as written, a later occurrence opens no new onset, and a definition of stopped would not by itself change that.
 - **Open question 22, its second half: unattributed rows and the confluence-wide discards.** It stays open. The nearest analogue read is telemetry offered to a processor that is not running, after it has shut down:
@@ -1601,8 +1664,8 @@ This section reports, and decides nothing.
   >         return;
 
   No source read speaks to rows kept without a tenant.
-- **`OnsetThenTotal` and the rules `OpenFailureEpisode` to `LogTotal`.** The verdict above is not the first. The proposed wording changes only the stated basis.
-- **`StandardFacade`.** The verdict is the first. Three points are raised for the maintainer: the Rust facade, `NullHandler`, and the level for a dropped tenant.
+- **`OnsetThenTotal` and the rules `OpenFailureEpisode` to `LogTotal`.** The verdict above, no stated why, is not the first. The proposed wording changes only the stated basis.
+- **`StandardFacade`.** The verdict is the first, except for WARNING on a dropped tenant, which rests on no stated why; the proposed text gives that clause's basis. Three points are raised for the maintainer: the Rust facade, `NullHandler`, and the basis for the level on a dropped tenant.
 - **`TwoChannels`.** The diagnostics snapshot is what makes OTel Rust's constraint, a count kept outside the log, hold for this client.
 - **The open-decisions register's Product entry**, on how the client reports its own failures to the host application. It is untouched. The maintainer closes it with a decision record.
 
