@@ -252,7 +252,7 @@ The maintainer answered these on 2026-11-24, after the reviews. Each answer is q
 
   > All checks passed and the worktree is unchanged.
 
-- **Final**, at `88d9a46`, the research file and this hand-back as reviewed and fixed:
+- **Final**, at `b55f816`, the research file and this hand-back with the maintainer's answers recorded:
 
   > All checks passed and the worktree is unchanged.
 
