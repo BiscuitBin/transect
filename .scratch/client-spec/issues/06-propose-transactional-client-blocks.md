@@ -25,6 +25,8 @@ Related open questions, by number and gist. Do not resolve them:
 - 12: whether a bounded retry comes before a failed batch is dropped.
 - 16: the default queue capacity and maximum row size.
 
+**Ticket 16's findings:** `.scratch/client-spec/research/16-client-shape-and-failure-posture.md` bears on this ticket. D1 to D4, and the verdict on claim 2, record what the end of a scope can guarantee or report in each form: a Rust guard can be leaked and its `Drop` returns nothing, a closure scope runs its end even when the closure unwinds, and a Python `__exit__` can raise. A group of rows settled at the end of a block meets that difference between Rust and Python. Stated behaviour 2 records what is known of why a write never fails and returns nothing. Read it before starting. Its fits and verdicts are findings, not decisions: the maintainer has said they are not guaranteed to be applied, and they stay open for the tickets they bear on.
+
 **Research file:** `.scratch/client-spec/research/06-transactional-client-blocks.md`, written only if the proposal cites another system. "Citing a comparable" in `CONTEXT.md` says what it records.
 
 **Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the conformance and breakage lenses, at two key moments: after the maintainer's answers are recorded verbatim in this ticket's hand-back and before the specification changes; and before hand-back. Questions to put to the reviewers:

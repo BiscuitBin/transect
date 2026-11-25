@@ -22,6 +22,8 @@ Related open questions, by number and gist. Do not resolve them:
 - 14: whether a data writer that has died stays stopped or is restarted.
 - 26: whether the end of establish waits for the batch in hand, and what bounds that wait when a store never returns. This is about the default behaviour, so it is not deferred with this ticket.
 
+**Ticket 16's findings:** `.scratch/client-spec/research/16-client-shape-and-failure-posture.md` bears on this ticket. G1 to G7 record how values that own a background writer end it, and what their waits bound: `tracing-appender`'s guard waits about 1.1 s and does not join, and `sentry`'s timeout bounds only the wait for an acknowledgement (G1, G2). C1 records that OpenTelemetry's shutdown may block, with a configurable timeout. D1 to D4 record what the end of a Rust guard, a closure scope and a Python `with` can guarantee or report. E14 records `ddtrace`'s `sync_mode` for hosts that may end before a background flush. The file points these at open question 26 and does not weigh them. Read it before starting. Its fits and verdicts are findings, not decisions: the maintainer has said they are not guaranteed to be applied, and they stay open for the tickets they bear on.
+
 **Research file:** `.scratch/client-spec/research/03-a-configurable-wait-at-shutdown.md`, written only if the proposal cites another system. "Citing a comparable" in `CONTEXT.md` says what it records.
 
 **Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the conformance and breakage lenses, at two key moments: after the maintainer's answers are recorded verbatim in this ticket's hand-back and before the specification changes; and before hand-back. Questions to put to the reviewers:
