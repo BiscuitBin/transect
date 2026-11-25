@@ -46,6 +46,8 @@ Related entries, by number and gist. Do not resolve them:
 - Open question 7: which collector confirms positions when more than one reads an instance.
 - The open-decisions register's Product entry on how the client behaves when the host application forks. It leaves the register only when a decision record answers it, and that record is the maintainer's to make.
 
+**Ticket 16's findings:** `.scratch/client-spec/research/16-client-shape-and-failure-posture.md` bears on this ticket. Stated behaviour 3 leaves a question open for the maintainer: is a forked child's copy of a confluence one that has turned the client off, or one whose writes were meant to be recorded? The maintainer left it open on 2026-11-24. "What the findings bear on" records what comparables do after a fork: Python's `logging` re-initialises its locks in the child (B1), `sentry-sdk` and OpenTelemetry Python start a new worker in the child (G5, G6), and `ddtrace` supports forked servers (G7). The file surveyed fork behaviour no further. Read it before starting. Its fits and verdicts are findings, not decisions: the maintainer has said they are not guaranteed to be applied, and they stay open for the tickets they bear on.
+
 **Research file:** `.scratch/client-spec/research/08-fork-and-multi-process-support.md`, written only if the proposal cites another system. "Citing a comparable" in `CONTEXT.md` says what it records.
 
 **Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the conformance and breakage lenses, at two key moments: after the maintainer's answers are recorded verbatim in this ticket's hand-back and before the specification changes; and before hand-back. Questions to put to the reviewers:

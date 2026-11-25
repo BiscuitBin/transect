@@ -38,6 +38,8 @@ Related open question, by number and gist. Say what the evidence bears on it. Do
 
 The open-decisions register's Product entry on how the client reports its own failures to the host application is the maintainer's to close with a decision record. This ticket does not touch it.
 
+**Ticket 16's findings:** `.scratch/client-spec/research/16-client-shape-and-failure-posture.md` bears on this ticket. "What the findings bear on" records, for the register's entry on how the client reports its own failures, that the facades leave it to the backend (A1 to A3), that OpenTelemetry says a suppressed error SHOULD be logged (C1), and that Python's `logging` uses `lastResort` and `raiseExceptions` (B1). B1 also records CPython's stated reason for swallowing handler errors, and stated behaviour 3 the comparables that count what they drop. Read it before starting. Its fits and verdicts are findings, not decisions: the maintainer has said they are not guaranteed to be applied, and they stay open for the tickets they bear on.
+
 **Research file:** `.scratch/client-spec/research/14-a-library-logging-its-own-failures.md`
 
 **Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the sources and reasoning lenses, at two key moments: after the findings are drafted in the research file and before any fit verdict is written; and before hand-back. The reviewers need the same web authorisation as this ticket. Questions to put to them:

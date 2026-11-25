@@ -45,6 +45,8 @@ Related open questions, by number and gist. Say what the evidence bears on each.
 - 12: whether a bounded retry comes before a failed batch is dropped.
 - 14: whether a data writer that has died stays stopped or is restarted.
 
+**Ticket 16's findings:** `.scratch/client-spec/research/16-client-shape-and-failure-posture.md` bears on this ticket. Fit S and the verdict on claim 4 record what each structured-concurrency system does with a child's failure, with two stated reasons for delivering it to the scope (S1 to S7). G1 to G7 record what happens when each worker dies, and D1 and D3 that a Rust guard's end cannot return a failure. The file points these at open question 14 and at the register's entry on reporting the client's own failures, and does not weigh them. Read it before starting. Its fits and verdicts are findings, not decisions: the maintainer has said they are not guaranteed to be applied, and they stay open for the tickets they bear on.
+
 **Research file:** `.scratch/client-spec/research/13-store-failure-and-data-writer-death.md`
 
 **Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the sources and reasoning lenses, at two key moments: after the findings are drafted in the research file and before any fit verdict is written; and before hand-back. The reviewers need the same web authorisation as this ticket. Questions to put to them:

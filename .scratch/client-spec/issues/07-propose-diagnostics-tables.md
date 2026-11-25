@@ -44,6 +44,8 @@ Related entries, by number and gist. Do not resolve them:
 - Open questions 9 and 10: what a namespace promises, and whether there is a default namespace.
 - The open-decisions register's Product entry on how the client reports its own failures to the host application. It leaves the register only when a decision record answers it, and that record is the maintainer's to make.
 
+**Ticket 16's findings:** `.scratch/client-spec/research/16-client-shape-and-failure-posture.md` bears on this ticket. Stated behaviour 3 records which comparables count what they discard, where they keep the count, and their stated reasons: Sentry's client reports (E10), OpenTelemetry Python's count after shutdown (G6), and OpenTelemetry's guidance on SDK self-metrics (G6, C1). Sentry and OpenTelemetry Python report their counts only through a backend set up to report; this client keeps its count on the confluence. Read it before starting. Its fits and verdicts are findings, not decisions: the maintainer has said they are not guaranteed to be applied, and they stay open for the tickets they bear on.
+
 **Research file:** `.scratch/client-spec/research/07-diagnostics-tables.md`, written only if the proposal cites another system. "Citing a comparable" in `CONTEXT.md` says what it records.
 
 **Adversarial review:** Follow `.scratch/client-spec/REVIEW.md` with the conformance and breakage lenses, at two key moments: after the maintainer's answers are recorded verbatim in this ticket's hand-back and before the specification changes; and before hand-back. Questions to put to the reviewers:
