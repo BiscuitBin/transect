@@ -112,7 +112,15 @@ The research file covers thirty comparables (C1 to C30), grouped by the ticket's
 ### Questions for the maintainer
 
 1. `NothingAcrossRuns` says the client enforces nothing about a definition that changed between runs. Where one confluence holds successive runs (Derived), `rule DeclareTable` refuses a changed redeclaration in a later run. Should the guarantee name only runs in other processes, or is that check meant to sit outside it as worded?
+
+   **Maintainer's answer, 2026-11-25** (chosen from the options put): "Decide with open Q6". "Leave the wording as is for now and settle it together with open question 6 (what establish does with databases a previous run left at the location), since both are about what a later run sees of an earlier one."
 2. The specification gives the reason declaring may fail loudly as "it runs at start-up, where the developer can see it". Should that reason cover a table declared during a run, or should ticket 16 take up that case with the rest of the failure posture?
+
+   **Maintainer's answer, 2026-11-25** (chosen from the options put): "Hand it to ticket 16". "Add this case to ticket 16's scope (failure posture). The research file's proposed @guidance already says 'whether it should is part of the failure posture, which is still being researched'." Ticket 16 is not edited on this branch, which changes only this ticket and its research file; adding the case to it is a follow-up.
+
+3. Asked after the hand-back was first written: how strictly is `CONTEXT.md`'s rule on "justifies" read, here and in later research tickets? (See "How strictly "justifies" is read" under "Open points".)
+
+   **Maintainer's answer, 2026-11-25** (chosen from the options put): "Strict, as filed". "The stated reason itself must fit; if the fit depends on an Inferred step, the comparable only informs. C1 stays 'Informs'. No edit needed."
 
 ### Adversarial review
 
@@ -228,6 +236,6 @@ The research file covers thirty comparables (C1 to C30), grouped by the ticket's
 ### Open points
 
 - **The elicitation's record is not tracked.** Where the sentence "The cheapest upgrade: a declared version or definition hash, and column ids that are never reused" came from cannot be checked. It stays Unverified as a sentence, and where column ids came from is not established.
-- **The two questions for the maintainer** above are open. The proposed wording leaves both cases to them.
-- **How strictly "justifies" is read.** The second key moment's two rounds of triage read `CONTEXT.md`'s rule differently. The first kept "Justifies" for runs on other instances, on the ground that the limit is stated and the fit is argued about this client. The second required the stated reason itself to fit, and the file follows the second. If the maintainer reads the rule the first way, C1's "Use" cell and the verdict's second sub-bullet can say "justifies" again. The verdict's headline does not change either way.
+- **The two questions for the maintainer** above are answered, and neither changes this file: the case of successive runs of one confluence waits on open question 6, and a declaration that fails loudly during a run goes to ticket 16.
+- **How strictly "justifies" is read.** The second key moment's two rounds of triage read `CONTEXT.md`'s rule differently. The first kept "Justifies" for runs on other instances, on the ground that the limit is stated and the fit is argued about this client. The second required the stated reason itself to fit, and the file follows the second. If the maintainer reads the rule the first way, C1's "Use" cell and the verdict's second sub-bullet can say "justifies" again. The verdict's headline does not change either way. The maintainer chose the stricter reading, so the file stands.
 - **Read only in part**, as the file records: KIP-467 was not fetched; of Confluent pull request 3424 only its description, and of .NET issue #77514 only its body, were read; what Hibernate does with two entities of one name was not examined.
