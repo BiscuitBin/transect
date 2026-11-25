@@ -1,7 +1,7 @@
 # Research: hand-over, confirmation and purge
 
 - **Ticket:** `issues/12-research-the-why-hand-over-confirmation-and-purge.md`. It checks again, from primary sources, the systems the specification's hand-over rules were said to follow, and captures why each behaves as it does.
-- **Sources read:** 2026-11-24 (UTC). Every link below was read that day.
+- **Sources read:** 2026-11-25 (UTC). Every link below was read that day.
 - **Web research:** authorised by the maintainer in the session that picked this ticket up, for the researcher and for the reviewers, read-only.
 - **Status:** findings, the fit of each comparable, an answer to the maintainer's question about Kafka's sequence number, one verdict per stated behaviour with proposed wording where it is not the first, and what the findings bear on, for the maintainer. They recommend no answer to open questions 7, 8, 15 or 25, and the specification is not edited.
 
@@ -32,7 +32,7 @@ For each comparable the survey asks:
 
 ## The claims rechecked
 
-The elicitation's survey made eight claims, recorded in `CONTEXT.md` with no link. Each was checked again on 2026-11-24. The evidence, quoted and linked, is in the section named.
+The elicitation's survey made eight claims, recorded in `CONTEXT.md` with no link. Each was checked again on 2026-11-25 (UTC). The evidence, quoted and linked, is in the section named.
 
 | # | Claim | Result | Evidence |
 | --- | --- | --- | --- |

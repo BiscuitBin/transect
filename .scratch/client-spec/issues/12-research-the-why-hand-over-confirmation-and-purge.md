@@ -94,9 +94,9 @@ Fit is recorded in its own section. Every quotation was checked as a substring o
 
 1. **Filebeat: partly wrong.** Its "at least once" is about the registry, a read position on a file Filebeat does not own. By default Filebeat deletes no source data.
 2. **The OpenTelemetry Collector's persistent queue: partly wrong.** The delete is in the same storage step, but it follows any finish, a failure or an exhausted retry included.
-3. **Vector: partly wrong.** A data file goes once every record read from it is finalized, a drop included, whether or not acknowledgements are on.
+3. **Vector: partly wrong.** A data file the writer has moved past goes once every record read from it is finalized, a drop included, whether or not acknowledgements are on; the file still being written stays.
 4. **The OpenTelemetry SDK: partly wrong.** The batch processor drops a failed batch, but the exporter retries, and OTLP accepts the duplicates that follow.
-5. **Pull sources: true only narrowly for Prometheus,** whose client holds no rows at all. **Confirmed for Kafka,** with exceptions driven by consumption.
+5. **Pull sources: true only narrowly for Prometheus,** whose client holds no rows at all. **Confirmed for Kafka,** with three exceptions: compaction, `DeleteRecords` below an offset its caller supplies, and the Kafka Streams purge.
 6. **"The only documented way to recognise a duplicate": wrong.** Ids the sender assigns (NATS, SQS FIFO, Azure Service Bus, Elasticsearch), content (Elasticsearch time series, SQS, Prometheus) and a recorded log position (PostgreSQL) are all documented.
 7. **"Nobody documents an asynchronous purge": wrong.** Vector, the libbeat disk queue, Filebeat, Pulsar, PostgreSQL, Pub/Sub and Kafka Streams all document one.
 8. **Fluent Bit's and Vector's delete triggers: now verified from source.**
