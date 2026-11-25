@@ -81,7 +81,7 @@ The work is in `research/16-client-shape-and-failure-posture.md`, beside the iss
 
 ### Findings
 
-The survey covers 60 systems in ten groups, each with the fields under "Citing a comparable" and a fit:
+The survey covers 57 systems in nine groups, each with the fields under "Citing a comparable" and a fit:
 
 - the Rust facades (A1 to A4);
 - Python's `logging` (B1);
@@ -93,14 +93,14 @@ The survey covers 60 systems in ten groups, each with the fields under "Citing a
 - structured concurrency (S1 to S7);
 - fakes for tests (T1 to T10).
 
-What the three names already mean elsewhere is in N1 to N3, as facts only. Every blockquote, 976 at the last check, was checked by machine as a substring of source text the author fetched again into an empty cache.
+What the three names already mean elsewhere is in N1 to N3, as facts only. Every blockquote, 976 at the last check (775 in the draft, the rest added in review), was checked by machine as a substring of source text that the last check fetched again into an empty cache.
 
 The facade claim, part by part (the file's two tables at the top give each cell):
 
 - **`log`:** a global entry point holds. A top-level install holds, by convention and once per linked copy of the crate. A scoped override for tests does not hold: there is none, shown from the full item index, and requests for one were declined.
 - **`tracing`:** the first two parts hold. The scoped override holds with limits: it is per thread, and it has open defects with guards sent between threads, guards dropped out of order, and an interest cache that silences a scoped subscriber in parallel tests.
 - **`metrics`:** the first two parts hold. The scoped override holds with limits: it is per thread, it does not redirect a handle registered before it, and nested guards restore correctly only when dropped innermost first.
-- **In none of the three** is the global an object the application creates and declares things against, which a confluence is. In none can the top-level install end or be given again. In `metrics` and OpenTelemetry Rust, a handle or tracer obtained before a backend is installed stays a no-op.
+- **In none of the three** is the global an object the application creates and declares things against, which a confluence is. In none can the top-level install be given again. In none can it end, except that `metrics-util`'s `RecoverableRecorder` lets the application end the recorder behind `metrics`' global, which then cannot be installed again. In `metrics` and OpenTelemetry Rust, a handle or tracer obtained before a backend is installed stays a no-op.
 
 ### Verdicts
 
@@ -114,7 +114,7 @@ On the agent's four claims:
 On the five stated behaviours, one verdict each:
 
 1. **Confluence, establish and client handle:** rests on a stated why that does not transfer. The facades' reasons do not cover a backend with a duration that is given again, or declaring against an object before any backend exists.
-2. **The failure posture:** rests on no stated why for the whole behaviour. OpenTelemetry's reason fits the serving half, and `client_golang`'s fits declaring a table loudly. None found covers establish failing loudly, or a write that returns nothing.
+2. **The failure posture:** rests on no stated why for the whole behaviour. OpenTelemetry's reason fits the serving half, and `client_golang`'s fits declaring a table loudly. None found covers establish failing loudly: `sentry`'s reason for one panic moved to initialisation, to avoid a deadlock after the first capture, informs it. None covers a write that returns nothing: `cadence`'s reason for a `send` that returns nothing informs it.
 3. **Inert without establish:** rests on no stated why for the whole behaviour. Discarding fits OpenTelemetry's and `log`'s reasons. A stated reason for counting fits an establish that has ended. It reaches a failed establish the host caught only by the file's own argument, and is not shown for a host that never established or a forked child's copy.
 4. **The establish block owns the data writer:** rests on a stated why that fits. Structured concurrency's lifetime reasons fit the end condition as the specification states it today, which stays Derived. Open question 26 stays open.
 5. **The fake core:** rests on no stated why. None of the ten fakes surveyed promises that it applies the real rules.
@@ -126,18 +126,17 @@ Proposed wording for the maintainer is in the research file for behaviours 1, 2,
 - **Reviewers.** Every review ran on Codex (codex-cli 0.172.0) with `gpt-6.2-sol`, at reasoning effort `ultra`, in a read-only sandbox with live web search. That model was the maintainer's choice in this session, in place of `REVIEW.md`'s preferred `gpt-6-astra`. Each session header recorded the model.
 - **Preflight.** Before the first review, a preflight confirmed that Codex ran `gpt-6.2-sol` and opened two URLs. The author's own shell checked docs.rs, raw GitHub and the GitHub API before the survey. The research subagents fetched with `curl` and `gh` from that shell; no subagent ran a separate preflight.
 - **Triage.** Every finding was triaged by a fresh Claude Code subagent on Claude Opus 5.5 (`claude-opus-5-5`), which was neither the author nor a reviewer. One triager (first key moment, round 2, sources) split its 39 findings across six further Opus 5.5 subagents and re-checked four findings' sources itself.
-- **Applying.** A fifth subagent per round applied the valid solutions to the file's sections. The author read every change to the fit and verdicts.
+- **Applying.** A fifth subagent per round applied the valid solutions to the file's sections. After the last round the author read Fit, both verdict sections and "What the findings bear on" in full, checking that nothing recommends a name, confirms a Derived statement or answers an open question.
 - **Files.** The review, triage and apply files are under `ai_tmp/client-spec-review/16/`, which is not committed.
-- **Coverage, as it was.**
-  - First key moment, round 1: both reviewers opened every link in A1 to A4, and one to five links in each other section.
-  - Round 2: both opened at least three links in each section from B1 to N3.
-  - Second key moment: each reviewer opened links in every section and listed them by section; its counts are in its review file.
-
-  No review opened every one of the file's links.
+- **Coverage, from each review's own table.** Each reviewer listed the distinct links it opened in each section. The author compared those counts with the distinct links in each section at the commit the round reviewed.
+  - First key moment, round 1 (`7ccfb0b`): both reviewers opened every link in A1 to A4. In each other section, the sources reviewer opened one to three links and the reasoning reviewer one to five.
+  - First key moment, round 2 (`c8b33d9`): the sources reviewer opened three to 22 links per section. The reasoning reviewer opened two to 13, covering only the changed passages in A1 to A4. Both opened at least three in each section from B1 to N3.
+  - Second key moment, round 1 (`2933106`): both reviewers' counts equal the file's distinct links in every section except where a link could not be opened: D1, S1, S7 and N1 for both, and B1 for the sources reviewer. The sources reviewer shows those as fractions (B1 38 of 39, D1 11 of 12, S1 5 of 7, S7 4 of 5, N1 14 of 15) and checked author or pinned copies instead.
+  - Second key moment, round 2 (`06a728b`): the sources reviewer's counts equal the file's distinct links, with the same exceptions apart from B1. The reasoning reviewer opened two to 15 per section.
 
 **Every finding and suspicion, 170 in all.** 162 were judged valid, in whole or in part (a few needing no edit), and 8 invalid; none was out of scope. The first key moment's first round, sources, finding 22, is counted once, as invalid: its B1 part was invalid and its D4 part valid in part, and the D4 part was applied.
 
-The resolution column gives the triage's solution. Each valid one was applied, merged into one edit where the two lenses overlapped. A few were applied in a changed form, as the appliers' logs record:
+The resolution column gives the triage's solution. There, `r:` and a number give a line of the research file at the commit that round reviewed: `7ccfb0b`, `c8b33d9`, `2933106` and `06a728b`, in order. Each valid solution was applied, merged into one edit where the two lenses overlapped. A few were applied in a changed form, as the appliers' logs record:
 - **Duplicates left out:** a duplicate `Drop` quotation in A4.
 - **Cited inline:** a `Cargo.toml` default, rather than quoted.
 - **Dropped:** a JDK schedule quotation whose table cells run together once the HTML is stripped (S4).
@@ -320,6 +319,8 @@ The resolution column gives the triage's solution. Each valid one was applied, m
 ### Open points
 
 - **A question for the maintainer, from behaviour 3:** is a host that never establishes, or a forked child's copy, one that has turned the client off, or one whose writes were meant to be recorded? The answer decides which comparable's reason bears on counting in those two cases. The research file records the question and does not answer it.
+- **The verdict rule is the author's.** The ticket gives the three verdicts. How they are applied is this file's rule ("Verdicts on the stated behaviours"): the record's reason is taken first, and another comparable's stated why gives the first verdict only if it fits the whole behaviour. Behaviours 2 and 3 get the third verdict because of it, and one triager applied it to give behaviour 4 the first. The maintainer may read the ticket's verdicts otherwise.
+- **After the review, Fit gained a line for S3.** Before, S3 was named only within ranges. The line reports S3's stated reason and says it informs; no reviewer saw it.
 - **The last round was not reviewed after it was applied.** The second key moment's second round was the last allowed. Its fixes passed the quotation and structure checks and were read by the author, but no reviewer saw them.
 - **Unverified items** stay marked "Unverified" in the research file, each with where was looked. Examples are the formal roles of several speakers, and whether `metrics`' out-of-order guard drop crashes at 0.24.6.
 - **Kept as it is:** the `tracing` cell in the head table still says "once per process". The file has no source on per-copy globals for `tracing`.
@@ -333,11 +334,12 @@ The resolution column gives the triage's solution. Each valid one was applied, m
 
 - **After the draft**, at `7ccfb0b`, the same.
 - **`just check-docs`** passed after every round.
+- **`/code-review`** (low, on `main...HEAD`) reported nothing: the diff holds only Markdown, with no code for it to check.
 - **Final**, at FINAL_COMMIT, the research file and this hand-back as reviewed and fixed. The commit that records this line changes only the line itself.
 
   > FINAL_LINE
 
-- **Changed files:** `git diff main --stat` shows only this ticket and its research file. The specification is unchanged, and open question 18 is still in it. No code was added.
+- **Changed files:** `git diff main...HEAD --stat`, against the merge base `90f0abb`, shows only this ticket and its research file. `main` has since moved on (pull request #7, which closed tickets 01 and 02 and narrowed ticket 11); this branch does not touch those files. The specification is unchanged, and open question 18 is still in it. No code was added.
 
 ### Acceptance
 
