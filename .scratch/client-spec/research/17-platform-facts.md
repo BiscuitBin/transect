@@ -1,14 +1,14 @@
 # Research: platform facts
 
 - **Ticket:** `issues/17-research-the-why-platform-facts.md`. It checks the platform facts that the specification, ticket 07 (diagnostics tables), ticket 08 (fork and more than one process) and open question 8 lean on.
-- **Sources read:** every source on 2026-11-25 (UTC), which was 2026-11-24 in the researcher's local time.
+- **Sources read:** every source on 2026-11-25 (UTC). That was 2026-11-24 in the researcher's local time, except the last fetches for the addition on how DuckDB writes its own file, which ran into 2026-11-25.
 - **Web research:** authorised by the maintainer on 2026-11-24 for this ticket, for the agent working it, for its survey subagents and for its reviewers. It is read-only: nothing was posted, filed or sent.
 - **Network recipes:** the maintainer allowed `just sync`, `just install-allium` and `just install-tools` if the baseline needed them. It did not, and none was run.
-- **State of this file:** complete for hand-back. The findings, up to "The claims, checked", were reviewed at the first key moment. The fit on the leaning hosts, the proposed wording and what the findings bear on were written after it, and the whole file was reviewed at the second, in two rounds. The second round's fixes were checked by the quotation script, not reviewed again.
+- **State of this file:** complete for hand-back. The findings, up to "The claims, checked", were reviewed at the first key moment. The fit on the leaning hosts, the proposed wording and what the findings bear on were written after it, and the whole file was reviewed at the second, in two rounds. The second round's fixes were checked by the quotation script, not reviewed again. "How DuckDB writes its own file" under P10, and the rows, bearings and candidates that cite it, were added after the second key moment and reviewed in one round of their own, by the maintainer's choice; that round's fixes were not reviewed again.
 
 ## How the sources were checked
 
-Four survey agents found the candidate sources and saved raw text. The author then fetched every cited source again, independently:
+Four survey agents found the candidate sources and saved raw text. The addition on how DuckDB writes its own file used no survey agent: the author searched full copies of the DuckDB v2.0.1 and duckdb-web `c53d1db` trees. The author then fetched every cited source again, independently:
 
 - source and documentation files at a pinned tag or commit, through the GitHub API or `git.kernel.org`;
 - issue, pull request and discussion comments through the GitHub REST and GraphQL APIs, each comment saved alone, so a quotation cited to one comment is checked against that comment only;
@@ -1398,6 +1398,7 @@ KEP 1029, quoted under P7, says a pod can fill the root partition before the kub
 - The kubelet evaluates thresholds every 10 s or so (P7). Node pressure is judged from the filesystem's own free space, at 10% by default; how often that figure is refreshed was not traced (Unverified). A pod's own limits are judged from usage refreshed on its own periods, a minute by default for an `emptyDir` (P7). Between two measurements, or when one pod writes faster than the threshold's headroom, the filesystem can fill. A write that needs new space then fails with `ENOSPC`, or writes fewer bytes than asked. On a filesystem that allocates space after the write, such as NFS, the failure can surface at a later `write`, `fsync` or `close` instead (`write(2)` and `fsync(2)`, below). A write into a reserved range is the case under the last point.
 - Writes that need new space on a volume the kubelet does not count towards the pod (P7) fail when that volume is full. Where the volume has its own device, such as a Persistent Disk or Filestore, nothing is evicted. Where it is on the node's own filesystem, such as a `hostPath`, filling it is node pressure, and the kubelet may evict pods.
 - A pod over its own limit, over an `emptyDir`'s `sizeLimit`, or with a container over that container's limit, is evicted, not refused, where the kubelet is measuring local ephemeral storage and the pod is not critical (P7). That part of C5 is sourced, under those conditions.
+- In DuckDB's opt-in memory-mapped mode, on ext4 at Linux v7.3, a write into an unallocated page of the database file on a full filesystem raises `SIGBUS`, whose default action ends the process, instead of returning `ENOSPC` (Inferred from source, P10).
 - Under node pressure a pod's reservation counts towards the usage by which it is ranked, for a byte signal whose ranking includes it (P7). A reservation does let writes into the reserved range succeed after the filesystem is full, where P1's conditions hold. It does not protect the pod from being evicted.
 
 Source: https://man7.org/linux/man-pages/man2/write.2.html (line breaks collapsed)
@@ -1520,7 +1521,7 @@ Source: https://github.com/duckdb/duckdb-web/blob/c53d1db49ed9869e8a43df1f16d1d1
 
 > As long as there are no write conflicts, multiple concurrent writes will succeed. Appends will never conflict, even on the same table.
 
-**Stated why.** The docs, the DuckDB team's blog and the GitHub user `Mytherin` each give the reason: state kept in memory, which other processes cannot see. `Mytherin`'s profile gives the name "Mark" and says "I'm the co-founder of DuckLabs"; that this is Mark Raasveldt, a co-author of the DuckDB papers, is Inferred. Every DuckDB comment quoted below is by a member of the DuckDB GitHub organisation, by GitHub's own association label.
+**Stated why.** The docs, the DuckDB team's blog and the GitHub user `Mytherin` each give the reason: state kept in memory, which other processes cannot see. `Mytherin`'s profile gives the name "Mark" and says "I'm the co-founder of DuckLabs"; that this is Mark Raasveldt, a co-author of the DuckDB papers, is Inferred. Every DuckDB comment quoted below is by a member of the DuckDB GitHub organisation, by GitHub's own association label, except two pull requests under "How DuckDB writes its own file", whose authors are named there as contributors.
 
 Source: https://github.com/Mytherin
 
@@ -1555,6 +1556,538 @@ Source: https://github.com/duckdb/duckdb/issues/77#issuecomment-483273715
 Source: https://github.com/duckdb/duckdb/issues/17343#issuecomment-2848633035
 
 > This is expected behavior but for a different reason - on POSIX systems (Linux/MacOS) file-locks are process wide, as such we cannot protect against the same file being opened in read/write mode within the same process.
+
+**How DuckDB writes its own file.** Read at DuckDB v2.0.1 and duckdb-web `c53d1db`. Most of this passage is read from the code. Where the code shows a behaviour that no comment or document states, the statement is marked Inferred from source.
+
+An attached database is opened in one of three I/O modes. Buffered I/O is the default, and the other two are opt-in through the `IO_MODE` option of `ATTACH`. This passage covers the default and the memory-mapped mode; direct I/O is under "Candidates not examined".
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/include/duckdb/storage/storage_options.hpp
+
+> 	//! Buffered pread/pwrite via FileHandle (default).
+> 	BUFFERED_IO,
+> 	//! Memory-map the file; reads/writes go through the mapped region.
+> 	MMAP,
+> 	//! Unbuffered I/O (O_DIRECT / FILE_FLAG_NO_BUFFERING / F_NOCACHE).
+> 	DIRECT_IO,
+
+> 	//! IO_MODE attach option; empty defaults to BUFFERED_IO.
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/storage_manager.cpp
+
+> 	auto resolved_io_mode = storage_options.io_mode ? *storage_options.io_mode : FileIOMode::BUFFERED_IO;
+
+*The default path: where a write lands.* The DuckDB CIDR 2020 paper describes the file as fixed-size blocks after a header that lists the free blocks. The block size it gives is the 2020 figure.
+
+Source: https://hannes.muehleisen.org/publications/CIDR2020-raasveldt-muehleisen-duckdb.pdf (line breaks collapsed)
+
+> As an exception, the WAL is written to a separate file until consumed by a checkpoint. The storage file is partitioned into fixed-size blocks of 256KB which are read and written in their entirety.
+
+At v2.0.1 a block is written at an offset fixed by its id. A block that is needed takes the first id on the free list, which is an ordered set, so the lowest free id (Inferred from the container). If the list is empty, it takes the next id past the highest block the header records, which need not be the end of the file (below).
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/single_file_block_manager.cpp
+
+> 	ChecksumAndWrite(context, buffer, BLOCK_START + NumericCast<idx_t>(block_id) * GetBlockAllocSize());
+
+> 	if (!free_list.empty()) {
+> 		// The free list is not empty, so we take its first element.
+> 		block_id = *free_list.begin();
+> 		// erase the entry from the free list again
+> 		free_list.erase(free_list.begin());
+
+> 		block_id = max_block++;
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/include/duckdb/storage/single_file_block_manager.hpp
+
+> 	//! The list of free blocks that can be written to currently
+> 	set<block_id_t> free_list;
+
+A checkpoint does not write changed table data over the blocks the current header points to. The checkpointer marks a rewritten segment's old blocks as modified. A block that storage already used is not reused until the next checkpoint.
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/table/column_data_checkpointer.cpp
+
+> 	// if there are any persistent segments, we will mark their old block ids as modified
+> 	// since the segments will be rewritten their old on disk data is no longer required
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/single_file_block_manager.cpp
+
+> 		// this block was used in storage, we cannot directly re-use it
+> 		// add it to the modified blocks indicating it will be re-usable after the next checkpoint
+
+The header is written last. DuckDB syncs the file, then writes the header into whichever of its two header slots is not active, and syncs again. Only then does it return the checkpoint's freed blocks to the free list.
+
+> 	// We need to fsync BEFORE we write the header to ensure that all the previous blocks are written as well
+
+> 	// now write the header to the file, active_header determines whether we write to h1 or h2
+> 	// note that if active_header is h1 we write to h2, and vice versa
+
+> 	// switch active header to the other header
+
+> 		for (auto &block : checkpoint_freed_blocks) {
+> 			modified_blocks.erase(block);
+
+Inferred from source: in DuckDB's own terms, a checkpoint writes changed data to another block, and switching to the other header slot makes it current. In the filesystem's terms the result differs by block. A block reused from the free list is usually a write over a range of the file that was written before. It is not always one. A checkpoint writes the header, with the free list and the block count, before it truncates free blocks off the tail. So the header on disk still lists those ids as free, and counts them. Once the file is opened again, a write to one of them extends the file (Inferred from source). Where `trim_free_blocks` is set, a reused block can also lie in a hole that a checkpoint punched (Inferred from source). Either write needs new space. If the free list is empty, a block is taken past the highest block the header records. That extends the file where the file ends there. It lands inside the file where the file is longer: in the memory-mapped mode below, or where a mode-0 `fallocate` has extended the file and no checkpoint has yet truncated it (Inferred from source). The two header slots are written at fixed offsets, outside the block allocator, so once the file exists a header write is over a range written before.
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/single_file_block_manager.cpp
+
+> 	header.block_count = NumericCast<idx_t>(max_block);
+
+> 	max_block = UnsafeNumericCast<block_id_t>(header.block_count);
+
+> 		auto block = reader.Read<block_id_t>(context);
+> 		free_list.insert(block);
+
+> 	auto location = active_header == 1 ? Storage::FILE_HEADER_SIZE : Storage::FILE_HEADER_SIZE * 2;
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/checkpoint_manager.cpp
+
+> 	block_manager.WriteHeader(context, header);
+
+> 	// truncate the file
+> 	block_manager.Truncate();
+
+Metadata blocks are an exception. Metadata is kept in slots, 64 to a block, and a slot is taken from an existing block that has one free. Inferred from source: such a block is converted to an in-memory copy and written back at its own id, so its other slots are rewritten in place.
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/include/duckdb/storage/metadata/metadata_manager.hpp
+
+> 	static constexpr const idx_t METADATA_BLOCK_COUNT = 64;
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/metadata/metadata_manager.cpp
+
+> 	// check if there is any free space left in an existing block
+
+> 		// this block is a disk-backed block, yet we are planning to write to it
+> 		// we need to convert it into a transient block before we can write to it
+
+> 			// Convert the temporary block to a persistent block.
+
+> 			auto new_block = block_manager.ConvertToPersistent(context, kv.first, std::move(block_handle),
+
+*The default path: the file's size.* At the end of a checkpoint, free blocks at the tail of the file are cut off. The block manager also truncates when the file is longer than its last used block. The size it compares is the one the file system reports, and on POSIX the call is `ftruncate`.
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/single_file_block_manager.cpp
+
+> 	// reverse iterate over the free-list
+
+> 	auto new_size = NumericCast<idx_t>(BLOCK_START + NumericCast<idx_t>(max_block) * GetBlockAllocSize());
+> 	if (blocks_to_truncate > 0 || handle->GetFileSize() > new_size) {
+> 		handle->Truncate(new_size);
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/common/local_file_system.cpp
+
+> 	return file_metadata.file_size;
+
+> 	if (ftruncate(fd, new_size) != 0) {
+
+Inferred from source: a mode-0 `fallocate` that extended the file past its last used block would be cut back at the next checkpoint, since the file is then longer than that block. A `KEEP_SIZE` reservation does not change the file's size. Neither `truncate(2)` nor `fallocate(2)` says whether `ftruncate` frees blocks reserved past the end of the file. ext4's code at Linux v7.3 does: for a file that uses extents, an `ftruncate` to the current size or below removes every whole block past the new size, reserved blocks included (Inferred from source). So on ext4 a checkpoint that truncates the file also cuts a `KEEP_SIZE` range past the end (Inferred from source). A checkpoint truncates only when it frees blocks at the tail or the file is longer than its last used block, and a `KEEP_SIZE` range alone makes neither true (Inferred from source).
+
+Source: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/plain/fs/ext4/inode.c?h=v7.3
+
+> 		 * Call ext4_truncate() even if i_size didn't change to
+> 		 * truncate possible preallocated blocks.
+> 		 */
+> 		if (attr->ia_size <= oldsize) {
+> 			rc = ext4_truncate(inode);
+
+> 		err = ext4_ext_truncate(handle, inode);
+
+Source: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/plain/fs/ext4/extents.c?h=v7.3
+
+> 	last_block = (inode->i_size + sb->s_blocksize - 1)
+> 			>> EXT4_BLOCK_SIZE_BITS(sb);
+
+> 	err = ext4_ext_remove_space(inode, last_block, EXT_MAX_BLOCKS - 1);
+
+Free blocks inside the file stay allocated on the default path, and the documentation's way to give their space back is to copy the database.
+
+Source: https://github.com/duckdb/duckdb-web/blob/c53d1db49ed9869e8a43df1f16d1d1053367745c/docs/2.0/operations_manual/footprint_of_duckdb/reclaiming_space.md
+
+> DuckDB uses a single-file format, which has some inherent limitations w.r.t. reclaiming disk space.
+
+> To compact the database, you can create a fresh copy of the database using the
+
+**Stated why, for the block layout.** The CIDR 2020 paper gives the reason for a single file. It also states the order of a checkpoint's writes: new blocks first, and last the root pointer and the free list in the header, atomically. The code comments give the same order, and say how recovery tells from the root block whether a checkpoint completed. No stated reason was found for writing changed data to other blocks rather than over the old ones. Inferred: writing elsewhere leaves the blocks the current header points to intact until the header switches. Searched: the SIGMOD 2019 and CIDR 2020 papers, the 2024 post on ACID, and the storage internals page under `docs/2.0`.
+
+Source: https://hannes.muehleisen.org/publications/CIDR2020-raasveldt-muehleisen-duckdb.pdf (line breaks collapsed)
+
+> The fact that the database only consists of a single file was inspired by SQLite [3] and repeated user requests for this feature in MonetDBLite.
+
+> Checkpoints will first write new blocks that contain the updated data to the file and as a last step update the root pointer and the free list in the header atomically.
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/checkpoint_manager.cpp
+
+> 	// during recovery we use this:
+> 	// * if the root meta block matches the checkpoint entry, we know the checkpoint was completed
+> 	// * if the root meta block does not match the checkpoint entry, we know the checkpoint was not completed
+
+*Hole punching.* The block manager can punch holes over the blocks a checkpoint frees. It does so only when `trim_free_blocks` is set, and that option defaults to false. At v2.0.1 it is a field of the C++ configuration with no SQL setting: `settings.json` has no entry for it. The punch is `fallocate(PUNCH_HOLE|KEEP_SIZE)`. On this path it is compiled only on Linux with glibc 2.18 or later. Where `__GLIBC__` is not defined, the guard leaves it out too (Inferred from source).
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/single_file_block_manager.cpp
+
+> 	if (!DBConfig::Get(db).options.trim_free_blocks) {
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/include/duckdb/main/config.hpp
+
+> 	//! Whether or not to invoke filesystem trim on free blocks after checkpoint. This will reclaim
+> 	//! space for sparse files, on platforms that support it.
+> 	bool trim_free_blocks = false;
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/common/local_file_system.cpp
+
+> #if defined(__linux__)
+> 	// FALLOC_FL_PUNCH_HOLE requires glibc 2.18 or up
+> #if __GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 18)
+> 	// Nothing
+
+> 	int res = fallocate(fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, UnsafeNumericCast<int64_t>(offset_bytes),
+
+Under the slow-verifier build flags, the same call first writes zeros over the range. Those flags are for tests, not a default build.
+
+> #if defined(DUCKDB_RUN_SLOW_VERIFIERS) || defined(DUCKDB_ALTERNATIVE_VERIFY)
+> 	std::vector<char> zeros(length_bytes, '\0');
+> 	Write(handle, zeros.data(), length_bytes, offset_bytes);
+
+The option came from a 2024 pull request by `jkub`, labelled a contributor, which gives the reason: the file system may then free the range. `Mytherin` (a member) welcomed it, and was unsure how well it works across file systems.
+
+Source: https://github.com/duckdb/duckdb/pull/11258
+
+> Add TRIM method to file system, which enables excising a range of the DB file. The OS can drop pages from the page-cache, and the file-system is free to deallocate the range (sparse file support).
+
+> The feature is enabled via a dbconfig.options.trim_free_blocks, which defaults to false.
+
+Source: https://github.com/duckdb/duckdb/pull/11258#issuecomment-2009622498
+
+> I'm very curious how well this works on various file systems/operating systems, but we can experiment with that separately.
+
+On `main`, pull request #28571 by `Robinho-MR` (a contributor), merged on 2026-11-10, makes `trim_free_blocks` a setting, still false by default. It was merged before the v2.0.1 tag, whose commit is dated 2026-11-19, but its commit is not in v2.0.1: GitHub's comparison of the two shows they have diverged.
+
+Source: https://github.com/duckdb/duckdb/pull/28571
+
+> - `trim_free_blocks` -> new setting `trim_free_blocks`
+
+Source: https://github.com/duckdb/duckdb/blob/392cee07532cad39193661814ff35309b7437b1f/src/common/settings.json
+
+>         "name": "trim_free_blocks",
+>         "description": "Whether to invoke filesystem trim on free blocks after checkpoint. This reclaims space for sparse files, on platforms that support it.",
+>         "type": "BOOLEAN",
+>         "scope": "global",
+>         "default_value": "false"
+
+Inferred from source: on the default path DuckDB punches no hole in its own file unless the embedding program sets `trim_free_blocks`. With it set, a checkpoint on Linux asks to punch the blocks it frees, except those a live block handle still holds, which return to the free list later without a punch. A punch that fails, as on a filesystem without `PUNCH_HOLE`, is not reported: the database handle drops the result (Inferred from source).
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/single_file_block_manager.cpp
+
+> 	// the block exists - add to blocks in use
+> 	free_blocks_in_use.insert(block_id);
+
+> 			if (AddFreeBlock(release_lock, block)) {
+> 				fully_freed_blocks.insert(block);
+
+> 		// it is! move it to the regular free list so the block can be re-used
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/common/local_file_system.cpp
+
+> 	trimmed = (res == 0);
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/database_handle.cpp
+
+> void DatabaseHandle::Trim(idx_t offset, idx_t length) {
+> 	if (mmap_handle) {
+> 		mmap_handle->Trim(offset, length);
+> 	} else {
+> 		handle->Trim(offset, length);
+
+*Preallocation.* DuckDB does not preallocate its own file. Under `src/` at v2.0.1, `fallocate` is called twice, each time with `FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE`, and `posix_fallocate` is never called (searched by the author).
+
+*The WAL.* The write-ahead log is a second file, named after the database file with `.wal` added. The documentation puts it, and the temporary directory below, relative to the database file, and says a clean exit deletes the WAL.
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/include/duckdb/storage/storage_manager.hpp
+
+> 	string GetWALPath(const string &suffix = ".wal");
+
+Source: https://github.com/duckdb/duckdb-web/blob/c53d1db49ed9869e8a43df1f16d1d1053367745c/docs/2.0/operations_manual/footprint_of_duckdb/files_created_by_duckdb.md
+
+> DuckDB creates the following files and directories in the working directory (for in-memory connections) or relative to the database file (for persistent connections):
+
+> If DuckDB exits normally, the WAL file is deleted upon exit. If DuckDB crashes, the WAL file is required to recover data.
+
+The WAL is opened for appending. A commit that writes to the WAL flushes it, and the flush syncs the file. With `fsync_mode` at its default, the sync is `fdatasync` where the platform has it and `fsync` otherwise. A commit that fails truncates the WAL back to where it began.
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/write_ahead_log.cpp
+
+> 		                                      FileFlags::FILE_FLAGS_APPEND | FileFlags::FILE_FLAGS_MULTI_CLIENT_ACCESS);
+
+> 	// flushes all changes made to the WAL to disk
+> 	writer->Sync();
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/storage_manager.cpp
+
+> 	wal.Flush();
+
+> 		// remove any entries written into the WAL by truncating it
+> 		wal.Truncate(initial_wal_size);
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/common/serializer/buffered_file_writer.cpp
+
+> void BufferedFileWriter::Sync() {
+> 	Flush();
+> 	handle->Sync();
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/common/local_file_system.cpp
+
+> 	bool sync_success = ::fdatasync(fd) == 0;
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/common/settings.json
+
+>         "name": "fsync_mode",
+>         "description": "How to synchronize database file changes to stable storage (STANDARD, NONE or FULL). NONE may cause database corruption after an operating system or hardware crash. FULL uses fullfsync on macOS.",
+>         "type": "ENUM<FileSyncMode>",
+>         "scope": "global",
+>         "default_value": "STANDARD"
+
+A commit asks for a checkpoint when the WAL would grow past `checkpoint_threshold`, 16 MiB by default. A count of WAL entries can ask for one too, but that is off by default. A clean close checkpoints the database and deletes the WAL, unless `checkpoint_on_shutdown` is turned off.
+
+Source: https://github.com/duckdb/duckdb-web/blob/c53d1db49ed9869e8a43df1f16d1d1053367745c/docs/2.0/configuration/overview.md
+
+> | `checkpoint_threshold`, `wal_autocheckpoint` | The WAL size threshold at which to automatically trigger a checkpoint, e.g., 1GB. | `VARCHAR` | `16.0 MiB` |
+
+> | `wal_autocheckpoint_entries` | Trigger automatic checkpoint when WAL entry count reaches or exceeds N (0 = disabled). | `UBIGINT` | `0` |
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/storage_manager.cpp
+
+> 	if (expected_wal_size > config.checkpoint_wal_size) {
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/include/duckdb/main/config.hpp
+
+> 	//! Run a checkpoint on successful shutdown and delete the WAL, to leave only a single database file behind
+> 	bool checkpoint_on_shutdown = true;
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/main/attached_database.cpp
+
+> 				options.wal_action = CheckpointWALAction::DELETE_WAL;
+
+The threshold makes a commit eligible to checkpoint; it does not make the checkpoint run. A commit that cannot take the checkpoint lock does not checkpoint, nor does one that made updates while other transactions are active. The WAL can then grow past the threshold (Inferred from source). A commit whose estimated WAL write reaches `auto_checkpoint_skip_wal_threshold` can skip the WAL and checkpoint instead. A `DETACH` follows `checkpoint_on_detach`, which by default defers to `checkpoint_on_shutdown`.
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/transaction/duck_transaction_manager.cpp
+
+> 		return CheckpointDecision("Failed to obtain checkpoint lock - another thread is writing/checkpointing or "
+
+> 				// this transaction has performed updates - we cannot checkpoint
+
+> 		// if we are committing changes and we are not doing a "checkpoint instead of WAL write"
+
+Source: https://github.com/duckdb/duckdb-web/blob/c53d1db49ed9869e8a43df1f16d1d1053367745c/docs/2.0/configuration/overview.md
+
+> | `auto_checkpoint_skip_wal_threshold` | The estimated WAL write size at which point we will skip writing to the WAL and only checkpoint. Skipping writing to the WAL means concurrent commits are blocked while the checkpoint is happening. | `UBIGINT` | `100000` |
+
+> | `checkpoint_on_detach` | Override checkpoint behavior when detaching a database. ENABLED requests a checkpoint, but the checkpoint does not occur if another connection still references the database. DISABLED never checkpoints, DEFAULT defers to the global checkpoint_on_shutdown setting. | `VARCHAR` | `DEFAULT` |
+
+After a checkpoint, the WAL is deleted and opened again empty. If transactions committed while the checkpoint ran, their log, kept in a second file, is renamed over it instead.
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/storage_manager.cpp
+
+> 		fs.TryRemoveFile(wal_path);
+
+> 	// move the secondary WAL over the main WAL
+> 	fs.MoveFile(checkpoint_wal_path, wal_path);
+
+> 	return GetWALPath(".wal.checkpoint");
+
+Inferred from source: the WAL is a second file that grows by appends between checkpoints, beside the database file and so in the same directory. A reservation made on the database file does not cover it.
+
+*Spill files.* Intermediates that do not fit in memory go to a temporary directory. It belongs to the DuckDB instance, not to each attached database: by default it is named after the database the instance was opened with, with `.tmp` added, or is `.tmp` for an in-memory instance (Inferred from source). So a file attached to an instance opened on another path has no spill directory of its own beside it. By default the directory may take up to 90% of the disk space available where it is, measured when the cap is set (Inferred from source). Where that space cannot be read, the code's comment says it sets no cap. How DuckDB writes those files was not read.
+
+Source: https://github.com/duckdb/duckdb-web/blob/c53d1db49ed9869e8a43df1f16d1d1053367745c/docs/2.0/configuration/overview.md
+
+> | `temp_directory` | Set the directory to which temporary files are written. | `VARCHAR` | `⟨database_name⟩.tmp` or `.tmp` (in in-memory mode) |
+
+> | `max_temp_directory_size` | The maximum amount of data stored inside the 'temp_directory' (when set) (e.g., 1GB). | `VARCHAR` | `90% of available disk space` |
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/main/config.cpp
+
+> 	} else if (DBConfig::IsInMemoryDatabase(options.database_path.c_str())) {
+> 		options.temporary_directory = ".tmp";
+> 	} else {
+> 		options.temporary_directory = Path::AddSuffixToPath(options.database_path, ".tmp");
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/main/database.cpp
+
+> 		buffer_manager = make_uniq<StandardBufferManager>(*this, config.options.temporary_directory);
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/temporary_file_manager.cpp
+
+> 	auto disk_space = FileSystem::GetAvailableDiskSpace(path);
+
+> 	if (!disk_space.IsValid()) {
+> 		// But if it does (i.e because the system call is not implemented)
+> 		// we don't cap the available swap space
+> 		return DConstants::INVALID_INDEX - 1;
+
+> 	// Only use 90% of the available disk space
+
+*The memory-mapped mode.* `IO_MODE 'MMAP'` maps the file and reads and writes through the mapping. `Mytherin` added it in pull request #22988, merged on 2026-06-02, together with direct I/O. The 2.0 highlights post names both modes in one sentence. No page under `docs/2.0` mentions `IO_MODE`, `MMAP_RESERVE_SIZE` or mmap, the `ATTACH` page included (searched by the author, 475 pages).
+
+Source: https://github.com/duckdb/duckdb-web/blob/c53d1db49ed9869e8a43df1f16d1d1053367745c/_posts/2026-08-17-duckdb-20-highlights.md
+
+> along with asynchronous Parquet writes ([#23283](https://github.com/duckdb/duckdb/pull/23283)) and new `MMAP` and `DIRECT_IO` modes ([#22988](https://github.com/duckdb/duckdb/pull/22988)).
+
+The pull request gives the authors' why. It moves caching to the operating system's page cache, for performance. It reserves address space up front so that writes need no remapping.
+
+Source: https://github.com/duckdb/duckdb/pull/22988
+
+> * **MMAP**: Use `mmap` as a back-end for reads and writes. Instead of reading into buffers that we cache explicitly we rely on the OS' page cache to do the caching of data in the files.
+
+> In general these settings should not affect usage - only performance.
+
+> For writing, we rely on reserving address space in the mmaped file up-front. This allows us to just hand out pointers in the file to write to instead of having to do any extending / remapping of the file.
+
+The pull request gives the default reserve as `max(256GB, 2 * file_size)`. The code at v2.0.1 maps the larger of the file's size and the reserve, which is 256 GiB unless `MMAP_RESERVE_SIZE` sets it. With the default reserve the two differ once twice the file's size passes 256 GiB, that is for a file larger than 128 GiB. A file already larger than the reserve is mapped at its own size and not extended (Inferred from source).
+
+> By default we reserve address space is equal to `max(256GB, 2 * file_size)`
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/database_handle.cpp
+
+> 	static constexpr idx_t MMAP_DEFAULT_RESERVE_SIZE = idx_t(256) * 1024 * 1024 * 1024; // 256 GiB
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/common/local_file_system.cpp
+
+> 		mapping_size = MaxValue<idx_t>(initial_file_size, options.reserve_size);
+> 		if (initial_file_size < mapping_size) {
+
+A writable mapping first extends the file to the reserve with `ftruncate`, and then maps it shared. DuckDB's comment calls the extension sparse. `truncate(2)` says only that the extension reads as zeros. That it allocates no blocks is DuckDB's statement, not the man page's.
+
+> 	// Writable mappings sparsely extend the file to the reserve size so the region never
+> 	// needs to be remapped; read-only mappings just span the existing file.
+
+> 			if (ftruncate(fd, NumericCast<off_t>(mapping_size)) != 0) {
+
+> 		void *mapped = mmap(nullptr, mapping_size, prot, MAP_SHARED, fd, 0);
+
+Source: https://man7.org/linux/man-pages/man2/truncate.2.html (line breaks collapsed)
+
+> If the file previously was shorter, it is extended, and the extended part reads as null bytes ('\0').
+
+The memory-mapped open takes the same lock as the buffered one, so the one-writer rule above holds in this mode too (Inferred from source).
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/common/local_file_system.cpp
+
+> // Apply a fcntl advisory lock per flags.Lock(); throws (and closes fd) on failure. Shared
+> // by OpenFile and MemoryMapFile.
+
+> 	TryAcquireFileLock(*this, fd, path, flags);
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/database_handle.cpp
+
+> 		mmap_flags = FileFlags::FILE_FLAGS_READ | FileFlags::FILE_FLAGS_WRITE | FileLockType::WRITE_LOCK;
+
+A block is written by copying it into the mapping, not by a `write` call. A sync is `msync` with `MS_SYNC`. A write past the reserve fails with an error that tells the user to attach again.
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/common/file_buffer.cpp
+
+> 	auto dst = handle.GetDataMutable(location, internal_size);
+> 	memcpy(dst, internal_buffer, internal_size);
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/common/local_file_system.cpp
+
+> 	if (msync(data, size, MS_SYNC) != 0) {
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/database_handle.cpp
+
+> 		throw IOException("Database file \"%s\" would grow to %llu bytes, which exceeds the memory-mapped reserved "
+> 		                  "size of %llu bytes. Re-attach with a larger MMAP_RESERVE_SIZE, or without "
+> 		                  "IO_MODE='MMAP', to allow further growth.",
+
+In this mode the file stays at its reserve size, and the block manager's size check reads it as 0. So a checkpoint punches a hole over the tail only when it frees blocks at the tail, whether or not `trim_free_blocks` is set (Inferred from source). Its punch is compiled only on Linux, and with glibc only from 2.18. As on the buffered path, a failed punch is not reported (Inferred from source).
+
+> 		// File stays at reserve size in MAP mode; punch a hole to release the tail.
+> 		mmap_handle->Trim(new_size, mmap_handle->Size() - new_size);
+
+> idx_t DatabaseHandle::GetFileSize() {
+> 	if (mmap_handle) {
+> 		return 0;
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/common/local_file_system.cpp
+
+> #if defined(__linux__) && !(defined(__GLIBC__) && (__GLIBC__ < 2 || (__GLIBC__ == 2 && __GLIBC_MINOR__ < 18)))
+> 	int rc = fallocate(fd, FALLOC_FL_PUNCH_HOLE | FALLOC_FL_KEEP_SIZE, NumericCast<off_t>(offset),
+> 	                   NumericCast<off_t>(length));
+> 	return rc == 0;
+
+The mode does not apply to an encrypted database. An encrypted attach in this mode falls back to buffered I/O with a warning, and the memory-map open refuses one as a second guard.
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/storage_manager.cpp
+
+> 	// MMAP + encryption would corrupt the file (in-place decryption); demote to BUFFERED_IO.
+
+Source: https://github.com/duckdb/duckdb/blob/v2.0.1/src/storage/database_handle.cpp
+
+> 		throw InvalidInputException("MMAP mode is not supported for encrypted databases");
+
+Inferred from source and P7: a writable file in this mode has a size of at least 256 GiB by default. The extension allocates no blocks, so the file's allocated blocks are those already written and any range reserved on it by other means, such as `fallocate`. The kubelet's scan sums allocated blocks, not the apparent size (P7), so it would count those blocks, not the rest of the reserve.
+
+*A full disk in the memory-mapped mode.* A copy into the mapping that lands on a page with no disk block behind it needs space when the page is first written. Under delayed allocation, ext4 reserves the space in the fault and allocates the block later. When free space runs low, or without delayed allocation, it allocates the block in the fault (Inferred from source). On ext4 at Linux v7.3, `ext4_page_mkwrite` retries an `ENOSPC` and then turns the error into `VM_FAULT_SIGBUS`, by way of `vmf_fs_error`. That holds on the delayed-allocation path and on the path that allocates at once.
+
+Source: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/plain/fs/ext4/inode.c?h=v7.3
+
+> 	/* Delalloc case is easy... */
+> 	if (test_opt(inode->i_sb, DELALLOC) &&
+> 	    !ext4_nonda_switch(inode->i_sb)) {
+> 		do {
+> 			err = block_page_mkwrite(vma, vmf,
+> 						   ext4_da_get_block_prep);
+> 		} while (err == -ENOSPC &&
+> 		       ext4_should_retry_alloc(inode->i_sb, &retries));
+> 		goto out_ret;
+
+> 	/* OK, we need to fill the hole... */
+
+> retry_alloc:
+> 	/* Start journal and allocate blocks */
+> 	err = ext4_block_page_mkwrite(inode, folio, get_block);
+> 	if (err == -EAGAIN ||
+> 	    (err == -ENOSPC && ext4_should_retry_alloc(inode->i_sb, &retries)))
+> 		goto retry_alloc;
+> out_ret:
+> 	ret = vmf_fs_error(err);
+
+> 	 * a small amount in the end.  Here we just reserve for data.
+
+> 	 * switch to non delalloc mode if we are running low
+> 	 * on free block. The free block accounting via percpu
+
+Source: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/plain/include/linux/mm.h?h=v7.3
+
+> 	/* -ENOSPC, -EDQUOT, -EIO ... */
+> 	return VM_FAULT_SIGBUS;
+
+`signal(7)` gives `SIGBUS` the default action of terminating the process and dumping core. `mmap(2)` names `SIGBUS` only for access beyond the end of the mapped file, and says nothing about a full disk. DuckDB's `src/` has no handler for `SIGBUS` (searched by the author).
+
+Source: https://man7.org/linux/man-pages/man7/signal.7.html
+
+> Core   Default action is to terminate the process and dump core
+
+> SIGBUS       P2001      Core    Bus error (bad memory access)
+
+Source: https://man7.org/linux/man-pages/man2/mmap.2.html (line breaks collapsed)
+
+> SIGBUS Attempted access to a page of the buffer that lies beyond the end of the mapped file.
+
+Inferred from source, for ext4 at Linux v7.3: in the memory-mapped mode, a write into an unallocated page of the database file on a full filesystem raises `SIGBUS`, whose default action ends the process, rather than returning `ENOSPC` to DuckDB. A write into a page whose blocks are all allocated needs no new data block: on the path that allocates at once, the fault returns early where the page's buffers are all mapped. Whether a write into a reserved, unwritten page can still fail for want of a metadata block, as P1 describes for a buffered write, was not traced for the mapped path. The host application can change the disposition of `SIGBUS`, and DuckDB itself installs no handler. The WAL is still written through the buffered writer, so a full disk fails a WAL write the way P9 describes. OverlayFS hands a mapping to its real file. For a file opened for writing, that is the file in the upper layer (P4). So for a file in a container's writable layer, the fault is the upper filesystem's (Inferred from source). Other filesystems are under "Candidates not examined".
+
+Source: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/plain/fs/ext4/inode.c?h=v7.3
+
+> 	 * Return if we have all the buffers mapped. This avoids the need to do
+
+Source: https://man7.org/linux/man-pages/man7/signal.7.html
+
+> A process can change the disposition of a signal using
+
+Source: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/plain/fs/overlayfs/file.c?h=v7.3
+
+> 	return backing_file_mmap(of->realfile, vma, &ctx);
+
+Source: https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/plain/fs/backing-file.c?h=v7.3
+
+> 	vma_set_file(vma, file);
 
 **A process that forks.** No DuckDB documentation page mentions process fork. The author grepped the 475 pages under `docs/2.0` at `c53d1db` for "fork", "forked" and "forking": the two hits use "fork" for a git fork. Of the 176 blog posts, one changelog line mentions it.
 
@@ -1884,6 +2417,12 @@ Where a platform faced the same problem and chose differently, with its stated w
 - **DuckDB talks** linked from the Quack post: not watched.
 - **Filestore's server filesystem**, and whether an NFS write is in place there: no source read speaks to it.
 - **Other embedded engines** besides SQLite: the ticket asks for one contrast.
+- **DuckDB's direct I/O mode** (`IO_MODE 'DIRECT_IO'`): not read beyond its flag.
+- **DuckDB on Windows**: its memory-mapping and trim code was not read.
+- **A memory-mapped DuckDB file on other layers**: on tmpfs (a memory `emptyDir`), staged by Cloud Storage FUSE, or on XFS or btrfs when the disk is full. Each would rest on one inference stacked on another, so none is reported. An overlay writable layer hands the mapping to its real file in the upper layer (Inferred from source, P4, P10).
+- **DuckDB's spill files**: how it writes them was not read; only their default directory and cap, from the configuration page and the code.
+- **DuckDB's writes before a checkpoint**: a commit can write row groups to blocks before a checkpoint; their allocation was not traced beyond the free list.
+- **`ftruncate` and a `KEEP_SIZE` range on filesystems other than ext4**: ext4 at Linux v7.3 is read under P10; XFS, btrfs and tmpfs were not.
 
 ## The claims, checked
 
@@ -1893,7 +2432,7 @@ Where a platform faced the same problem and chose differently, with its stated w
 | C2. A file created in the container or on an `emptyDir` is overwritten in place on the node's disk | Holds only under conditions: the upper or `emptyDir` filesystem overwrites the file's blocks in place (ext4; XFS where the blocks are not shared, Inferred; btrfs only for a preallocated extent's first write or a `NOCOW` file, under P3's conditions), and the `emptyDir` is on disk. Wrong for `medium: Memory`. An image-layer file is copied up first, by a clone or a copy, or with no data under `O_TRUNC` | P4, P5 |
 | C3. The guarantee does not hold on ZFS, btrfs, reflinked XFS and APFS | ZFS: confirmed. btrfs: partly. A first write into a preallocated extent, and a rewrite of a `NOCOW` file, go in place only while no snapshot, taken or pending, or other reference shares the extent and the kernel's other checks pass, and still need metadata space (Inferred from source); the authors call preallocation a way "To reduce the chances" of failure. Otherwise a rewrite is copy-on-write. XFS: confirmed for shared blocks only. APFS: Unverified | P3 |
 | C4. A reservation never prevents eviction over the limit | Confirmed where the kubelet measures local ephemeral storage, and stronger: on ext4 a reservation counts towards the measured usage wherever the kubelet's scan, or for an `emptyDir` its quota, sees the file, so it can cause the eviction (Inferred from source) | P7 |
-| C5. A full disk usually shows up as an eviction; reserved space helps with a neighbour, not with the pod's own limit | "Usually an eviction" has no source, and KEP 1029 says a pod can fill the partition first. Over its own limit, eviction is sourced, where the kubelet measures local ephemeral storage and the pod is not critical. A reservation keeps writes into it working after a neighbour fills the disk, where P1's conditions hold, and, under node pressure, adds to the usage by which the pod is ranked, for a byte signal whose ranking includes it (Inferred) | P7, P9 |
+| C5. A full disk usually shows up as an eviction; reserved space helps with a neighbour, not with the pod's own limit | "Usually an eviction" has no source, and KEP 1029 says a pod can fill the partition first. Over its own limit, eviction is sourced, where the kubelet measures local ephemeral storage and the pod is not critical. A reservation keeps writes into it working after a neighbour fills the disk, where P1's conditions hold, and, under node pressure, adds to the usage by which the pod is ranked, for a byte signal whose ranking includes it (Inferred). In DuckDB's opt-in memory-mapped mode on ext4, a write into an unallocated page on a full filesystem raises `SIGBUS`, whose default action ends the process, instead of failing the write (Inferred from source) | P7, P9, P10 |
 | C6. GKE node disks are ext4 | Partly sourced. Two COS releases (2018, and a 2026 dev image) name ext4 for the stateful partition, as does the image layout of `cos-133-19999-44-159`, which the GKE 1.37 changelog names, and a 2023 Google post names ext4 for the Local SSD ephemeral array. Other COS releases, the Ubuntu image and the newer Local SSD layout stay Unverified. Persistent Disk volumes default to ext4, which is a different layer | P6, P8 |
 | C7. Network and FUSE volumes | Now sourced. Filestore: `EOPNOTSUPP` (Inferred from source). Cloud Storage FUSE: not implemented; no write is in place, a rewrite is staged locally, and a new file written in order is streamed where streaming writes are on and within their limit. Generic FUSE: up to the daemon | P6 |
 | C8. The OTel Arrow posts | Identified (Inferred). Every part of the claim holds; three passages come near storage and none covers it | P12, P13 |
@@ -1930,7 +2469,7 @@ Each verdict below says whether a fact's condition holds on a host shaped by tho
 | Writes into the range overwrite the reserved blocks in place (P1, P3) | Holds on ext4 (P1), apart from the metadata reserve below | As H1, for the layout the 2023 post describes | As H1, or H2's 2023 layout with Local SSDs (Inferred), for an `emptyDir`; Unverified for a streamed image's writable layer | ZFS, btrfs and XFS with reflink are not among the filesystems the sources name for GKE nodes (P8) |
 | ext4 can split the unwritten extent when a write lands inside it (P1) | Depends on the reserve, which is 2% or 4096 clusters by default and can be changed, and on the zero-out fallback. What a buffered writer sees when both fail is Unverified | As H1 | As H1 or H2 | A direct-I/O write gets the conversion error (P1) |
 | The file was created at runtime, or truncated on opening (P4) | A file from an image layer is copied up at open, which may need space for its data: less after a clone or where holes are skipped, and none under `O_TRUNC` (P4) | As H1 | As H1 or H2, and Unverified under image streaming | A file the client creates itself is the runtime case |
-| Nothing truncates the file or punches the range afterwards (P1, P2) | A condition on the program, not the host | | | POSIX: a truncating `open` or `creat` frees the space; `PUNCH_HOLE` deallocates it |
+| Nothing truncates the file or punches the range afterwards (P1, P2) | A condition on the program, not the host | | | POSIX: a truncating `open` or `creat` frees the space; `PUNCH_HOLE` deallocates it. What DuckDB itself truncates and punches is in the DuckDB table below (P10) |
 | A mounted volume supports a reservation (P6) | Persistent Disk: yes, ext4 by default. Filestore: no, `EOPNOTSUPP` (Inferred). Cloud Storage FUSE: no, not implemented | As H1 | As H1 | None of these volumes is ephemeral storage (P7). Cloud Storage FUSE stages a write in an `emptyDir` by default, which is ephemeral storage where it is on disk (Inferred, P6, P7) |
 
 ### Eviction and a full disk
@@ -1955,6 +2494,11 @@ DuckDB is a leaning, and this checks the conditions of its rule on the leaning h
 | Two processes open the same file (P10) | Two containers in one pod see the same `emptyDir` (P5) and share the node's kernel, so a second read-write open there fails with "Could not set lock on file" (Inferred). Where the pod shares its process namespace, a container can also reach another's writable layer through `/proc/$pid/root`, subject to file permissions (P4). Two pods each have their own writable layer and `emptyDir`, so a file in either belongs to one pod (Inferred). Two pods can still open one file on a volume both mount, such as a `ReadWriteOnce` volume on one node or a `hostPath` (P6), and the rule applies there where the filesystem honours the lock (Inferred) | Each container has its own writable layer (P4) |
 | A process forks (P10) | The lock is not inherited (`fcntl_locking(2)`, P10). A child that opens the file anew asks for its own lock, and a second read-write open fails while the other process still holds its lock (Inferred). A new Python connection is not always a new open: where the parent's instance for the path was live at the fork, the client's instance cache would hand the child that instance, with no lock of its own (Inferred from source, P10). DuckDB's write-lock test covers a child, forked before any open, that opens first. A child opening its own connection after the parent used DuckDB is reported failing for MotherDuck connections (duckdb-python #292). For a native file that the parent closed before forking, DuckDB's read-lock test has the child open it read-only, and asserts that the parent's later read-write open throws and its read-only open succeeds. A child that opens read-write after the parent used DuckDB is not covered (P10). A child that goes on using the parent's instance is covered by no DuckDB source | SQLite says never to carry a connection across `fork` (P11) |
 | A pull reads the data from another process (P10) | A read-only DuckDB open takes a shared lock, which the writer's exclusive lock excludes, so another process's DuckDB open of a file a writer holds is refused, read-only included, where the filesystem honours locks (Inferred from source, P10). The lock is advisory: it does not stop a process that reads the file without DuckDB, and what such a reader sees is not covered here | A pull served by the writing process itself opens no second handle (Inferred) |
+| DuckDB's writes land on blocks the file already has (P10) | A condition on the engine, not the host. A block reused from the free list is usually a write over a range already written, which lands in place on ext4 (P1, Inferred from source). It needs new space where a checkpoint truncated it off the tail and the file was opened again, or where `trim_free_blocks` punched it (Inferred from source). A block past the highest recorded block extends the file where the file ends there, and lands in reserved blocks only where the range was reserved past the end (P1). Where the file is longer, as in the memory-mapped mode or after a mode-0 extension before the next checkpoint, it lands inside the file (Inferred from source). Which kind a write is depends on the free list at that moment (Inferred from source) | Metadata blocks are rewritten at their own id, and the two header slots at fixed offsets (Inferred from source, P10) |
+| DuckDB does not truncate or punch a reserved range (P1, P10) | Default path: no hole is punched unless the program sets `trim_free_blocks`, false by default and not a SQL setting at v2.0.1 (Inferred from source). A checkpoint that frees blocks at the tail, or finds the file longer than its last used block, truncates the file to that block. That cuts a mode-0 reservation that extended the file and, on ext4 at Linux v7.3, a `KEEP_SIZE` range past the end; a `KEEP_SIZE` range alone does not make a checkpoint truncate (Inferred from source). Memory-mapped mode: a checkpoint that frees blocks at the tail punches them instead, on Linux (Inferred from source). A punch that fails is not reported in either mode (Inferred from source) | #28571, merged to `main` before the v2.0.1 tag but not in it, makes `trim_free_blocks` a setting, false by default (P10) |
+| The engine writes one file (P10) | Does not hold. The WAL is a second file beside the database file. It grows by appends until a checkpoint. A commit asks for one once the WAL would pass 16 MiB by default, and the checkpoint can be declined, so the WAL can grow past that (Inferred from source). After a checkpoint it is deleted, or replaced by the log of commits made during it, and a clean close that checkpoints deletes it. A reservation on the database file does not cover it (Inferred from source). Spill files go by default to a `.tmp` directory named after the database the DuckDB instance was opened with, which need not be the attached file. It may take up to 90% of the disk space available there when the cap is set, and has no cap where that space cannot be read (Inferred from source) | A commit that writes the WAL syncs it unless `fsync_mode` is `NONE`; a large commit can checkpoint instead of writing it (P10) |
+| A memory-mapped database file's size matches its allocated blocks (P7, P10) | Does not hold in the memory-mapped mode: the file is extended to 256 GiB by default unless it is already larger, and the extension allocates no blocks (DuckDB's comment; Inferred on ext4). Where the kubelet's scan walks the file, it sums allocated blocks: those written and any range reserved on the file, not the rest of the reserve (Inferred from P7) | How an `emptyDir` quota counts such a file is not covered here |
+| A full disk fails a write with an error the engine sees (P9, P10) | Default path: as P9. Memory-mapped mode, where the file is on ext4 (the reservation table gives where H1, H2 and H3 are): a write into an unallocated page on a full filesystem raises `SIGBUS`, whose default action ends the process (Inferred from source, Linux v7.3). Which kernel a GKE node runs was not established, so whether a node's ext4 behaves as v7.3's does is Unverified | DuckDB installs no `SIGBUS` handler; the host application can change the disposition (`signal(7)`). The WAL is written through the buffered writer in either mode (P10) |
 
 ### The comparables
 
@@ -1969,6 +2513,9 @@ Every source here explains a mechanism of a platform the client would run on, no
 | P6 NFSv4.2 `ALLOCATE` | A server's promise of space | Writing zeros "is also not guaranteed to work" on some filesystems | None: Filestore serves NFSv3 or NFSv4.1 (P6) | | Informs |
 | P7 Kubernetes | Enforce ephemeral storage by eviction, not quotas | KEPs 361 and 1029: measurement is reactive; a quota could stop a container writing its exit log | Every GKE host, where the kubelet measures local ephemeral storage (stated by the 2023 post for its Local SSD option, Inferred elsewhere, P8) | | Informs |
 | P10 DuckDB | One read-write process per file | State cached in memory that other processes cannot see; checkpoints | A file in a pod's `emptyDir` or writable layer, on POSIX, where the filesystem honours `fcntl` locks (Inferred for ext4 and tmpfs, P10) | The rule is per file, not per instance or per container | Informs |
+| P10 DuckDB, block layout | One file: changed data goes to free or new blocks, two header slots alternate, and the WAL is a separate file | A single file "was inspired by SQLite [3] and repeated user requests" (CIDR 2020), which also states the order: new blocks, then the header "atomically". No stated reason was found for writing to other blocks rather than over the old ones | A file in a pod's `emptyDir` or writable layer on ext4, where a reused block that the file still has is overwritten in place (Inferred) | A mode-0 reservation past the last used block, or on ext4 a `KEEP_SIZE` range past the end, which a checkpoint that truncates cuts (Inferred from source); the WAL | Informs |
+| P10 DuckDB, trim | Punch the blocks a checkpoint frees and no live handle holds, only when `trim_free_blocks` is set; false by default | The file system "is free to deallocate the range (sparse file support)" (#11258, a contributor's pull request) | Linux with glibc 2.18 or later; a punch that fails is not reported (Inferred from source, P10) | A reserved range the program means to keep, where the option is set | Informs |
+| P10 DuckDB, memory-mapped mode | Opt-in: extend the file sparsely to a reserve and write through a shared mapping | Rely on the page cache, "only performance"; reserve address space "to just hand out pointers" without remapping (#22988) | ext4, where the extension allocates nothing (Inferred) | An encrypted database; a write past the reserve; on a full ext4 filesystem a write into an unallocated page raises `SIGBUS`, whose default action ends the process (Inferred from source) | Informs |
 | P11 SQLite | One writer at a time; no connection across `fork` | `fcntl` locking "is broken on many NFS implementations"; one WAL file means "only one writer at a time" | | | A contrast only |
 | P13 OTel Arrow | Arrow on the wire and in the pipeline | Large batches: a column-oriented representation compresses and processes them better (OTEP 0156) | | An in-process library writing to local disk; the posts cover no on-disk format. The 2024 post's overload signal, for a gateway, rests on backpressure to callers that wait for an acknowledgement; the 2026 post bounds memory by backpressure and does not say whether the originating caller waits (P13). `CONTEXT.md`'s standing guidance is that the client never blocks the worker | Informs |
 
@@ -2021,8 +2568,8 @@ The one-writer rule of DuckDB, named under "Leanings, not decisions", is checked
 
 This section reports what the evidence bears on each entry. It resolves none and recommends no answer.
 
-- **Open question 8: what bounds the local databases when no collection happens, and what is lost at the bound.** The question was put with the claim that a pod over its ephemeral-storage limit is evicted. That holds where the kubelet measures local ephemeral storage and the pod is not critical (P7). On Autopilot every pod has a limit; on Standard, only a pod whose spec sets one or whose namespace's `LimitRange` fills one in (P8). An eviction deletes the pod's `emptyDir` data (P5). With no limit, or before the kubelet acts, the node's filesystem can fill, and a write that needs new space fails or writes fewer bytes than asked, or, on a filesystem that does not allocate space at write time, a later `write`, `fsync` or `close` fails (P9). On Autopilot a pod's total is 10 MiB to 10 GiB outside the exceptions Google names (P8). Data in the writable layer is lost on a container restart, and data in an `emptyDir` when the pod leaves the node (P4, P5). A memory-backed `emptyDir` is bounded by its tmpfs size and by memory (P5). These are the bounds the platform imposes from outside; they say nothing about which bound the client should impose for itself.
+- **Open question 8: what bounds the local databases when no collection happens, and what is lost at the bound.** The question was put with the claim that a pod over its ephemeral-storage limit is evicted. That holds where the kubelet measures local ephemeral storage and the pod is not critical (P7). On Autopilot every pod has a limit; on Standard, only a pod whose spec sets one or whose namespace's `LimitRange` fills one in (P8). An eviction deletes the pod's `emptyDir` data (P5). With no limit, or before the kubelet acts, the node's filesystem can fill, and a write that needs new space fails or writes fewer bytes than asked, or, on a filesystem that does not allocate space at write time, a later `write`, `fsync` or `close` fails (P9). On Autopilot a pod's total is 10 MiB to 10 GiB outside the exceptions Google names (P8). Data in the writable layer is lost on a container restart, and data in an `emptyDir` when the pod leaves the node (P4, P5). A memory-backed `emptyDir` is bounded by its tmpfs size and by memory (P5). These are the bounds the platform imposes from outside; they say nothing about which bound the client should impose for itself. DuckDB, a leaning, adds its own defaults: a WAL beside the database file, for which a commit asks for a checkpoint once it would pass 16 MiB by default, though the checkpoint can be declined and the WAL grow past that; and the instance's temporary directory, which may take up to 90% of the disk space available there when its cap is set (Inferred from source). In its opt-in memory-mapped mode, a write into an unallocated page on a full ext4 filesystem raises `SIGBUS`, whose default action ends the process (Inferred from source) (P10).
 - **Open question 17: whether the one-process rule must hold per container if collection is a pull.** DuckDB's rule is per file and per process, enforced on POSIX by the kernel's record locks where the filesystem supports them (P10). Containers in one pod each have their own writable layer, and those that mount it share an `emptyDir` (P4, P5). Two of them meet on a file through a shared volume or, where the pod shares its process namespace, through `/proc/$pid/root` (P4). Another process's DuckDB open of a file a writer holds, read-only included, is refused where the filesystem honours locks (Inferred from source, P10). The lock does not stop a process that reads the file without DuckDB. That bears on a pull that reads the files from another process, and not on one served by the writing process. Whether the rule must hold per container is not a platform fact, and the evidence does not settle it.
 - **Ticket 07, diagnostics tables.** The proposed wording above replaces its six bullets if the maintainer agrees. The ticket asks what is promised where the platform cannot reserve space, and how the host application learns which case it is in. The evidence on that: some refusals are visible as `EOPNOTSUPP` (XFS with `always_cow`, zoned btrfs, a FUSE daemon without `fallocate`, Cloud Storage FUSE, Filestore by inference) (P1, P3, P6); ZFS, with its default emulation, can return success and reserve nothing, and with the emulation switched off returns `EOPNOTSUPP` (P3); glibc's `posix_fallocate` falls back to writing a byte per block, ordinary writes whose blocks a later rewrite reuses only where the filesystem overwrites in place (P2, P3, Inferred); and tmpfs reserves memory instead (P5). So a successful call does not by itself show a reservation that holds. Whether a reservation helps at all also depends on how the on-disk format rewrites a table, below.
 - **Ticket 08, fork and more than one process.** DuckDB's documentation says nothing about fork. Its lock is not inherited by a child. A child that opens the file anew asks for its own lock, so a second read-write open fails while the other process still holds its lock (Inferred). In the Python client a new connection in the child may not open the file at all: where the parent's instance for the path was live at the fork, the instance cache would hand the child that instance (Inferred from source, P10). DuckDB's write-lock test asserts the case where the child, forked before any open, opens it first. A child opening its own connection after the parent used DuckDB is reported failing for MotherDuck connections. For a native file that the parent closed before forking, DuckDB's read-lock test asserts that, once the child has opened it read-only, the parent's read-write open throws and its read-only open succeeds. A child that opens read-write after the parent used DuckDB is not covered (P10). A child that keeps using the parent's instance is covered by no DuckDB source (P10). SQLite, the contrast, says never to carry a connection across `fork` (P11). The specification's refusal of establish in a forked child is a proposal; these facts are consistent with it and with other answers, and do not decide between them.
-- **The local databases' on-disk format.** The OTel Arrow posts do not settle it: they cover the wire and the pipeline (P13), and OTEP 0156 rejected Parquet for the wire as "not designed as an in-memory format optimized for online data processing", which is not a finding about disk. Ticket 07's premise, rewriting a table in place, turns on where each write lands. A write lands in reserved blocks only where it falls inside the reserved range: an append can use a range reserved beyond the end of the file, which `fallocate(2)` names as a use of `KEEP_SIZE`, and a rewrite lands in them only where the filesystem overwrites them in place (P1). On a copy-on-write filesystem a rewrite goes to new blocks, except a btrfs preallocated extent's first write or a `NOCOW` file, and an XFS block that is not shared (Inferred), each under P3's conditions (P3). How DuckDB writes its own file, in place or appending, was not researched, so whether a reservation would help a DuckDB file is not known from this file.
+- **The local databases' on-disk format.** The OTel Arrow posts do not settle it: they cover the wire and the pipeline (P13), and OTEP 0156 rejected Parquet for the wire as "not designed as an in-memory format optimized for online data processing", which is not a finding about disk. Ticket 07's premise, rewriting a table in place, turns on where each write lands. A write lands in reserved blocks only where it falls inside the reserved range: an append can use a range reserved beyond the end of the file, which `fallocate(2)` names as a use of `KEEP_SIZE`, and a rewrite lands in them only where the filesystem overwrites them in place (P1). On a copy-on-write filesystem a rewrite goes to new blocks, except a btrfs preallocated extent's first write or a `NOCOW` file, and an XFS block that is not shared (Inferred), each under P3's conditions (P3). How DuckDB writes its own file is read from its source at v2.0.1 (P10). By default a checkpoint writes changed data to free blocks in the file or to new blocks past the highest recorded block, switches between two header slots at fixed offsets, frees the old blocks only after the header is on disk, and truncates free blocks off the end (Inferred from source). So a DuckDB write lands in reserved blocks only where it reuses a block inside the reserved range on a filesystem that overwrites in place, or extends into a range reserved past the end. A reused block is not always one the file still has: an id truncated off the tail stays free in the header on disk (Inferred from source). A checkpoint that truncates the file cuts a mode-0 reservation that extended it and, on ext4 at Linux v7.3, a `KEEP_SIZE` range past the end (P1, Inferred from source). The WAL is a second file, which a reservation on the database file does not cover. DuckDB attempts to punch holes in its own file only where the program sets `trim_free_blocks`, and in the opt-in memory-mapped mode when a checkpoint frees blocks at the tail; neither checks the result. That mode's file is extended sparsely to at least 256 GiB by default, and there a write into an unallocated page on a full ext4 filesystem raises `SIGBUS` (Inferred from source). These are the conditions on which a reservation would or would not help a DuckDB file; the findings do not settle whether it would.

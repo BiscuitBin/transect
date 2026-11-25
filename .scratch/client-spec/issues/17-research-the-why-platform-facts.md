@@ -91,7 +91,7 @@ Given on 2026-11-24, before the work started:
 
 ### Findings
 
-Every source was fetched again by the author and pinned: source and documentation at a tag or commit, man pages by their man-pages release, vendor pages by their last-updated date. Every quotation was checked by script as a substring of that text: 358 quotations at the last check, none missing.
+Every source was fetched again by the author and pinned: source and documentation at a tag or commit, man pages by their man-pages release, vendor pages by their last-updated date. Every quotation was checked by script as a substring of that text: 476 quotations at the last check, after the addition's fixes, none missing.
 
 - **C1, the `fallocate` guarantee.** The substance holds for mode 0 and `KEEP_SIZE`, under conditions: on a local filesystem, the blocks are allocated and overwritten in place, and the range is not truncated or punched; on ext4 a write may still need metadata space to split the extent. On NFS only a v4.2 server's `ALLOCATE` makes the promise. The quotation is wrong: it is in none of the 224 man-pages releases, and the page says "are guaranteed not to fail because of lack of disk space".
 - **C2, in place on the node's disk.** Holds only under conditions. A runtime file in the writable layer, or on a disk `emptyDir`, is on the filesystem that holds containerd's or the kubelet's root; a file from an image layer is copied up first; a memory `emptyDir` is tmpfs, where a reservation is memory.
@@ -102,6 +102,7 @@ Every source was fetched again by the author and pinned: source and documentatio
 - **C7, network and FUSE.** Now sourced: Filestore returns `EOPNOTSUPP` (Inferred from source), Cloud Storage FUSE does not implement `fallocate`, and a FUSE daemon decides for itself.
 - **C8, the OTel Arrow posts.** Identified by content as the posts of 2024-09-25, 2025-05-12 and 2026-06-12 on opentelemetry.io. Every part of the claim holds.
 - **C9, DuckDB's one writer.** Holds for a file opened directly, enforced on POSIX by an advisory record lock where the filesystem supports one, for the stated reason that state is cached in memory. A read-only open asks for a shared lock, so it too is refused while a writer holds the file (Inferred from source). The documentation says nothing on fork; DuckDB's two locking tests and the Python client's instance cache are recorded, and a child that keeps using an inherited instance is covered by no source. Quack and DuckLake route around the rule rather than break it. SQLite is recorded as the contrast and weighed against nothing.
+- **How DuckDB writes its own file**, added after the second key moment. It is read from DuckDB v2.0.1's source, and marked Inferred from source where only the code shows it. By default a checkpoint writes changed data to free blocks or to new blocks past the highest recorded block, then switches between two header slots, and truncates free blocks off the end of the file. Metadata blocks are rewritten at their own id. On the default path a punch is attempted only if the program sets `trim_free_blocks`, which is false by default, and its result is not checked. The WAL is a second file beside the database. On ext4 at Linux v7.3, a checkpoint that truncates the file also cuts a `KEEP_SIZE` reservation past its end. The opt-in memory-mapped mode, which the documentation does not describe, extends the file sparsely to at least 256 GiB by default and punches its tail when a checkpoint frees blocks there. On a full ext4 filesystem, a write into an unallocated page raises `SIGBUS`, whose default action ends the process, instead of failing the write. The fit tables, the comparables, open question 8 and the on-disk format bearing carry these findings.
 
 The fit tables give, per condition, whether it holds on GKE Standard with the boot disk, GKE Standard with Local SSD, and Autopilot, with the Ubuntu image left Unverified. "What the findings bear on" reports on open questions 8 and 17, tickets 07 and 08, and the on-disk format, and resolves none.
 
@@ -114,6 +115,8 @@ Replacement text for ticket 07's six bullets on reserving disk space, and for th
 Every review ran on Codex (codex-cli 0.172.0) with `gpt-6.2-sol`, the model the maintainer named for this ticket. `REVIEW.md` prefers `gpt-6-astra`; it was not used, on the maintainer's instruction. Each session header recorded the model. Every reviewer had a read-only sandbox and live web search under this ticket's authorisation. Every finding was triaged by a fresh Claude Code subagent on Claude Opus 5.5 (`claude-opus-5-5`), which was neither the author nor a reviewer.
 
 Before the first review, a preflight confirmed that Codex ran `gpt-6.2-sol` and could open a URL. Each key moment ran two rounds, the most `REVIEW.md` allows. The review and triage files are under `ai_tmp/client-spec-review/17/`, which is not committed. Every valid finding was resolved; where the two triages proposed different wording for one passage, the author merged them, and the triage's one optional addition, an Arm-board COS layout, was not made. The sources each fix cites were fetched again by the author, and the quotation check passed after each round.
+
+**The addition, after the second key moment.** "How DuckDB writes its own file" and what cites it were reviewed in one round, by the maintainer's choice. The round ran on Codex (codex-cli 0.172.0) with `gpt-6.2-sol`, with the sources and reasoning lenses. Each reviewer had the diff against `0e22863` and was told which sections the key moments had reviewed. Both session headers recorded the model. Each lens's findings were triaged by a fresh Claude Code subagent on Claude Opus 5.5 (`claude-opus-5-5`). All 16 numbered findings were valid or valid in part. Where the two triages proposed different wording for one passage, the author merged them. The author fetched again each source a fix cites, and the quotation check passed after the fixes. There was no second round, so these fixes were not reviewed again.
 
 | Key moment, round, lens | # | Finding | Verdict | Resolution |
 | --- | --- | --- | --- | --- |
@@ -216,14 +219,33 @@ Before the first review, a preflight confirmed that Codex ran `gpt-6.2-sol` and 
 | 2, 2, reasoning | 8 | As sources 6 | Valid | As sources 6; the P3 comparable reworded too |
 | 2, 2, reasoning | 9 | The 2024 gateway's synchronous path was extended to all the posts | Valid | P13 says what the 2026 post does and does not say, with the search; the P13 comparable scoped |
 | 2, 2, reasoning | Suspicions 1–3 | A forked child's native-file connection; the Unverified GKE layers; the OTel identification | Folded into 2, or invalid | Already in the file |
+| Addition, 1, sources | 1 | The `SIGBUS` summaries drop the unallocated-page condition and treat termination as certain; delayed allocation reserves, not allocates | Valid in part | The fault passage says ext4 reserves under delayed allocation, with the reservation and the switch quoted; every summary carries the page condition and the default disposition; the overlay delegation quoted, and the overlay layer moved out of the candidates |
+| Addition, 1, sources | 2 | ext4 at v7.3 frees a `KEEP_SIZE` range when the file is truncated | Valid | `ext4_setattr` and `ext4_ext_truncate` quoted; P10, the fit row, the comparable and the hand-back say so for ext4, Inferred from source; other filesystems stay open |
+| Addition, 1, sources | 3 | A free id truncated off the tail stays free in the header, so reusing it after a reopen extends the file | Valid | The header and checkpoint order quoted in P10; the fit row, the comparable and the bearing qualified |
+| Addition, 1, sources | 4 | The mapped path punches only for freed tail blocks; punch results are dropped; the glibc guard; blocks held by a live handle | Valid | `GetFileSize`'s 0, the guard, the dropped results and the held-block path quoted; P10, the fit row, the trim comparable, the bearing and the hand-back say a punch is attempted and not checked |
+| Addition, 1, sources | 5 | 16 MiB makes a checkpoint eligible, not certain; a large commit can skip the WAL; `DETACH` has its own setting | Valid | The decline paths, `auto_checkpoint_skip_wal_threshold` and `checkpoint_on_detach` quoted; P10, the fit row and the open question 8 bearing reworded |
+| Addition, 1, sources | 6 | The spill directory belongs to the instance, and the 90% cap needs a readable figure | Valid | `config.cpp`, `database.cpp` and the temporary file manager quoted; P10, the fit row and the bearing corrected |
+| Addition, 1, sources | 7 | The reserve formulas diverge above 128 GiB; a larger file is not extended; the scan counts reserved ranges too | Valid | P10, the fit row, the bearing and the hand-back corrected; the extension's condition quoted |
+| Addition, 1, sources | 8 | CIDR 2020 states the checkpoint's order, "atomically" | Valid (low) | Quoted, with the recovery comment; a reason for not writing in place stays not found, and the effect is marked Inferred |
+| Addition, 1, sources | 9 | #28571 was merged before the tag, not after it | Valid | Reworded: merged before the tag, and not in it |
+| Addition, 1, sources | Suspicion | GKE node kernels and the streamed writable layer | Valid in part | The node's kernel marked Unverified in the full-disk row and the open points; the streamed layer was already Unverified |
+| Addition, 1, reasoning | 1 | The `SIGBUS` conclusion loses its conditions; the full-disk row reaches the overlay layer | Valid in part | As sources 1, plus the early return and the host's power to change the disposition quoted, and a metadata block on the mapped path marked not traced. The narrowing of the row to a file directly on ext4 was not taken: the overlay delegation is quoted instead |
+| Addition, 1, reasoning | 2 | As sources 2 | Valid | As sources 2 |
+| Addition, 1, reasoning | 3 | As sources 4 | Valid | As sources 4 |
+| Addition, 1, reasoning | 4 | The next id comes from the header's block count, punched blocks are reused as holes, and the header slots sit at fixed offsets | Valid | `max_block` and the header location quoted; P10, the fit row, the bearing and the hand-back say "past the highest recorded block" |
+| Addition, 1, reasoning | 5 | As sources 5 | Valid | As sources 5; the fit row keeps the rename case |
+| Addition, 1, reasoning | 6 | Allocated blocks include those the file already had, a reservation included | Valid | As sources 7 |
+| Addition, 1, reasoning | 7 | The 90% cap is conditional | Valid (low) | As sources 6 |
+| Addition, 1, reasoning | Suspicion | The outcome on a running GKE layout | Out of scope for an edit | Covered by C6's question to the maintainer, and by the node's kernel, now Unverified |
 
-**Open points.** No review finding is left open: all 81 numbered findings, and the suspicions, were applied or settled. What remains is for the maintainer, and is stated in the research file:
+**Open points.** No review finding is left open: all 81 numbered findings of the two key moments, the 16 of the addition's round, and the suspicions, were applied or settled. What remains is for the maintainer, and is stated in the research file:
 
 - **C6.** Do two COS release notes, one COS build's image layout and Google's 2023 Local SSD post confirm that GKE node disks are ext4? Each speaks for its own release, build or layout. A `mount` on a running node would settle it, and was not within this ticket's authority.
 - **The OTel Arrow posts.** Please confirm that the posts of 2024-09-25, 2025-05-12 and 2026-06-12 are the three `CONTEXT.md` means (P12).
 - **The proposed wording** for ticket 07 and `CONTEXT.md` is for the maintainer to accept, change or reject. Neither file was edited.
-- **Still Unverified, with where was looked:** the Ubuntu node image's filesystem; the newer split Local SSD layout's filesystem; the writable layer under image streaming; what a buffered ext4 writer sees when an extent cannot be split; APFS's in-place rewrite of unshared data; how often the kubelet refreshes the node's free space; whether a GKE Standard cluster sets a `LimitRange` default for ephemeral storage; what a forked DuckDB child sees when it is handed an inherited instance; and how DuckDB writes its own file, in place or appending.
+- **Still Unverified, with where was looked:** the Ubuntu node image's filesystem; the newer split Local SSD layout's filesystem; the writable layer under image streaming; what a buffered ext4 writer sees when an extent cannot be split; APFS's in-place rewrite of unshared data; how often the kubelet refreshes the node's free space; whether a GKE Standard cluster sets a `LimitRange` default for ephemeral storage; what a forked DuckDB child sees when it is handed an inherited instance; whether `ftruncate` frees a range reserved past the end of a file with `KEEP_SIZE` on filesystems other than ext4, where at Linux v7.3 it does (Inferred from source); which kernel a GKE node runs, against which the Linux v7.3 readings were not checked; and DuckDB's direct I/O mode, its spill files and its Windows code, listed under "Candidates not examined".
 - **The last round's fixes.** The second key moment's second-round fixes were checked by the quotation script but not reviewed by anyone after they were applied.
+- **The addition's fixes.** The addition on how DuckDB writes its own file had one review round, by the maintainer's choice. Its fixes were checked by the quotation script, and nobody reviewed them after they were applied.
 
 ### Gates and files
 
@@ -231,10 +253,10 @@ Before the first review, a preflight confirmed that Codex ran `gpt-6.2-sol` and 
 
   > All checks passed and the worktree is unchanged.
 
-- **Final**, at `30ce4e8`, the research file and this hand-back as reviewed and fixed. The commit that records this line changes only the line itself.
+- **Final**, at `30ce4e8`, before the addition: the research file and this hand-back as reviewed and fixed. The commit that records this line changes only the line itself.
 
   > All checks passed and the worktree is unchanged.
-- **Changed files:** `git diff main --stat` shows only this ticket and its research file. The specification, `CONTEXT.md`, `REVIEW.md` and ticket 07 are unchanged. Open questions 8 and 17 are still open in the specification. No code was added.
+- **Changed files:** `git diff c3a33eb --stat`, against the branch's merge base with `main`, shows only this ticket and its research file. The specification, `CONTEXT.md`, `REVIEW.md` and ticket 07 are unchanged. Open questions 8 and 17 are still open in the specification. No code was added.
 
 ### Acceptance
 
