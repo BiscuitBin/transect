@@ -290,7 +290,7 @@ The first column gives the key moment, the round and the lens. Each round ran bo
 
   > All checks passed and the worktree is unchanged.
 
-- **Final**, at `cfca8bd`, the research file and this hand-back as reviewed and fixed. The commit that records this line changes only this section's lines.
+- **Final**, at `48233dd`, the research file and this hand-back as reviewed and fixed, with the date read corrected. The commit that records this line changes only this section's lines.
 
   > All checks passed and the worktree is unchanged.
 - **Changed files:** this ticket and `research/12-hand-over-confirmation-and-purge.md` only. The specification and `CONTEXT.md` are unchanged, open questions 7, 8, 15 and 25 are still in the specification, and no code was added.
