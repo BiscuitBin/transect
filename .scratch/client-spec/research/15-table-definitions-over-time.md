@@ -3,7 +3,7 @@
 - **Ticket:** `issues/15-research-the-why-table-definitions-over-time.md`. It bears on open questions 13 and 20 of `docs/specs/transect-client.allium`.
 - **Sources read:** every source on 2026-11-25 (UTC), which was 2026-11-24 in the researcher's local time.
 - **Web research:** authorised by the maintainer on 2026-11-24 for this ticket, for the agent working it and for its reviewers.
-- **State of this file:** complete. The findings, up to "Candidates not examined, or dropped", passed the first adversarial review in two rounds. Fit, the fairness of the comparison, the two verdicts, the proposed wording and what the findings bear on were written after it, and the second review covers them.
+- **State of this file:** complete. The findings, up to "Candidates not examined, or dropped", passed the first adversarial review in two rounds. Fit, the fairness of the comparison, the two verdicts, the proposed wording and what the findings bear on were written after it, and passed the second adversarial review in two rounds.
 
 ## How the sources were checked
 
@@ -98,7 +98,7 @@ The vocabulary below follows the specification. A **run** is "one establish". A 
   >             if duplicates:
   >                 raise DuplicateTimeseries(duplicates)
 
-- **client_python's multiprocess mode merges per-process files with no check across processes.** It is the one place in this survey where Prometheus code merges data that separate processes wrote to local files. The first file that names a metric sets its help and type, and samples from every other file are added to it. That a worker with a different definition is merged under the first one seen is Inferred from the code, and so is the absence of an error, with one exception found in the same code. When the first file read for a name is a histogram's, every sample with an `le` label is parsed as a bucket bound. A gauge does not reserve `le`, so another worker's gauge may carry one that is not a number, and collection then raises `ValueError`. That path was read, not run. Files from earlier runs are not reconciled: the directory must be wiped.
+- **client_python's multiprocess mode merges per-process files with no check across processes.** It is the one place in this survey where Prometheus code merges data that separate processes wrote to local files. The first file that names a metric sets its help and type, and samples from every other file are added to it. A gauge's mode decides whether the processes' values are kept per process or reduced to their sum, minimum, maximum or most recent. It is set again from each gauge file read, so the last such file in the directory listing decides it (Inferred from the code, author-132). That a worker with a different definition is merged under the first one seen is Inferred from the code, and so is the absence of an error, with one exception found in the same code. When the first file read for a name is a histogram's, every sample with an `le` label is parsed as a bucket bound. A gauge does not reserve `le`, so another worker's gauge may carry one that is not a number, and collection then raises `ValueError`. That path was read, not run. Files from earlier runs are not reconciled: the directory must be wiped.
 
   Source: https://github.com/prometheus/client_python/blob/v0.26.0/prometheus_client/multiprocess.py#L74-L77 (quoted as prometheus-35)
 
@@ -106,6 +106,12 @@ The vocabulary below follows the specification. A **run** is "one establish". A 
   >                 if metric is None:
   >                     metric = Metric(metric_name, help_text, typ)
   >                     metrics[metric_name] = metric
+
+  Source: https://github.com/prometheus/client_python/blob/v0.26.0/prometheus_client/multiprocess.py#L79-L81 (quoted as author-132)
+
+  > if typ == 'gauge':
+  >                     pid = parts[2][:-3]
+  >                     metric._multiprocess_mode = parts[1]
 
   Source: https://github.com/prometheus/client_python/blob/v0.26.0/docs/content/multiprocess/_index.md#L32-L33 (quoted as prometheus-37)
 
@@ -169,11 +175,27 @@ The vocabulary below follows the specification. A **run** is "one establish". A 
   > rarely tends to go well).
 
 - **Why registration may happen at any time: no stated rationale found.** Looked in client_golang's `registry.go` and `doc.go` at `v1.25.0`, `writing_clientlibs.md`, client_golang issues #47 and #203, and GitHub searches for registering at run time. Two further searches of beorn7's comments hit GitHub's rate limit.
-- **client_python's name-only check, and wiping rather than reconciling the multiprocess directory: no stated rationale found.** Looked in `registry.py`, `metrics.py`, `multiprocess.py` and the multiprocess documentation at `v0.26.0`, and in issues #626, #671, #732, #815 and #1042. A maintainer's replies there are usage advice, such as csmarchbanks (member):
+- **client_python's name-only check, and wiping rather than reconciling the multiprocess directory between runs: no stated rationale found.** Looked in `registry.py`, `metrics.py`, `multiprocess.py` and the multiprocess documentation at `v0.26.0`, and in issues #626, #671, #732, #815 and #1042. A maintainer's replies there are usage advice, such as csmarchbanks (member):
 
   Source: https://github.com/prometheus/client_python/issues/671#issuecomment-868543914 (quoted as prometheus-40)
 
   > You should not be creating a new `Counter` each time `REQUEST_COUNT` is called.
+
+- **Why a dead worker's files stay until the directory is wiped.** The documentation keeps them so that their values stay visible:
+
+  Source: https://github.com/prometheus/client_python/blob/v0.26.0/docs/content/multiprocess/_index.md#L144-L146 (quoted as author-133)
+
+  > files
+  > for non-live modes are left in place so their last values remain visible until the directory is
+  > wiped on restart.
+
+  brian-brazil (contributor), asked in issue #275 (2018) whether `mark_process_dead()` could merge a dead worker's files into one:
+
+  Source: https://github.com/prometheus/client_python/issues/275#issuecomment-409193521 (quoted as author-134)
+
+  > That'd require locking across processes, which we want to avoid, and cause issues if that pid was reused.
+
+  Both concern files within one run. Neither gives a reason for wiping the directory between runs rather than checking what an earlier run left.
 
 **Inferred why.** Inferred: the guidelines require every collector to be called on each scrape, so a collector registered late simply appears in the next scrape, and nothing about the pull model needs registration to end before serving.
 
@@ -527,7 +549,7 @@ The check costs time on large gateways, as the passage quoted above (author-8) s
   > Note that violations of the Single-Writer principle are not semantic
   > errors, generally they result from misconfiguration.
 
-- **A duplicate registration returns a working instrument**, which must export data even if that causes a semantic error. The rest is recommended, not required: the SDK SHOULD warn unless a View corrects the conflict, and what the warning SHOULD say depends on the conflict. A description set through a View SHOULD avoid the warning. A conflict that a View selector can tell apart SHOULD get a renaming View recipe in the warning. Otherwise, as with differing units, the SDK SHOULD report both `Metric` objects with a generic warning. SDKs differ in how far they follow it (below).
+- **A duplicate registration returns a working instrument**, one that "can be expected to export data" even if that causes a semantic error. The rest is recommended, not required: the SDK SHOULD warn unless a View corrects the conflict, and what the warning SHOULD say depends on the conflict. A description set through a View SHOULD avoid the warning. A conflict that a View selector can tell apart SHOULD get a renaming View recipe in the warning. Otherwise, as with differing units, the SDK SHOULD report both `Metric` objects with a generic warning. SDKs differ in how far they follow it (below).
 
   Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63.0/specification/metrics/sdk.md (quoted as otel-16, otel-17)
 
@@ -1053,6 +1075,14 @@ Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63
 
   > 409 Conflict – Incompatible schema
 
+  The default compatibility type is `BACKWARD`, and `NONE` turns the check off:
+
+  Source: https://docs.confluent.io/platform/current/schema-registry/fundamentals/schema-evolution.html (quoted as author-135, author-136)
+
+  > The default compatibility mode is BACKWARD.
+
+  > NONE compatibility type means schema compatibility checks are disabled.
+
 - **The producer's `send` then throws.** The serializer turns a 409 into a `SerializationException`, which `KafkaProducer.send` declares. That is read from the code; no end-to-end run was made.
 
   Source: https://github.com/confluentinc/schema-registry/blob/v8.4.1/schema-serializer/src/main/java/io/confluent/kafka/serializers/AbstractKafkaSchemaSerDe.java (quoted as registries-41)
@@ -1331,7 +1361,7 @@ Source: https://github.com/open-telemetry/opentelemetry-specification/blob/v1.63
 
 ### C10. AWS Glue Schema Registry and Apicurio Registry (brief)
 
-**What it does.** Both refuse at the moment a schema is registered. With auto-registration on, which Glue's README says is off by default, registration happens in the producer's serializer, so a refusal can reach the producer while it serializes a record. AWS's guide says Glue's serializer throws for a record whose schema does not match a registered one, and the record is not sent. Apicurio's guide says that with auto-registration the registry applies its compatibility rules, and that "the SerDes" throws on incompatible versions, without saying which side; that a producer's send fails is Inferred. Neither path was traced in either system's code. Read at `aws-glue-schema-registry` `v3.0.1` and Apicurio Registry `3.3.5`, and AWS's developer guide read live.
+**What it does.** Both refuse at the moment a schema is registered, if a compatibility rule applies. Apicurio applies none unless one is configured, and in both a mode of `NONE` turns the check off (author-137, author-138, author-140). With auto-registration on, which Glue's README says is off by default, registration happens in the producer's serializer, so a refusal can reach the producer while it serializes a record. AWS's guide says Glue's serializer throws for a record whose schema does not match a registered one, and the record is not sent. Apicurio's guide says that with auto-registration the registry applies its compatibility rules, and that "the SerDes" throws on incompatible versions, without saying which side; that a producer's send fails is Inferred, except for a Debezium connector (author-139, below). Neither path was traced in either system's code. Read at `aws-glue-schema-registry` `v3.0.1` and Apicurio Registry `3.3.5`, and AWS's developer guide read live.
 
 Source: https://github.com/awslabs/aws-glue-schema-registry/blob/v3.0.1/README.md (quoted as registries-105, registries-106)
 
@@ -1348,6 +1378,18 @@ Source: https://github.com/Apicurio/apicurio-registry/blob/3.3.5/docs/modules/RO
 > All configured global rules, group-specific rules, or artifact-specific rules must pass before a new artifact version can be added to {registry}.
 
 > If not, {registry} reports the reason why in an HTTP error response.
+
+Source: https://github.com/Apicurio/apicurio-registry/blob/3.3.5/docs/modules/ROOT/pages/getting-started/assembly-intro-to-registry-rules.adoc#L83 (quoted as author-137)
+
+> If no global rules are configured, then no rules are applied.
+
+Source: https://github.com/Apicurio/apicurio-registry/blob/3.3.5/docs/modules/ROOT/pages/getting-started/assembly-rule-reference.adoc#L52 (quoted as author-138)
+
+> `NONE`: All backward and forward compatibility checks are disabled.
+
+Source: https://docs.aws.amazon.com/glue/latest/dg/schema-registry.html (quoted as author-140)
+
+> Any new version added will be accepted without undergoing a compatibility check.
 
 Source: https://docs.aws.amazon.com/glue/latest/dg/schema-registry-works.html (quoted as author-52, author-53, author-51)
 
@@ -1370,6 +1412,12 @@ The sentence before it, in the same paragraph, gives each side its part:
 Source: https://github.com/Apicurio/apicurio-registry/blob/3.3.5/docs/modules/ROOT/pages/getting-started/assembly-schema-lifecycle-best-practices.adoc#L539 (quoted as author-104)
 
 > The serializer resolves the schema from {registry}, and the deserializer verifies that the data matches the reader schema.
+
+For one producer, a Debezium connector that registers its schemas automatically, the same guide states the outcome where compatibility rules are configured:
+
+Source: https://github.com/Apicurio/apicurio-registry/blob/3.3.5/docs/modules/ROOT/pages/getting-started/assembly-schema-lifecycle-best-practices.adoc#L703 (quoted as author-139)
+
+> If the new schema violates compatibility rules, the connector task fails and stops processing events until you resolve the schema conflict.
 
 **Stated why.** For Glue, AWS's launch post, by Brian Likosar (a solutions architect at AWS) and Larry Heathcote (a product marketing manager at AWS), 2021-01-13:
 
@@ -1632,6 +1680,12 @@ Source: https://github.com/apache/parquet-format/blob/apache-parquet-format-2.14
 
 > /** When the original schema supports field ids, this will save the
 >    * original field id in the parquet schema
+
+Each schema element also carries a name:
+
+Source: https://github.com/apache/parquet-format/blob/apache-parquet-format-2.14.0/src/main/thrift/parquet.thrift#L540 (quoted as author-157)
+
+> 4: required string name;
 
 **Fit.** In the table under "Fit".
 
@@ -2759,7 +2813,7 @@ Source: https://www.databricks.com/blog/2019/09/24/diving-into-delta-lake-schema
 
 ### C29. Google BigQuery (brief)
 
-**What it does.** Documentation read live. A streaming insert through `tabledata.insertAll` with any invalid row fails the whole request by default; keeping the valid rows is opt-in. Google's streaming page now calls that method the Storage Write API (REST) (author-85); BigQuery's other ingestion interfaces were not read. A field the table lacks is an error by default. A required column cannot be added to an existing table, except nested inside a new `RECORD` field, and a column's mode may only be relaxed from required to nullable. The schema is not add-only: DDL can drop or rename a column and make certain changes to its type.
+**What it does.** Documentation read live. A streaming insert through `tabledata.insertAll` with any invalid row fails the whole request by default; keeping the valid rows is opt-in. A refused request can still return a success HTTP code: the response lists an error for each row, and with a schema mismatch on any row no row is inserted (author-143, author-144). Google's streaming page now calls that method the Storage Write API (REST) (author-85); BigQuery's other ingestion interfaces were not read. A field the table lacks is an error by default. A required column cannot be added to an existing table, except nested inside a new `RECORD` field, and a column's mode may only be relaxed from required to nullable. The schema is not add-only: DDL can drop or rename a column and make certain changes to its type.
 
 Source: https://cloud.google.com/bigquery/docs/reference/rest/v2/tabledata/insertAll (quoted as typed-62)
 
@@ -2790,6 +2844,12 @@ Source: https://docs.cloud.google.com/bigquery/docs/managing-table-schemas (quot
 Source: https://docs.cloud.google.com/bigquery/docs/streaming-data-into-bigquery (quoted as author-85)
 
 > The BigQuery Storage Write API (REST), previously known as the legacy tabledata.insertAll method, lets you stream rows into BigQuery tables without running a load job.
+
+Source: https://docs.cloud.google.com/bigquery/docs/write-api-rest (quoted as author-143, author-144)
+
+> you must check the insertErrors property of the response to determine whether the row insertions were successful
+
+> If BigQuery encounters a schema mismatch on individual rows in the request, none of the rows are inserted and an insertErrors entry is returned for each row, even for rows that didn't have a schema mismatch.
 
 **Stated why.** For refusing to add a required column, Google's troubleshooting page gives the reason:
 
@@ -2822,10 +2882,10 @@ Each claim was recorded in `CONTEXT.md` with no link. Each is checked here again
 | Claim | Result | Where |
 | --- | --- | --- |
 | OpenTelemetry and Prometheus check nothing across processes | **Confirmed for their client libraries and SDKs**, which check only within one process: client_golang within one registry, the OpenTelemetry SDK within one Meter. **Wrong for Prometheus's Pushgateway**, which by default refuses a push whose type conflicts with another pusher's; with `--push.disable-consistency-check` it accepts the push, and its scrapes fail instead. | C1, C3, C4 |
-| ...and keep conflicting versions side by side downstream | **Partly wrong.** By default the Prometheus server keeps the series apart by `job` and `instance`, which `honor_labels` gives up where a target exposes conflicting values for those labels itself, and its experimental metadata API lists the distinct versions among the targets currently scraped. But metadata was overwritten per name before remote write 2.0, federation drops type and help, the OpenTelemetry Collector's Prometheus exporter drops a metric whose type conflicts and keeps the first help while the name stays cached, OpenTelemetry lets a consumer reject a semantic error, and receivers should deduplicate two writers of one stream. Mimir keeps conflicting metadata as a set. In the client rather than downstream, client_python's multiprocess mode keeps one metric per name when it collects files that separate processes wrote: the first file to name a metric sets its help and type, and every other process's samples are added to it (Inferred from the code). | C1, C2, C4, C5, C30 |
+| ...and keep conflicting versions side by side downstream | **Partly wrong.** By default the Prometheus server keeps the series apart by `job` and `instance`, which `honor_labels` gives up where a target exposes conflicting values for those labels itself, and its experimental metadata API lists the distinct versions among the targets currently scraped. But metadata was overwritten per name before remote write 2.0, federation drops type and help, the OpenTelemetry Collector's Prometheus exporter drops a metric whose type conflicts and keeps the first help while the name stays cached, OpenTelemetry lets a consumer reject a semantic error, and receivers should deduplicate two writers of one stream. Mimir keeps conflicting metadata as a set. In the client rather than downstream, client_python's multiprocess mode keeps one metric per name when it collects files that separate processes wrote: the first file to name a metric sets its help and type, and every other process's samples are added to it, while the last gauge file read sets a gauge's mode (Inferred from the code). | C1, C2, C4, C5, C30 |
 | Snowplow adds a declared version, validated downstream, with bad data quarantined | **Confirmed for self-describing events and entities, with two caveats.** Baked-in events, such as page views, carry no event schema. The stated reason is against dropping bad data, not against refusing it at the source. Since Enrich 6.5.0, released on 2026-01-09, Enrich crashes when schema resolution fails with a system error, such as an unreachable registry, instead of writing failed events; its stated reason is to keep infrastructure issues from creating bad rows. | C6 |
 | OpenTelemetry's schema URL adds a declared version, validated downstream, with bad data quarantined | **Declared version: confirmed. Validated downstream and quarantined: wrong.** The schema URL drives translation, and OTEP 0152 puts validation out of scope. The schema processor passes unmapped names through, logs and counts a failure for a Scope and carries on, and for a failure on a Resource returns an error and passes on none of the batch. No component that quarantines was found. Weaver's live check validates as a developer and CI tool. | C7 |
-| Only Confluent Schema Registry blocks a producer at write time | **Wrong.** Pulsar refuses a producer with an incompatible schema when it is created, and fails the send of a message whose new schema is incompatible (PIP-43). AWS Glue and Apicurio refuse at registration, which happens in the producer's serializer when auto-registration is on. AWS also documents a separate step, in which Glue's serializer checks each record against a registered schema, throws when it does not match, and the record is not sent (author-51); for Apicurio, that the producer's send fails is Inferred from its documentation. Neither path was traced in code. Prometheus's Pushgateway refuses a conflicting push by default. Stores with typed columns refuse a write that does not fit at the store, which is blocking a producer only if a store's caller counts as one; the claim does not say. | C3, C8 to C10, C26 to C29 |
+| Only Confluent Schema Registry blocks a producer at write time | **Wrong.** Pulsar refuses a producer with an incompatible schema when it is created, and fails the send of a message whose new schema is incompatible (PIP-43). AWS Glue and Apicurio refuse at registration where a compatibility rule applies, which happens in the producer's serializer when auto-registration is on. AWS also documents a separate step, in which Glue's serializer checks each record against a registered schema, throws when it does not match, and the record is not sent (author-51); for Apicurio, that the producer's send fails is Inferred from its documentation, except that its guide says a Debezium connector's task fails and stops processing events (author-139). Neither path was traced in code. Prometheus's Pushgateway refuses a conflicting push by default. Stores with typed columns refuse a write that does not fit at the store, which is blocking a producer only if a store's caller counts as one; the claim does not say. | C3, C8 to C10, C26 to C29 |
 | ...and it needs an always-available service | **Partly confirmed.** The serializer needs the registry on a cache miss, not on every write: a schema's first use under a subject by each registry client, or a use after the bounded cache has evicted it. Instances other than the primary serve reads and schemas already registered. Its authors call the dependency "a runtime requirement and potential source of failure", and users reported outages. Since 2024 the client retries a failed connection and some error responses with randomised backoff, three times by default; Inferred from the code, a short outage need no longer fail a send that misses the cache, though no outage length is sure to pass. | C8 |
 | "The cheapest upgrade: a declared version or definition hash, and column ids that are never reused" | **Unverified as a sentence: no source found.** "Cheapest" is a claim no source makes. Its parts exist: a declared version (Snowplow, OpenTelemetry's schema URL); a schema hash per stored entry, suggested by Avro's author in 2009 and specified in Avro's single-object encoding, which needs a store to resolve it; and a literal never-reuse rule for ids in Protocol Buffers, and later in Meta's fbthrift. Neither Iceberg nor Delta uses the words "never reused": Iceberg's specification states the rule as the purpose of its counter, "always assigned an unused ID", and Delta states a counter that only increases. | C6, C7, C11 to C15 |
 | Iceberg was named; find which system the idea of column ids came from | **Not established.** For table columns, Iceberg's specification states the unused-id rule, in a sentence written no later than 2019-06-23; when it was first written was not established. The mechanism is older: Iceberg's first public release, 2017, already tracks columns by id and gives each new column the id after a stored counter. For message field numbers, the earliest source found is Protocol Buffers, 2008, which says nothing about table columns. The only author's statement connecting two of these systems is Delta's design document, which names Iceberg as a competitor. Where the elicitation's sentence came from cannot be checked: its record is not tracked. | C11 to C14, "Where 'column ids that are never reused' came from" |
@@ -2859,7 +2919,7 @@ Each claim was recorded in `CONTEXT.md` with no link. Each is checked here again
 ## Candidates not examined, or dropped
 
 - **Not examined:** StatsD and DogStatsD clients; Prometheus's Java and Rust clients; OpenTelemetry's SDKs other than Go, Python and Java; ClickHouse; Thanos and VictoriaMetrics; DuckDB; ORC; Hive's own documentation; Rails' schema cache.
-- **Read only in part:** KIP-467 was not fetched, and of Confluent pull request 3424 only its description is quoted (author-72). Ryan Blue's talks, the Iceberg mailing list and Thrift's issue tracker were not searched. What Hibernate does with two entities of one name, and the reason behind .NET's instrument cache (issue #77514), were not examined. Kibana's page on conflicting field types was not found.
+- **Read only in part:** KIP-467 was not fetched, and of Confluent pull request 3424 only its description is quoted (author-72). Ryan Blue's talks, the Iceberg mailing list and Thrift's issue tracker were not searched. What Hibernate does with two entities of one name was not examined. Of .NET's issue #77514 only the body was read (author-80), and its comments, which might give a reason for keeping differing instruments side by side, were not. Kibana's page on conflicting field types was not found.
 - **Limited by GitHub's search rate limit,** shared by the survey agents: further searches for beorn7's comments on client_golang, for issues on the Rust `metrics` crate, and for a reason behind InfluxDB's per-shard types.
 - **Set aside as a different failure:** "was collected before with the same name and label values" in the OpenTelemetry Collector, which is two sources producing one series, not two definitions (C5).
 
@@ -2888,24 +2948,24 @@ Taken from the specification (`docs/specs/transect-client.allium`) and from `CON
 
 | § | What it does | Stated why | Holds here | Does not hold | Use |
 | --- | --- | --- | --- | --- | --- |
-| C1 Prometheus clients | Check one registry in one process; no check across processes; register at any time; client_python's multiprocess mode merges per-process files under the first definition seen, and its files must be wiped between runs | Within one binary: "We cannot prevent that from happening globally" (prometheus-17). Late registration and wiping: none found | A library inside each process, whose run cannot reach another instance's run (K1; K7, a leaning). The check within one binary has the same shape as K3 | beorn7 states a limit, not its cause: Prometheus "cannot prevent" a metric's labels changing "globally", and a library guarantees them "over the lifetime of a binary" (prometheus-17), said in refusing a request to re-register a metric with other labels (prometheus-18). That the limit is what a library can reach is Inferred, and client_python's multiprocess mode does read files other processes wrote to its directory. Successive runs of one confluence, which the specification allows (Derived), share its declarations (`rule AttachRun`), so a definition changed between them fails as a redeclaration (K3). For a run in a new process that follows another at the same location, the earlier run's databases can be seen (K6), so an inability to reach does not hold there. The multiprocess mode is the comparable closest to local files written by separate processes, but its files are merged at collection inside the client, and earlier runs' files are deleted, not kept with their definitions | **Justifies**, through its stated limit, checking nothing against runs on other instances, so that for them the check stops at the confluence (K3); the fit is the researcher's argument. Informs the rest |
+| C1 Prometheus clients | Check one registry in one process; no check across processes; register at any time; client_python's multiprocess mode merges per-process files under the first help and type seen, and a gauge under the last mode read, and its files must be wiped between runs | Within one binary: "We cannot prevent that from happening globally" (prometheus-17). Late registration and wiping between runs: none found. Within a run, a dead worker's files are kept so their last values stay visible, and merging them would need locks across processes (author-133, author-134) | A library inside each process, whose run cannot reach another instance's run (K1; K7, a leaning). The check within one binary has the same shape as K3 | beorn7 states a limit, not its cause: Prometheus "cannot prevent" a metric's labels changing "globally", and a library guarantees them "for the pre-defined collectors over the lifetime of a binary" (prometheus-17), said in refusing a request to re-register a metric with other labels (prometheus-18). That the limit is what a library can reach is Inferred, and client_python's multiprocess mode does read files other processes wrote to its directory. Successive runs of one confluence, which the specification allows (Derived), share its declarations (`rule AttachRun`), so a definition changed between them fails as a redeclaration (K3). For a run in a new process that follows another at the same location, any databases the earlier run left there can be seen (K6), so an inability to reach does not hold there. The multiprocess mode is the comparable closest to local files written by separate processes, but its files are merged at collection inside the client, and earlier runs' files are deleted, not kept with their definitions | Informs checking nothing against runs on other instances, so that for them the check stops at the confluence (K3). It does not justify it: beorn7 states the limit and not its cause, and the reading that the limit is what a library can reach, on which the fit depends, is Inferred. Informs the rest |
 | C2 Prometheus server | Keeps series from different targets apart by default; metadata API lists versions; metadata overwritten per name before remote write 2.0; type and unit moving into identity | Metadata "can change over time" (prometheus-55); rollouts and unrelated programs, of which bboreham wrote "IMO we should make both of these work" (prometheus-59); names alone collide (prometheus-68 to -70) | Two runs disagreeing during a rollout (K7) | It is the receiving side, the collector's analogue, outside the specification (K5). Its series carry advisory metadata; a table's columns are not advisory (K2) | Informs. Its move of type and unit into identity informs what a collector may face |
 | C3 Pushgateway | Refuses a push whose type conflicts with another pusher's, by default; a flag moves the check to scrape time, where one bad push fails every scrape | One endpoint exposes every push (prometheus-81, prometheus-74); a check only at read lets one bad write fail every read (author-8) | None at the client: there is no endpoint here where runs' data meet | It is the place where writers' data meet, which here is the collector (K5). Its authors weigh one check at write and at read, and give the reason for checking at write | Informs, for the collector |
-| C4 OpenTelemetry identity and duplicates | Identity includes Resource and Scope; conflicts in one Resource and Scope passed through with a warning; a consumer may reject; duplicates return a working instrument, reversed from an error in 2022 | A crash at run time is unacceptable (otel-25, otel-40, otel-43); libraries cannot coordinate (otel-23); "pass along" the ambiguity to keep the SDK simple, at the cost of errors at type-aware back ends (otel-28, otel-29); OpenTelemetry cannot know which stream is erroneous, a back end with a schema could (otel-39) | A library inside the process that must not change the host's behaviour (K1). Pass-through matches K5, which carries each run's definitions to the collector | The reasons concern one process or one stream. That a different Resource is no conflict is Inferred (C4), not stated. Within one confluence the specification fails a conflicting redeclaration loudly (K3), which OpenTelemetry's 2022 reversal argues against at run time | Informs. Its reasons against a loud failure at run time bear on K3 for a late declaration; that posture is ticket 16's |
+| C4 OpenTelemetry identity and duplicates | Identity includes Resource and Scope; conflicts in one Resource and Scope that are not remediated should be passed through, with the user informed; a consumer may reject; duplicates return a working instrument, reversed from an error in 2022 | A crash at run time is unacceptable (otel-25, otel-40, otel-43); libraries cannot coordinate (otel-23); "pass along" the ambiguity to keep the SDK simple, at the cost of errors at type-aware back ends (otel-28, otel-29); OpenTelemetry cannot know which stream is erroneous, a back end with a schema could (otel-39) | A library inside the process that must not change the host's behaviour (K1). Pass-through matches K5, which carries each run's definitions to the collector | The reasons concern one process or one stream. That a different Resource is no conflict is Inferred (C4), not stated. Within one confluence the specification fails a conflicting redeclaration loudly (K3), which OpenTelemetry's 2022 reversal argues against at run time | Informs. Its reasons against a loud failure at run time bear on K3 for a late declaration; that posture is ticket 16's |
 | C5 Collector Prometheus exporter | Keeps the first type and help per name while cached; drops a metric whose type conflicts; once failed the whole scrape | TYPE conflicts must drop a metric, "as the data sent might not be valid" (otel-94) | None at the client | A downstream aggregation point (K5) | Informs, for the collector |
 | C6 Snowplow | A version on each self-describing payload; validated downstream; failures kept, not dropped; a registry outage now crashes Enrich | Versions tied to historical data (registries-2, -4); each payload records its schema (registries-5 to -7); dropped data is hard to spot (registries-8, -9) | Rows read later than they are written, under definitions that may have changed (K5). A dropped row is counted here, not silent | The pipeline validates against a registry; this client has none, and its collector's internals are outside the specification. Trackers do not validate by default (Inferred, C6); the one client-side check documented, opt-in generated code for the browser tracker, logs a warning by default (registries-25); this client refuses a row that does not fit (K2) | Informs. The reason for each payload to name its schema bears on open question 13 |
 | C7 OpenTelemetry schema URL | A version per Resource or Scope, used to translate; no validation, no quarantine | Producers and consumers evolve independently (otel-79, otel-80); validation is not a goal (otel-82) | Producers and consumers that change independently (K5, K7) | It versions semantic conventions shared across many producers, not one application's tables | Informs |
-| C8 Confluent Schema Registry | The producer's serializer refuses an incompatible schema on a cache miss; a single primary | Readers that cannot be tested against every producer (registries-67, -68); a single primary keeps incompatible schemas out (registries-52); the dependency accepted (registries-54) | None | A service every producer must reach on a cache miss: against K8, and against K1 wherever a refusal or an outage would reach a write | Informs: its stated costs are the reason it does not fit |
+| C8 Confluent Schema Registry | Under a compatibility type other than `NONE` (`BACKWARD` by default), the producer's serializer refuses an incompatible schema on a cache miss; a single primary | Readers that cannot be tested against every producer (registries-67, -68); a single primary keeps incompatible schemas out (registries-52); the dependency accepted (registries-54) | None | A service every producer must reach on a cache miss: against K8, and against K1 wherever a refusal or an outage would reach a write | Informs: its stated costs are the reason it does not fit |
 | C9 Pulsar | The broker refuses an incompatible producer, and a send with an incompatible new schema | Type safety on a message bus (registries-80, -81) | None | A broker that owns the topic and its schemas; this client has no broker | Informs |
-| C10 AWS Glue, Apicurio | Refuse at registration; Glue's serializer throws for a record that does not match | Glue: breaking changes "found earlier in development cycles" (author-56). Apicurio: checking before deployment (author-57) | Finding a breaking change early, where the developer looks (K1's loud declaration). Glue's serializer also checks each record before it is sent (author-51), as this client checks each row (K2), though Glue throws where this client counts | A registry the producer must reach (K8) | Informs |
+| C10 AWS Glue, Apicurio | Refuse at registration where a compatibility rule applies, which in Apicurio needs one configured; Glue's serializer throws for a record that does not match | Glue: breaking changes "found earlier in development cycles" (author-56). Apicurio: checking before deployment (author-57) | Finding a breaking change early, where the developer looks (K1's loud declaration). Glue's serializer also checks each record before it is sent (author-51), as this client checks each row (K2), though Glue throws where this client counts | A registry the producer must reach (K8) | Informs |
 | C11 Iceberg | Field ids, never handed out twice; read by id; a v3 writer fails a required field with no default | Changes "independent and free of side-effects" without rewriting files (ids-10 to -13) | Data that outlives the definition it was written under (K5) | Iceberg is the final table, where columns are renamed, dropped and re-added. This client writes one run's rows under one definition, and the specification does not rename a column within a run | Informs open question 13 |
 | C12 Protocol Buffers | Field numbers; "should never be reused"; `reserved` | The wire format cannot tell definitions apart (ids-26, -27) | None stated by the specification: the on-disk form is private (K4), and the hand-over names columns (K5) | A wire format without names | Informs open question 13 |
-| C13 Thrift, Parquet `field_id` | Ids for versioning; fbthrift states a never-reuse rule | Staged rollouts and old data (ids-35, -36) | Staged rollouts (K7) | As C12 | Informs |
+| C13 Thrift, Parquet `field_id` | Thrift: ids for versioning; fbthrift states a never-reuse rule. Parquet: an optional `field_id` beside each column's name, which Parquet itself does not resolve | Thrift: staged rollouts and old data (ids-35, -36). Parquet: none beyond the field's comment (ids-41) | Thrift: staged rollouts (K7). Parquet: none | Thrift: as C12. Parquet's schema names every column (author-157), so a format without names is not its constraint | Informs |
 | C14 Delta column mapping | Ids and physical names, so rename and drop need no rewrite | Rename and drop without rewriting (ids-48, ids-53); cheap deletion in `name` mode from unique physical names, where ids do not resolve columns (ids-52, author-108) | None at the client | A final table with many writers over time | Informs open question 13 |
 | C15 Avro container files | The writer's schema in each file; the reader resolves it against its own | Data stays readable after the application's schema changes (ids-77, ids-64); a hash per entry where many versions share a store (ids-78, author-35) | Each run's data is read later, possibly after the application's definitions have changed, and the hand-over carries each run's definitions (K5) | The reasons tied to Avro's binary encoding (ids-57) depend on an on-disk form, which is private here (K4) | **Justifies** carrying each run's definitions with its rows to whoever reads them, which the hand-over does (K5). For the local databases themselves it fits only where they are read after the process that wrote them has gone or its definitions have changed. The specification does not say whether a run's hand-over can be served then, and what establish does with an earlier run's databases is open question 6 |
 | C16 Parquet footers, SQLite | Each file carries its schema | None found | As C15 | No stated reason | Informs |
 | C17 OpenTelemetry global provider | Instruments created before the provider: rewired in Go and Python, measurements in between lost; never rewired in Java | Third-party libraries use the API before the SDK (otel-46, otel-47); globals spare a large code base from passing providers around (otel-113); Java: a late registration should be loud (otel-69) | A library used before it is configured, if tables are declared before establish (K10) | Third-party libraries instrumenting with no configuration at all. The specification has a developer declare against a confluence created at global scope; it does not say whether libraries declare their own tables | Informs |
-| C18 Micrometer | Meters created on demand; a conflicting type refused; filters meant to come first | "you have no choice" when tags come from local context (late-4); a late filter is "potentially hard to notice" (late-9) | Configuration that should come before the first use (K10's start-up) | A meter's identity includes its tags, which are known only at the call. A table's identity is its namespace and name, and the tenant is a write parameter, so nothing about a table is known only at the call | Informs |
+| C18 Micrometer | Meters created on demand; a conflicting type refused; filters meant to come first | "you have no choice" when tags come from local context (late-4); a late filter is "potentially hard to notice" (late-9) | Configuration that should come before the first use (K10's start-up) | A meter's identity includes its tags, which are known only at the call. A table's identity is its namespace and name, and the tenant is a write parameter, so nothing that varies per write is part of a table's identity. The specification does not say when an application learns a table's namespace, name or columns | Informs |
 | C19 Rust `metrics` | Emit at any time; a no-op before the recorder; registration optional and late by construction | Libraries instrument freely at low cost (late-25); registration must follow the recorder (late-31, late-32) | A facade used by libraries (K9's Rust side) | As C17: whether libraries declare tables is not stated | Informs |
 | C20 .NET | Instruments at any time; differing ones kept side by side | Caching identical instruments prevents re-creation (author-80); none for keeping differing ones | None | No stated reason for the side-by-side rule | Informs |
 | C21 Hibernate | Mapping fixed when the factory is built | None found for the fixing | A definition shared by many threads (K1's write path) | No stated reason. Its model is a graph of related entities; tables here have no relations | Informs |
@@ -2916,20 +2976,37 @@ Taken from the specification (`docs/specs/transect-client.allium`) and from `CON
 | C26 Delta schema enforcement | A batch write that does not fit refused whole; other paths cast; schema changed only by choice | "stop these enemies at the gates" (typed-4); change only by "affirmative choice" (typed-5) | Refusing what does not fit (K2) | It is the final table, refusing per transaction; this client refuses per row and converts nothing | Informs the fairness question |
 | C27 Elasticsearch | Refuses a value it cannot coerce; per-index mappings; a failure store for logs | No change in place (typed-18); "To avoid dropping data silently" (typed-25) | Typed fields refused when they do not fit (K2) | It coerces by default; the specification converts nothing. Conflicts across indices are met at query time, downstream | Informs the fairness question |
 | C28 InfluxDB | A field's type fixed per shard; conflicts across shards kept and coerced or left out at query | Partial writes, so a retried batch does not "continually fail forever" (typed-47); add-only in explicit mode (typed-60) | Definitions per partition, as a run's here (K4) | Its shards are one database's; the conflict is met at query time, downstream | Informs the fairness question |
-| C29 BigQuery | Whole request refused by default; no new required column | Existing rows would be NULL (author-50) | Required columns (K2) | A service-side table | Informs |
+| C29 BigQuery | Whole request refused by default; no new required column at the top level | Existing rows would be NULL (author-50) | Required columns (K2) | A service-side table | Informs |
 | C30 Mimir | Conflicting metadata kept as a set | Metadata "can come from multiple targets" (typed-67) | None at the client | Downstream | Informs, for the collector |
 
 ## Whether the comparison is fair
 
 The ticket asks whether the reasons a metrics library gives carry over to a table with typed columns, some required, where a row that does not fit is refused whole. The answer below is the researcher's, built from the sections above.
 
-**What a metric is to these libraries.** A Prometheus series is identified by its name and labels; type, help and unit are not part of that identity (prometheus-43), and its authors call metadata something that "can change over time" without changing the series (prometheus-55). An OpenTelemetry metric's identity takes in its Resource, Scope, name, type and unit (otel-1), and a conflict within one Resource and Scope is passed through (otel-3). In both, a sample is a number with labels, and the definition that may disagree between writers is mostly metadata around it.
+**What a metric is to these libraries.** A Prometheus series is identified by its name and labels; type, help and unit are not part of that identity (prometheus-43), and its authors call metadata something that "can change over time" without changing the series (prometheus-55). An OpenTelemetry metric's identity takes in its Resource, Scope, name, type and unit (otel-1), and a producer should pass through a conflict within one Resource and Scope that it does not remediate (otel-3, author-9). In both, a sample is mostly a number with labels, and the definition that may disagree between writers is mostly metadata around it; Prometheus can also put type and unit into a series' labels behind a feature flag (C2). A histogram sample is not one number, and in Prometheus whether a sample is a float or a histogram is outside a series's identity, so a change of instrumentation between deployments can change it, with a cost at the reader:
+
+Source: https://github.com/prometheus/docs/blob/31957d4da93dd215cad8c91be3e5205181dd11f1/docs/specs/native_histograms.md#L1230-L1237 (quoted as author-152, author-153)
+
+> Whether a sample in a
+> series is a float (and as such a counter or a gauge) or a histogram (no matter
+> what flavor) does not contribute to the series's identity.
+
+> Changes of the
+> sample type within a time series are expected to be very rare in practice. They
+> usually happen after changes in the instrumentation of a target (in the rare
+> case that the same metric name is used for e.g. a gauge float prior to the
+> change and a counter histogram after the change)
+
+Source: https://github.com/prometheus/docs/blob/31957d4da93dd215cad8c91be3e5205181dd11f1/docs/specs/native_histograms.md#L2046-L2047 (quoted as author-154)
+
+> `delta()`, `increase()`, and `rate()` return no result for series that contain
+> a mix of float samples and histogram samples within the range.
 
 **What a table is here.** A definition fixes which columns a row has, their types and which are required, and a row that does not fit is refused whole, with nothing converted (K2). A change between runs can change what a row is: a column added, dropped, made required or given another type.
 
-**The reasons that carry over.** Two kinds of reason given by the metric libraries are about the deployment, not the data, and carry over to tables unchanged:
+**The reasons that carry over.** Two kinds of reason given by the metric libraries are about the deployment, not the data, so the difference between a metric and a table does not change them. Whether each fits this client is a separate question, argued under "Fit" and in the verdicts:
 
-- **Where a check can be made.** beorn7 says Prometheus "cannot prevent" a metric's labels from changing "globally", and that a library can guarantee them "over the lifetime of a binary" (prometheus-17). He gives no reason for "cannot". Inferred: the limit is what a library can reach. client_python's multiprocess mode reads files that other processes wrote to a shared directory and still checks nothing across them (C1), so the limit is not one process as such. This client's runs on other instances are out of reach (K7, a leaning). Successive runs of one confluence, where the specification allows them (Derived), share one set of declarations and are already checked (K3). A run in a new process that follows another at the same location is not out of reach, and can see what the earlier run left (K6).
+- **Where a check can be made.** beorn7 says Prometheus "cannot prevent" a metric's labels from changing "globally", and that a library can guarantee them "for the pre-defined collectors over the lifetime of a binary" (prometheus-17). He gives no reason for "cannot". Inferred: the limit is what a library can reach. client_python's multiprocess mode reads files that other processes wrote to a shared directory and still checks nothing across them (C1), so the limit is not one process as such. This client's runs on other instances are out of reach (K7, a leaning). Successive runs of one confluence, where the specification allows them (Derived), share one set of declarations and are already checked (K3). A run in a new process that follows another at the same location is not out of reach, and can see what the earlier run left (K6).
 - **Disagreement during a rollout is normal.** bboreham's "multiple replicas of the same target are mid-way through a software update" (prometheus-59) describes what K7 implies for an ephemeral pod, which is a leaning.
 
 **The reasons that stop short.** Three do not carry over to typed tables:
@@ -2948,8 +3025,8 @@ The ticket asks whether the reasons a metrics library gives carry over to a tabl
   > an implementation MAY convert temporality using a
   >    Cumulative-to-Delta or a Delta-to-Cumulative transformation;
 
-  So even for a stream of numbers, a consumer may have to reconcile or reject a stream whose identifying properties disagree. For a table, what conflicts is which columns a row has, their types and which are required, and whatever reads several runs' rows must decide how to read rows whose columns differ. That falls to a collector this specification excludes (K5). That it is a harder problem than a metric back end's is the researcher's reading.
-- **A sample has little that can fail to fit.** The metric libraries do check a measurement against its definition, and refuse it alone. client_python's `labels()` raises `ValueError` for label names or a label count that differ from the metric's, and converts each label value to a string (author-92, author-93); client_golang returns an error for a wrong number of label values (author-121), and its `WithLabelValues` panics where that form would fail (author-96). Both clients refuse a negative increment to a counter (author-94, author-95, author-120), and OpenTelemetry Go's exponential histogram ignores NaN and infinity (author-122). A label-count check resembles the specification's refusal of a missing or unknown column, for label values that are all strings. No metric library read refuses a sample for a missing required field or a value of the wrong type, and a sample has neither. This client refuses rows against their own run's definition, so within a run nothing disagrees, and the disagreement exists only between runs.
+  So even for a stream of numbers, a consumer may have to reconcile or reject a stream whose identifying properties disagree. For a table, what conflicts is which columns a row has, their types and which are required, and whatever reads several runs' rows must decide how to read rows whose columns differ. That falls to the collector or to whatever reads after it, and the specification describes neither (K5). That it is a harder problem than a metric back end's is the researcher's reading.
+- **A sample has little that can fail to fit.** The metric libraries do check a measurement against its definition, and refuse it alone. client_python's `labels()` raises `ValueError` for label names or a label count that differ from the metric's, and converts each label value to a string (author-92, author-93); client_golang returns an error for a wrong number of label values (author-121), and its `WithLabelValues` panics where that form would fail (author-96). Both clients refuse a negative increment to a counter (author-94, author-95, author-120), and OpenTelemetry Go's exponential histogram ignores NaN and infinity (author-122). A label-count check resembles the specification's refusal of a missing or unknown column, for label values that are all strings. No metric library read refuses a sample for a missing required field or a value of the wrong type, and, apart from label names, whose values are all strings, no sample has fields that an application declares. This client refuses rows against their own run's definition, so within a run nothing disagrees, and the disagreement exists only between runs.
 
   Source: https://github.com/prometheus/client_python/blob/v0.26.0/prometheus_client/metrics.py#L174-L180 (quoted as author-92, author-93)
 
@@ -2987,28 +3064,28 @@ The ticket asks whether the reasons a metrics library gives carry over to a tabl
 
   > // Ignore NaN and infinity.
 
-**What the typed stores show.** The comparables with typed columns refuse at the store a write that does not fit the store's one current definition: Delta (C26), Elasticsearch within an index (C27), InfluxDB within a shard (C28), BigQuery (C29), and an Iceberg v3 writer (C11). Where they keep definitions per partition, they meet the disagreement when data is read: Elasticsearch across indices (typed-33), InfluxDB across shards, where a default query leaves out values of other types and a user's query was cut short at a shard boundary (author-45, typed-54, typed-55), and Avro across files, where a reader-only field with no default is an error (ids-62). A run's local databases here are such a partition, each with its own definitions (K4, K5). Within a run, the client refuses a row that does not fit its run's definition before storing it (K2), as these stores refuse a write that does not fit their current definition, so they inform that admission check too. Across runs the client reconciles nothing: rows written under different definitions meet wherever several runs' rows are read, downstream of the collector, which the specification excludes (K5). Three differences limit even this comparison:
+**What the typed stores show.** The comparables with typed columns refuse at the store a write that does not fit the store's one current definition: Delta (C26), Elasticsearch within an index (C27), InfluxDB within a shard (C28), BigQuery (C29), and an Iceberg v3 writer (C11). Where they keep definitions per partition, they meet the disagreement when data is read: Elasticsearch across indices (typed-33), InfluxDB across shards, where a default query leaves out values of other types and a user's query was cut short at a shard boundary (author-45, typed-54, typed-55), and Avro across files, where a reader-only field with no default is an error (ids-62). A run's local databases here are such a partition, each with its own definitions (K4, K5). Within a run, the client refuses a row that does not fit its run's definition before storing it (K2), as these stores refuse a write that does not fit their current definition, so they inform that admission check too. Across runs the client reconciles nothing: rows written under different definitions meet wherever several runs' rows are read, at the collector or after it, which the specification does not describe (K5). Three differences limit even this comparison:
 
 - Elasticsearch coerces by default (author-42, author-43), and Delta casts on some write paths (author-65, author-68); this client converts nothing (K2).
 - Delta refuses a transaction; this client refuses a row.
 - SQLAlchemy refuses a second definition without comparing it (C25); this client compares (K3).
 
-**Conclusion of the fairness argument.** Metric libraries are a fair comparable for where a check can be made and for disagreement during a rollout. They stop short of what a disagreement costs. Their authors move that cost downstream, where a type-aware consumer may raise errors or reject the data (otel-29, author-123, otel-4), and what disagrees is a stream's type, unit or help, not the shape of a row. For that cost, the typed stores and Avro are the closer comparables, and they place it at the reader.
+**Conclusion of the fairness argument.** Metric libraries are a fair comparable for where a check can be made and for disagreement during a rollout. They stop short of what a disagreement costs. Their authors move that cost downstream, where a type-aware consumer may raise errors or reject the data (otel-29, author-123, otel-4), and what disagrees is a stream's type, unit or help, not the shape of a row. A change of type can still change a sample from a float to a histogram, which some of Prometheus's functions then leave out (author-153, author-154). For that cost, the typed stores and Avro are the closer comparables, and they place it at the reader.
 
 ## Verdicts on the two behaviours
 
 ### Nothing enforced across runs
 
-**Verdict: it rests on a stated why that does not transfer, for part of what it covers.**
+**Verdict: it rests on a stated why that does not transfer.** The guarantee covers every run. Prometheus's stated limit does not transfer to a run in a new process that follows another at the same location, and is not shown to fit runs on other instances; Avro's stated why fits the second sentence.
 
 The guarantee has two sentences, and they rest on different reasons.
 
 - **"The client enforces nothing about a definition that changed between runs."**
   - The stated why is Prometheus's. beorn7, on client_golang's pre-defined collectors, says labels that "suddenly appear or disappear" confuse PromQL users, that "We cannot prevent that from happening globally", and that a library can guarantee it "over the lifetime of a binary" (prometheus-17). He gives no reason for "cannot". That the limit is what a library can reach is Inferred, and client_python's multiprocess mode reaches other processes' files in a shared directory (C1).
-  - Its limit transfers to runs the client cannot reach: other instances, and two runs live at once during a rollout (K7, a leaning). There it fits, by the researcher's argument, and it **justifies** checking nothing against those runs, so that for them the check stops at the confluence (K3).
+  - Its limit matches runs the client cannot reach: other instances, and two runs live at once during a rollout (K7, a leaning). That the reason fits them rests on the Inferred reading of "cannot", so it **informs**, and does not justify, checking nothing against those runs, with the check for them stopping at the confluence (K3).
   - It does not reach successive runs of one confluence, which the specification allows as Derived (the comment above `EstablishProductionCore`). They share the confluence's declarations (`rule AttachRun`), so a definition changed between them fails loudly as a redeclaration (K3). The guarantee's "enforces nothing" does not mention that case.
-  - It does not transfer to a run in a new process that follows another at the same location. That run can see the databases the earlier one left (K6), so "cannot" does not hold.
-  - No comparable states a reason for not checking what an earlier run left. client_python's multiprocess directory is the nearest case, and its documentation says only that the directory must be wiped between runs (prometheus-37), with no stated rationale (C1).
+  - It does not transfer to a run in a new process that follows another at the same location. That run can see any databases the earlier one left there (K6), so "cannot" does not hold.
+  - No comparable states a reason for not checking what an earlier run left. client_python's multiprocess directory is the nearest case, and its documentation says that the directory must be wiped between runs (prometheus-37), with no stated rationale for that (C1). The reasons found concern one run: a dead worker's files are kept so that their last values stay visible (author-133), and merging them would need locks across processes, which a contributor said the project wants to avoid (author-134).
   - OpenTelemetry's reasons concern one process or one stream (C4). They inform this sentence and do not justify it.
 - **"Each run's local databases carry the definitions they were written with."**
   - This rests on a stated why that fits: Avro stores the writer's schema with the data so that "later, even if the schema in your application has changed, you can still read that data" (ids-77).
@@ -3028,10 +3105,14 @@ The guarantee has two sentences, and they rest on different reasons.
         -- rows.
 
     @guidance
-        -- Checking only within the confluence follows Prometheus's
-        -- client libraries, whose maintainer says a metric's labels can be
-        -- kept consistent over the lifetime of a binary and cannot be kept
-        -- so globally; a run cannot see another instance's run. Carrying each run's definitions follows Avro's
+        -- Checking only within the confluence matches Prometheus's
+        -- client libraries, whose maintainer says a library can keep the
+        -- labels of its pre-defined collectors consistent over the lifetime
+        -- of a binary and cannot prevent their changing globally; the
+        -- comment gives no reason, so this informs the guarantee and does
+        -- not justify it. Where each instance has its own location, as in
+        -- an ephemeral pod, a run cannot see another instance's run.
+        -- Carrying each run's definitions follows Avro's
         -- reason for storing the writer's schema with the data: rows are
         -- read after the application's definitions may have changed. A
         -- run that follows another at the same location could see the
@@ -3045,7 +3126,7 @@ The guarantee has two sentences, and they rest on different reasons.
 
 **Verdict: it rests on a stated why that does not transfer.** The behaviour is the norm for the telemetry libraries read: Prometheus's clients, OpenTelemetry's SDKs, Micrometer, the Rust `metrics` crate and .NET all create a metric at any time (C1, C17 to C20). So the claim that it is common is confirmed. The reasons found are of three kinds. Each bears on a different behaviour, and none is shown to hold for this client:
 
-- **A metric's identity is known only at the call.** Micrometer: "you have no choice" when tags come from local context (late-4). A table's identity is its namespace and name, fixed in its declaration, and the tenant is a parameter of the write (K2), so this reason does not transfer.
+- **A metric's identity is known only at the call.** Micrometer: "you have no choice" when tags come from local context (late-4). A table's identity is its namespace and name, fixed in its declaration, and the tenant is a parameter of the write (K2), so this reason does not transfer to what varies per write. It would transfer only to an application that learns a table's namespace, name or columns from local context and declares the table there. The specification allows a declaration at any time and returns the existing table for an identical one (`rule RedeclareIdenticalTable`), and does not say when an application learns those values; that this use is possible is the researcher's reading, and nothing shows that it happens.
 - **Libraries instrument code they do not configure.** OTEP 0005 expects third-party libraries to use the API before the SDK is installed (otel-46, otel-47), and the Rust `metrics` crate lets libraries instrument at low cost while no recorder is installed (late-25). Both concern use before configuration, which here would be a declaration before establish, not one during a run. This transfers only if libraries declare tables of their own. The specification has a developer declare against a confluence and does not say whether a library may.
 - **Instruments are created throughout a program's life.** jack-berg gives this as the reason a duplicate must not raise an error (otel-25). It is a reason about the failure posture of a late conflict, not about allowing a late declaration, and the posture is ticket 16's.
 
@@ -3056,6 +3137,18 @@ Source: https://github.com/micrometer-metrics/micrometer/blob/v1.18.0/docs/modul
 > Recordings have no effect until there is a non-composite registry in the composite.
 
 That case is the specification's write with no run in force, which is discarded and counted (`DiscardWriteWithoutRun`). It is not a table declared during a run.
+
+One typed store documents that a column declared after writes have begun is usable at once on the node that took the declaration, and explains how rather than why. InfluxDB 3 Enterprise's explicit mode lets columns be added to a declared table (typed-59), and its documentation says:
+
+Source: https://github.com/influxdata/docs-v2/blob/56902356161c4cfd346f03af5d3de113c90ee0f2/content/influxdb3/enterprise/admin/databases/enforce-schema.md#L374-L379 (quoted as author-150, author-151)
+
+> A node's catalog advances synchronously with a declaration made on that node.
+> That's why a column declared on the same node you write to is never rejected
+> this way.
+
+> The rejection is a per-line error the client can retry.
+
+The second passage is about a write to another node, which can be refused until that node's catalog catches up; add-only evolution keeps the lag from accepting what it should refuse (typed-60, typed-61). The first explains the behaviour by its mechanism and gives no reason for choosing it, so it informs and does not change the paragraph above. That one process, where a declaration and a write share one set of declarations, resembles the same node is the researcher's reading.
 
 Prometheus states no reason for allowing late registration (C1). The comparables that fix definitions at start-up do not bear on this either way. Only grpc-go states a reason, a read path with no lock (late-68), and Hibernate's fixing has none found (C21). grpc-go's reason names a cost that would apply here only if writes reached their table through a shared structure that a late declaration changes. That structure would have to tolerate a table added while writes run, and writes must still never block (K1). The specification gives each write its table (`ApplicationWrites(app, handle, table, values, tenant?)`), and a table declared during a run adds its counters while writes run (`OpenCountersForLateTable`); it does not say how the client reaches either. That is the researcher's reading, not a finding about this client's design.
 
@@ -3104,7 +3197,8 @@ The evidence touches each part of the question, and each mechanism comes with th
   - Delta added column mapping, a physical name and an id for each column, so that rename and drop need no rewrite (ids-48, ids-53). The commit that added it ties cheap deletion in `name` mode to unique physical names (ids-52), and in that mode ids do not resolve columns (author-108); readers resolve by id in `id` mode (C14).
   - Each is a format where the same data is read under several definitions over time, or a wire format without names.
   - Their stated costs: an Iceberg field deletion "cannot be rolled back unless the field was nullable or if the current snapshot has not changed" (ids-4). A contributor reports that a dropped column's data cannot be recovered except from an old snapshot, because a column added again gets a new id (ids-19), and another replied that reverting the current schema id should restore it (ids-20). A third party reports a sink that "matched input against a historical schema and silently wrote nulls" after a column was dropped and added again, without saying how it chose that schema (ids-22). Protocol Buffers' protection is advisory, covers only what a developer lists as `reserved`, and works at compile time, except that the C++ and Go TextProto parsers may discard a field with a reserved name (author-27). Delta's column-mapping page calls enabling it irreversible, while its feature-removal page and its code at the same release let it be dropped, rewriting data files where needed (C14).
-- **What the specification already has.** The hand-over carries each run's full definition, with column names and types, beside the rows (K5). Whether a collector or a final store would need a version, a hash or ids beyond that depends on what happens downstream, which the specification excludes. This file does not judge it.
+  - Avro states the reason for having no field ids: "both the old and new schema are always present when processing data, so differences may be resolved symbolically, using field names" (ids-65, ids-71). Matching by name means a rename needs an alias, and a third party on the same thread argued that renaming a field "wouldn't be possible without the field IDs" (ids-75, C15).
+- **What the specification already has.** The hand-over carries each run's full definition, with column names and types, beside the rows (K5). Whether a collector or a final store would need a version, a hash or ids beyond that depends on what happens downstream, which the specification excludes. Whether a run that follows another at the same location would have a use for one depends on what establish does with any databases the earlier run left, which is open question 6; that dependency is the researcher's reading. This file judges neither.
 
 ### Open question 20: what makes a declaration valid
 
@@ -3150,4 +3244,14 @@ The research was not aimed at this question, and found only incidental evidence:
 
 - **Reserved names.** Protocol Buffers lets a developer list retired names and numbers as `reserved`, and the compiler then refuses their reuse. For numbers that check is at compile time only. For names there is one exception: the C++ and Go TextProto parsers may discard an unknown field with a reserved name at parse time (author-27, C12).
 
-None of this was surveyed for its why on validity rules. It informs, and nothing in it bears on which columns may form a key.
+- **Columns that may identify a row.** Iceberg's schema may name identifier fields, by which two rows count as the same entity, and restricts which columns may be one. Read at `apache-iceberg-1.12.0`:
+
+  Source: https://github.com/apache/iceberg/blob/apache-iceberg-1.12.0/format/spec.md#L434-L436 (quoted as author-155, author-156)
+
+  > Float, double, and optional fields cannot be used as identifier fields and a nested field cannot be used as an identifier field if it is nested in an optional struct, to avoid null values in identifiers.
+
+  > uniqueness of rows by this identifier is not guaranteed or required by Iceberg and it is the responsibility of processing engines or data providers to enforce.
+
+  The stated purpose, "to avoid null values in identifiers", explains the restrictions on optional fields; the sentence gives no reason for excluding float and double. It is a rule of a final table, and it bears on the question without answering it.
+
+None of this was surveyed for its why on validity rules. It informs. Of it, only Iceberg's identifier fields bear on which columns may form a key.
