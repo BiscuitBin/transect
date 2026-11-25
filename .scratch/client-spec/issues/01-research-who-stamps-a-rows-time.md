@@ -46,7 +46,7 @@ Standing guidance from the same elicitation: where practice exists, follow it ra
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done: question 11 decided and adopted in PR #6
 
 - [x] The survey covers at least four application logging frameworks or collection systems and at least three keyed-state systems, each read from its official documentation or source code
 - [x] For each system the findings state who stamps the time, whether the application may supply one, the field's name, and its precision and epoch
@@ -172,7 +172,7 @@ Every review ran on Codex (codex-cli 0.169.1) with `gpt-6-astra`, the preferred 
 
 - Claim 3 has no justifying comparable, and the second half of claim 1 rests on the researcher's argument; the name and the precision do too.
 - Which clock `Run.oldest_queued_age`, `Run.last_store_at` and the run id read; whether a clamp is counted or logged; and the hand-over's representation of the time (open question 15). Since decided by the maintainer, except open question 15: see "The maintainer's decision".
-- The proposed wording was not run through the pinned checker.
+- The proposed wording was not run through the pinned checker. Since adopted: the wording as adopted passes `just check-specs` and `just analyse-specs` (see "The maintainer's decision").
 - The second key moment's second-round fixes, and one follow-on edit to "What A leaves open" that made it agree with them, were not reviewed again after they were applied.
 
 ### Gates and files
