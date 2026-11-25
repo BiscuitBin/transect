@@ -235,4 +235,8 @@ Every review ran on Codex (codex-cli 0.172.0) with `gpt-6.2-sol`, which the main
 
   > All checks passed and the worktree is unchanged.
 
+- **After merging `main`**, at `b62dec8`, which adds the `SysLogHandler` clause under question 12 (`6c8a1ab`) and merges `main` at `c3a33eb`, whose changes touch tickets 01, 02 and 11 only. The commit that records this line changes only this section's lines.
+
+  > All checks passed and the worktree is unchanged.
+
 - **Changed files:** this ticket and its research file only. The specification is unchanged, and open questions 12 and 14 are still in it. No code was added.
