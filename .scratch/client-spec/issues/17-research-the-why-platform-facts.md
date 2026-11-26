@@ -282,6 +282,10 @@ Before the questions, the maintainer asked that the decisions be proposed and ch
 
 These sentences, the notes and the research file's new sentences went through no review round.
 
+- **Gate after these changes**, at `21f494a`. The commit that records this line changes only the line itself.
+
+  > All checks passed and the worktree is unchanged.
+
 ### Acceptance
 
 - [x] Each claim C1 to C9 checked again from a primary source, with its link and the date read; the wrong quotation in C1 and the unsourced "usually an eviction" in C5 are reported as wrong.
