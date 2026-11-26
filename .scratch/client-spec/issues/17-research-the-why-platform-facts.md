@@ -63,7 +63,7 @@ Related entries, by number and gist. Say what the evidence bears on each. Do not
 
 **Blocked by:** None (can start immediately).
 
-**Status:** ready-for-agent
+**Status:** done: findings handed back in PR #13, and the maintainer's answers recorded
 
 - [x] Each claim listed above is checked again from a primary source, with a link and the date read, or is marked "Unverified" with where was looked; a claim found wrong is reported as wrong
 - [x] Each of the two "Unverified" marks is either confirmed from a primary source or kept, with where was looked
@@ -79,7 +79,7 @@ Related entries, by number and gist. Say what the evidence bears on each. Do not
 
 ## Hand-back
 
-The work is in `research/17-platform-facts.md`, beside the issues folder. This section summarises it. The file reports and recommends nothing: open questions 8 and 17 are still open in the specification, and ticket 07, `CONTEXT.md` and the specification are unchanged.
+The work is in `research/17-platform-facts.md`, beside the issues folder. This section summarises it. The file reports and recommends nothing: open questions 8 and 17 are still open in the specification, and ticket 07, `CONTEXT.md` and the specification are unchanged. This was true at hand-back; at the maintainer's request, tickets 07 and 08 have since each gained a note that points to the research file (see "The maintainer's answers").
 
 ### The maintainer's answers before the work
 
@@ -108,7 +108,7 @@ The fit tables give, per condition, whether it holds on GKE Standard with the bo
 
 ### Proposed wording
 
-Replacement text for ticket 07's six bullets on reserving disk space, and for three passages of `CONTEXT.md` (reserving disk space, the OTel posts, and the sentence that says DuckDB's rule was never checked). It is in the research file only, for the maintainer to accept, change or reject. The specification states none of these facts, so no wording is proposed for it.
+Replacement text for ticket 07's six bullets on reserving disk space, and for three passages of `CONTEXT.md` (reserving disk space, the OTel posts, and the sentence that says DuckDB's rule was never checked). It is in the research file only, for the maintainer to accept, change or reject. The maintainer chose on 2026-11-25 to leave it there (see "The maintainer's answers"). The specification states none of these facts, so no wording is proposed for it.
 
 ### Adversarial review
 
@@ -238,11 +238,11 @@ Before the first review, a preflight confirmed that Codex ran `gpt-6.2-sol` and 
 | Addition, 1, reasoning | 7 | The 90% cap is conditional | Valid (low) | As sources 6 |
 | Addition, 1, reasoning | Suspicion | The outcome on a running GKE layout | Out of scope for an edit | Covered by C6's question to the maintainer, and by the node's kernel, now Unverified |
 
-**Open points.** No review finding is left open: all 81 numbered findings of the two key moments, the 16 of the addition's round, and the suspicions, were applied or settled. What remains is for the maintainer, and is stated in the research file:
+**Open points.** No review finding is left open: all 81 numbered findings of the two key moments, the 16 of the addition's round, and the suspicions, were applied or settled. What remained for the maintainer is stated in the research file; the first three points were answered on 2026-11-25 (see "The maintainer's answers"):
 
-- **C6.** Do two COS release notes, one COS build's image layout and Google's 2023 Local SSD post confirm that GKE node disks are ext4? Each speaks for its own release, build or layout. A `mount` on a running node would settle it, and was not within this ticket's authority.
-- **The OTel Arrow posts.** Please confirm that the posts of 2024-09-25, 2025-05-12 and 2026-06-12 are the three `CONTEXT.md` means (P12).
-- **The proposed wording** for ticket 07 and `CONTEXT.md` is for the maintainer to accept, change or reject. Neither file was edited.
+- **C6.** Do two COS release notes, one COS build's image layout and Google's 2023 Local SSD post confirm that GKE node disks are ext4? Each speaks for its own release, build or layout. A `mount` on a running node would settle it, and was not within this ticket's authority. Answered: "Partly sourced" is accepted, with no node inspected.
+- **The OTel Arrow posts.** Are the posts of 2024-09-25, 2025-05-12 and 2026-06-12 the three `CONTEXT.md` means (P12)? Answered: yes.
+- **The proposed wording** for ticket 07 and `CONTEXT.md` was for the maintainer to accept, change or reject. Neither file was edited. Answered: it stays in the research file, with a dated note.
 - **Still Unverified, with where was looked:** the Ubuntu node image's filesystem; the newer split Local SSD layout's filesystem; the writable layer under image streaming; what a buffered ext4 writer sees when an extent cannot be split; APFS's in-place rewrite of unshared data; how often the kubelet refreshes the node's free space; whether a GKE Standard cluster sets a `LimitRange` default for ephemeral storage; what a forked DuckDB child sees when it is handed an inherited instance; whether `ftruncate` frees a range reserved past the end of a file with `KEEP_SIZE` on filesystems other than ext4, where at Linux v7.3 it does (Inferred from source); which kernel a GKE node runs, against which the Linux v7.3 readings were not checked; and DuckDB's direct I/O mode, its spill files and its Windows code, listed under "Candidates not examined".
 - **The last round's fixes.** The second key moment's second-round fixes were checked by the quotation script but not reviewed by anyone after they were applied.
 - **The addition's fixes.** The addition on how DuckDB writes its own file had one review round, by the maintainer's choice. Its fixes were checked by the quotation script, and nobody reviewed them after they were applied.
@@ -260,7 +260,27 @@ Before the first review, a preflight confirmed that Codex ran `gpt-6.2-sol` and 
 - **Addition**, at `2f72975`, the research file and this hand-back with the addition on how DuckDB writes its own file reviewed and fixed. The commit that records this line changes only the line itself.
 
   > All checks passed and the worktree is unchanged.
-- **Changed files:** `git diff c3a33eb --stat`, against the branch's merge base with `main`, shows only this ticket and its research file. The specification, `CONTEXT.md`, `REVIEW.md` and ticket 07 are unchanged. Open questions 8 and 17 are still open in the specification. No code was added.
+- **Changed files:** `git diff c3a33eb --stat`, against the branch's merge base with `main`, shows only this ticket and its research file. The specification, `CONTEXT.md`, `REVIEW.md` and ticket 07 are unchanged. Open questions 8 and 17 are still open in the specification. No code was added. This was true at hand-back; at the maintainer's request, tickets 07 and 08 have since each gained a note (see "The maintainer's answers"), and `main` was merged into the branch on GitHub (`6c631fe`), so `git diff c3a33eb --stat` now also shows what `main` changed. `git diff main...HEAD --stat` shows only this ticket, its research file and tickets 07 and 08.
+
+### The maintainer's answers
+
+Put to the maintainer after the hand-back, on 2026-11-25, as four questions, one per open point and one on this ticket's status. The maintainer chose from the options put and added no notes. Each answer is the option's label and text, verbatim, without the "(Recommended)" marker that two of the labels carried:
+
+- **C6, GKE ext4:** "Accept partly sourced". "Close the point without inspecting a node. C6's verdict stays 'Partly sourced'; the Unverified layers stay listed, with where was looked. Whichever ticket next leans on the filesystem checks it against the image it targets. Only the hand-back and the research file's State line change."
+- **The OTel Arrow posts:** "Yes, those three". "P12 and C8 say the maintainer confirmed the identification on 2026-11-25. No quotation changes. The proposed CONTEXT.md wording that says 'the maintainer has not confirmed them' gains a note that this is now confirmed."
+- **The proposed wording:** "Leave it, add a dated note". "The wording stays in the research file only. A dated note under 'Proposed wording' says it predates 'How DuckDB writes its own file' and points to P10 and the fit rows. The 07 and 08 notes point to the file. Ticket 07's bullets and CONTEXT.md stay as they are."
+- **The status:** "done: findings handed back". "'done: findings handed back in PR #13, and the maintainer's answers recorded', as the plan proposed."
+
+Before the questions, the maintainer asked that the decisions be proposed and checked, and that the tickets these findings bear on, 07 and 08, each gain a note. The proposals were checked with Codex (codex-cli 0.172.0, `gpt-6.2-sol`, a read-only sandbox, as an advisor and not a review round) and with Claude Code's advisor. Both agreed with the three positions put first. Their corrections went into the questions: C6's reason no longer calls open question 8 deferred, the C8 identification is not called something nothing leans on, and the staleness of the proposed wording is stated as covering three passages, not one sentence.
+
+**What changed.** The research file's State line records the answers. P12 and C8 say the maintainer confirmed the identification, and the note after the proposed `CONTEXT.md` text on the posts says its "has not confirmed" is no longer true. "Proposed wording for the maintainer" gains a dated note: the maintainer left the wording there, and it predates "How DuckDB writes its own file", whose findings it does not carry. The ticket 07 bearing says the bullets are unchanged. No quotation changed, and the quotation check passed: 476 quotations, none missing. Each ticket below gained one paragraph, "Ticket 17's findings", placed after its "Ticket 16's findings" and before its "Research file" line. It points to the research file, names the sections that bear on it, and says that its fits are findings, not decisions:
+
+| Ticket | What the research file bears on |
+| --- | --- |
+| 07, diagnostics tables | the checks of its six bullets on reserving disk space (P1 to P9, "The claims, checked"), how DuckDB writes its own file (P10), the fit on GKE Standard, Local SSD and Autopilot, and the proposed wording left in the research file |
+| 08, fork and multi-process support | DuckDB's one-writer rule and its stated why, what it documents on fork, its locking tests and the Python client's instance cache (P10), SQLite as the contrast (P11), and the bearing on this ticket and open question 17 |
+
+These sentences, the notes and the research file's new sentences went through no review round.
 
 ### Acceptance
 
@@ -269,9 +289,9 @@ Before the first review, a preflight confirmed that Codex ran `gpt-6.2-sol` and 
 - [x] Each fact's mechanism and conditions, and which conditions hold on GKE Standard, Local SSD and Autopilot, in the fit tables.
 - [x] The writable layer, `emptyDir` on disk and in memory, and each mounted volume kept apart, each with whether a reserved file is rewritten in place.
 - [x] DuckDB's rule and its stated why, with SQLite as the contrast, weighing neither.
-- [x] The OTel Arrow posts identified with their links, and the maintainer asked to confirm.
+- [x] The OTel Arrow posts identified with their links, and the maintainer asked to confirm; confirmed on 2026-11-25.
 - [x] "Citing a comparable" fields recorded wherever a source's authors explain a design.
-- [x] What the evidence bears on open questions 8 and 17, recommending neither; both still open, and ticket 07 unchanged.
+- [x] What the evidence bears on open questions 8 and 17, recommending neither; both still open, and ticket 07 unchanged: true at hand-back. Ticket 07's text is still unchanged, apart from the note the maintainer asked for.
 - [x] Written to the research file, summarised here, and committed.
 - [x] Adversarial review at both key moments, with reviewers that opened the sources; every finding listed above with its verdict, resolution and model.
-- [x] No tracked file other than this ticket and its research file changed, and no code added.
+- [x] No tracked file other than this ticket and its research file changed, and no code added: true at hand-back. At the maintainer's request, tickets 07 and 08 have since each gained a note pointing to the research file (see "The maintainer's answers").
